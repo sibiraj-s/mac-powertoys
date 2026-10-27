@@ -17,7 +17,8 @@ enum ShortcutCatalog {
     static var all: [ShortcutDefinition] {
         ZonesController.Action.allCases.map(\.shortcut)
             + ClipboardController.Action.allCases.map(\.shortcut)
-            + [AwakeController.toggleShortcut, SystemToggles.darkModeShortcut]
+            + [AwakeController.toggleShortcut]
+            + SystemToggle.allCases.map(\.shortcut)
     }
 }
 
@@ -102,6 +103,14 @@ final class Shortcuts {
             let module = ModuleCatalog.descriptor(other.module).name
             return "Already used for “\(other.title)” in \(module)."
         }
+        return nil
+    }
+
+    /// What a row should say about its shortcut: a problem with just-recorded keys, or that
+    /// another app holds them. nil when all is well.
+    func hint(for definition: ShortcutDefinition, problem: String?) -> String? {
+        if let problem { return problem }
+        if unavailable.contains(definition.id) { return "Another app is using this shortcut." }
         return nil
     }
 

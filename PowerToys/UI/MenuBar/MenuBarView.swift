@@ -3,7 +3,6 @@ import SwiftUI
 struct MenuBarView: View {
     @Environment(AppState.self) private var state
     @Environment(\.openWindow) private var openWindow
-    @Environment(\.colorScheme) private var colorScheme
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 8), count: 3)
 
@@ -29,8 +28,15 @@ struct MenuBarView: View {
                     }
                 }
                 if state.isEnabled(.systemToggles) {
-                    QuickToggle(title: "Dark mode", subtitle: colorScheme == .dark ? "On" : "Off", symbol: "moon", isOn: colorScheme == .dark) {
-                        SystemToggles.toggleDarkMode()
+                    ForEach(state.systemToggles.menuBarItems) { toggle in
+                        QuickToggle(
+                            title: toggle.shortTitle,
+                            subtitle: state.systemToggles.status(of: toggle),
+                            symbol: toggle.symbol,
+                            isOn: !toggle.isAction && state.systemToggles.isOn(toggle)
+                        ) {
+                            Task { await state.systemToggles.perform(toggle) }
+                        }
                     }
                 }
                 if state.isEnabled(.clipboard) {
@@ -59,6 +65,12 @@ struct MenuBarView: View {
         }
         .padding(10)
         .frame(width: 340)
+        // Settings can change elsewhere. The menu's window stays alive between openings, so
+        // read them again each time it becomes key, not only on first appearance.
+        .onAppear { state.systemToggles.refresh() }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
+            state.systemToggles.refresh()
+        }
     }
 
     private var header: some View {

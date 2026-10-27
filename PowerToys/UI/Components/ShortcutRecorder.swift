@@ -12,35 +12,46 @@ struct ShortcutRow: View {
     @State private var problem: String?
 
     var body: some View {
-        let shortcuts = state.shortcuts
         CardRow(definition.title, hint: hint) {
-            HStack(spacing: 6) {
-                if shortcuts.isCustomized(definition) {
-                    Button {
-                        problem = nil
-                        shortcuts.reset(definition)
-                    } label: {
-                        Image(systemName: "arrow.counterclockwise")
-                    }
-                    .buttonStyle(.borderless)
-                    .help(resetHelp)
-                }
-                ShortcutRecorder(
-                    hotKey: shortcuts.hotKey(for: definition),
-                    isUnavailable: shortcuts.unavailable.contains(definition.id),
-                    validate: { shortcuts.problem(with: $0, for: definition) },
-                    onProblem: { problem = $0 },
-                    onChange: { shortcuts.set($0, for: definition) },
-                    onRecordingChange: { $0 ? shortcuts.suspend() : shortcuts.resume() }
-                )
-            }
+            ShortcutField(definition: definition, problem: $problem)
         }
     }
 
     private var hint: String? {
-        if let problem { return problem }
-        if state.shortcuts.unavailable.contains(definition.id) { return "Another app is using this shortcut." }
-        return nil
+        state.shortcuts.hint(for: definition, problem: problem)
+    }
+}
+
+/// The recorder for one shortcut, wired to the app's shortcut settings, with its reset button.
+/// Problems with recorded keys go to `problem` for the row to show.
+struct ShortcutField: View {
+    let definition: ShortcutDefinition
+    @Binding var problem: String?
+
+    @Environment(AppState.self) private var state
+
+    var body: some View {
+        let shortcuts = state.shortcuts
+        HStack(spacing: 6) {
+            if shortcuts.isCustomized(definition) {
+                Button {
+                    problem = nil
+                    shortcuts.reset(definition)
+                } label: {
+                    Image(systemName: "arrow.counterclockwise")
+                }
+                .buttonStyle(.borderless)
+                .help(resetHelp)
+            }
+            ShortcutRecorder(
+                hotKey: shortcuts.hotKey(for: definition),
+                isUnavailable: shortcuts.unavailable.contains(definition.id),
+                validate: { shortcuts.problem(with: $0, for: definition) },
+                onProblem: { problem = $0 },
+                onChange: { shortcuts.set($0, for: definition) },
+                onRecordingChange: { $0 ? shortcuts.suspend() : shortcuts.resume() }
+            )
+        }
     }
 
     private var resetHelp: String {

@@ -38,7 +38,7 @@ enum Permission: String, CaseIterable, Identifiable, Sendable {
         case .accessibility: "Move and resize windows, read the menu bar and simulate key presses."
         case .screenRecording: "Show window previews, pick colors and read text from the screen."
         case .inputMonitoring: "Listen for global shortcuts and remap keys."
-        case .automation: "Ask System Events to switch settings such as dark mode."
+        case .automation: "Ask System Events and Finder to switch settings such as dark mode and to empty the Trash."
         case .fullDiskAccess: "See which process holds a file anywhere on disk."
         case .microphone: "Mute and unmute the microphone globally."
         case .admin: "Edit system files such as /etc/hosts. Asked for each change."

@@ -109,6 +109,7 @@ struct ShortcutsTests {
         let shortcuts = shortcuts()
         shortcuts.activate(first) {}
         #expect(shortcuts.unavailable == ["test.first"])
+        #expect(shortcuts.hint(for: first, problem: nil) == "Another app is using this shortcut.")
 
         shortcuts.set(ctrlOptC, for: first)
         #expect(shortcuts.unavailable.isEmpty)
@@ -139,6 +140,8 @@ struct ShortcutsTests {
         let shortcuts = shortcuts()
         #expect(shortcuts.problem(with: ctrlOptC, for: first) == nil)
         #expect(shortcuts.problem(with: ctrlOptA, for: first) == nil)   // its own keys
+        #expect(shortcuts.hint(for: first, problem: nil) == nil)
+        #expect(shortcuts.hint(for: first, problem: "Bad keys") == "Bad keys")
 
         #expect(shortcuts.problem(with: ctrlOptB, for: first) == "Already used for “Second” in Clipboard.")
         #expect(shortcuts.problem(with: HotKey(keyCode: kVK_ANSI_A, modifiers: [], key: "A"), for: first)?.hasPrefix("Add ⌘, ⌃ or ⌥") == true)
@@ -231,8 +234,8 @@ struct AppShortcutTests {
 
     @Test func moduleShortcutsFollowTheirSwitch() throws {
         let center = FakeHotKeys()
-        let state = AppState(defaults: store.defaults, clipboardStore: nil, hotKeys: center)
-        let darkMode = try #require(SystemToggles.darkModeShortcut.defaultHotKey)
+        let state = AppState(defaults: store.defaults, clipboardStore: nil, hotKeys: center, system: FakeSystemSettings())
+        let darkMode = try #require(SystemToggle.darkMode.shortcut.defaultHotKey)
         #expect(!center.hotKeys.contains(darkMode))
 
         state.setEnabled(.systemToggles, true)
@@ -252,7 +255,7 @@ struct AppShortcutTests {
 
     @Test func zonesAndClipboardRegisterWhileOn() {
         let center = FakeHotKeys()
-        let state = AppState(defaults: store.defaults, clipboardStore: nil, hotKeys: center)
+        let state = AppState(defaults: store.defaults, clipboardStore: nil, hotKeys: center, system: FakeSystemSettings())
         state.setEnabled(.clipboard, true)
         let clipboardKeys = Set(ClipboardController.Action.allCases.compactMap(\.shortcut.defaultHotKey))
         #expect(clipboardKeys.isSubset(of: center.hotKeys))

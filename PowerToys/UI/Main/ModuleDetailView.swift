@@ -129,19 +129,3 @@ private struct VigilSection: View {
         }
     }
 }
-
-// MARK: - System Toggles
-
-private struct SystemTogglesSettingsView: View {
-    var body: some View {
-        CardSection("Toggles") {
-            CardRow("Dark mode", hint: "Switches the whole system between light and dark.") {
-                Button("Toggle now") { SystemToggles.toggleDarkMode() }
-            }
-        }
-
-        CardSection("Shortcuts") {
-            ShortcutRow(definition: SystemToggles.darkModeShortcut)
-        }
-    }
-}

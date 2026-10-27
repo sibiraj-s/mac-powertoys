@@ -10,6 +10,7 @@ final class AppState {
     let awake: AwakeController
     let zones: ZonesController
     let clipboard: ClipboardController
+    let systemToggles: SystemTogglesController
 
     private(set) var enabledModules: Set<ModuleID>
 
@@ -19,13 +20,15 @@ final class AppState {
     init(
         defaults: UserDefaults = .standard,
         clipboardStore: URL? = ClipboardController.defaultStoreDirectory,
-        hotKeys: any HotKeyRegistering = HotKeyCenter.shared
+        hotKeys: any HotKeyRegistering = HotKeyCenter.shared,
+        system: any SystemSettingsAccess = LiveSystemSettings()
     ) {
         self.defaults = defaults
         shortcuts = Shortcuts(defaults: defaults, center: hotKeys)
         awake = AwakeController(defaults: defaults)
         zones = ZonesController(defaults: defaults, shortcuts: shortcuts)
         clipboard = ClipboardController(defaults: defaults, storeDirectory: clipboardStore, shortcuts: shortcuts)
+        systemToggles = SystemTogglesController(defaults: defaults, system: system)
         if let stored = defaults.stringArray(forKey: Self.enabledModulesKey) {
             enabledModules = Set(stored.compactMap(ModuleID.init(rawValue:)))
         } else {
@@ -40,10 +43,12 @@ final class AppState {
     /// Awake and System Toggles have no controller lifecycle of their own, so their shortcuts
     /// follow the module switch here.
     private func updateModuleShortcuts() {
-        let simple: [(ModuleID, ShortcutDefinition, () -> Void)] = [
+        var simple: [(ModuleID, ShortcutDefinition, () -> Void)] = [
             (.awake, AwakeController.toggleShortcut, { [weak self] in self?.awake.toggle() }),
-            (.systemToggles, SystemToggles.darkModeShortcut, { SystemToggles.toggleDarkMode() }),
         ]
+        for toggle in SystemToggle.allCases {
+            simple.append((.systemToggles, toggle.shortcut, { [weak self] in Task { await self?.systemToggles.perform(toggle) } }))
+        }
         for (module, shortcut, action) in simple {
             if isEnabled(module) {
                 if !shortcuts.isActive(shortcut) { shortcuts.activate(shortcut, action: action) }

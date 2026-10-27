@@ -67,7 +67,7 @@ enum ModuleCatalog {
               symbol: "cup.and.saucer", category: .system, tier: .mvp,
               permissions: [], replaces: "Amphetamine, caffeinate", isImplemented: true),
         .init(id: .systemToggles, name: "System Toggles",
-              summary: "Global hotkeys for settings buried in System Settings or Control Center.",
+              summary: "Dark mode, hiding the Dock or desktop icons, hidden files, Wi‑Fi and quick actions, from a shortcut or the menu bar.",
               symbol: "switch.2", category: .system, tier: .mvp,
               permissions: [.automation], replaces: "One Switch, Shortcuts", isImplemented: true),
         .init(id: .scrollMouse, name: "Scroll & Mouse",

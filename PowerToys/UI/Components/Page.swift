@@ -35,11 +35,14 @@ private extension Color {
 
 /// The scrolling content column of the main window.
 struct Page<Content: View>: View {
+    /// Space between a page's sections.
+    static var sectionSpacing: CGFloat { 28 }
+
     @ViewBuilder let content: Content
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 28) {
+            VStack(alignment: .leading, spacing: Self.sectionSpacing) {
                 content
             }
             .padding(.horizontal, 40)
