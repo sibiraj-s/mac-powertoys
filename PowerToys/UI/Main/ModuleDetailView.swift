@@ -43,6 +43,7 @@ struct ModuleDetailView: View {
         case .systemToggles: SystemTogglesSettingsView()
         case .hostsEnv: HostsEnvSettingsView()
         case .portsProcesses: PortsSettingsView()
+        case .launchAgents: LaunchAgentsSettingsView()
         default: EmptyView()
         }
     }

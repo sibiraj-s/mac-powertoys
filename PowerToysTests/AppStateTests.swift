@@ -37,11 +37,11 @@ struct AppStateTests {
 
     @Test func bindingReadsAndWritesEnabledState() {
         let state = AppState.testing(defaults: store.defaults, hotKeys: FakeHotKeys(), system: FakeSystemSettings())
-        let binding = state.binding(for: .launchAgents)
+        let binding = state.binding(for: .batchRename)
         #expect(!binding.wrappedValue)
 
         binding.wrappedValue = true
-        #expect(state.isEnabled(.launchAgents))
+        #expect(state.isEnabled(.batchRename))
         #expect(state.enabledCount == 3)
     }
 }
