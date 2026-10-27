@@ -65,6 +65,7 @@ struct ClipboardPickerView: View {
                         }
                     }
                     .padding(6)
+                    .thinScrollers()
                 }
                 .onChange(of: picker.selectedID) { _, id in
                     proxy.scrollTo(id)
@@ -219,6 +220,7 @@ private struct ClipDetail: View {
                             .font(.system(size: 12))
                             .textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
+                            .thinScrollers()
                     }
                     .frame(maxHeight: 80)
                 }
@@ -232,6 +234,7 @@ private struct ClipDetail: View {
                     }
                 }
                 .padding(12)
+                .thinScrollers()
             }
         case .color:
             let rgba = ClipItem.hexColor(item.text) ?? [0, 0, 0, 1]
@@ -266,6 +269,7 @@ private struct ClipDetail: View {
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(12)
+                    .thinScrollers()
             }
         }
     }

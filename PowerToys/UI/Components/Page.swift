@@ -50,6 +50,7 @@ struct Page<Content: View>: View {
             .padding(.bottom, 40)
             .frame(maxWidth: 800, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .leading)
+            .thinScrollers()
         }
         .background(Palette.content)
     }
