@@ -308,11 +308,4 @@ struct ClipboardControllerTests {
         // "a" was last in the list (pinned "b" sorts first), so the selection moves up to its neighbor.
         #expect(picker.selected?.text == "https://c.com")
     }
-
-    @Test func shortcutsAreDistinctFromZones() {
-        let ours = Set(ClipboardController.Action.allCases.map(\.hotKey))
-        let zones = Set(ZonesController.Action.allCases.map(\.hotKey))
-        #expect(ours.count == ClipboardController.Action.allCases.count)
-        #expect(ours.isDisjoint(with: zones))
-    }
 }

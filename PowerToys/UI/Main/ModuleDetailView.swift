@@ -83,11 +83,7 @@ private struct AwakeSettingsView: View {
         }
 
         CardSection("Shortcuts") {
-            CardRow("Toggle Awake", hint: "Right-click the Awake tile in the menu bar for durations.") {
-                Text("Coming with the shortcut recorder")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-            }
+            ShortcutRow(definition: AwakeController.toggleShortcut)
         }
     }
 
@@ -145,10 +141,7 @@ private struct SystemTogglesSettingsView: View {
         }
 
         CardSection("Shortcuts") {
-            CardRow("Toggle dark mode", hint: "Global hotkeys arrive with the shortcut recorder.") {
-                KeyCaps(keys: ["⌃", "⌥", "D"])
-                    .opacity(0.5)
-            }
+            ShortcutRow(definition: SystemToggles.darkModeShortcut)
         }
     }
 }

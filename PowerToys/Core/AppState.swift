@@ -6,6 +6,7 @@ import SwiftUI
 @Observable
 final class AppState {
     let permissions = PermissionsService()
+    let shortcuts: Shortcuts
     let awake: AwakeController
     let zones: ZonesController
     let clipboard: ClipboardController
@@ -15,11 +16,16 @@ final class AppState {
     private let defaults: UserDefaults
     static let enabledModulesKey = "enabledModules"
 
-    init(defaults: UserDefaults = .standard, clipboardStore: URL? = ClipboardController.defaultStoreDirectory) {
+    init(
+        defaults: UserDefaults = .standard,
+        clipboardStore: URL? = ClipboardController.defaultStoreDirectory,
+        hotKeys: any HotKeyRegistering = HotKeyCenter.shared
+    ) {
         self.defaults = defaults
+        shortcuts = Shortcuts(defaults: defaults, center: hotKeys)
         awake = AwakeController(defaults: defaults)
-        zones = ZonesController(defaults: defaults)
-        clipboard = ClipboardController(defaults: defaults, storeDirectory: clipboardStore)
+        zones = ZonesController(defaults: defaults, shortcuts: shortcuts)
+        clipboard = ClipboardController(defaults: defaults, storeDirectory: clipboardStore, shortcuts: shortcuts)
         if let stored = defaults.stringArray(forKey: Self.enabledModulesKey) {
             enabledModules = Set(stored.compactMap(ModuleID.init(rawValue:)))
         } else {
@@ -28,6 +34,23 @@ final class AppState {
         }
         if enabledModules.contains(.zones) { zones.start() }
         if enabledModules.contains(.clipboard) { clipboard.start() }
+        updateModuleShortcuts()
+    }
+
+    /// Awake and System Toggles have no controller lifecycle of their own, so their shortcuts
+    /// follow the module switch here.
+    private func updateModuleShortcuts() {
+        let simple: [(ModuleID, ShortcutDefinition, () -> Void)] = [
+            (.awake, AwakeController.toggleShortcut, { [weak self] in self?.awake.toggle() }),
+            (.systemToggles, SystemToggles.darkModeShortcut, { SystemToggles.toggleDarkMode() }),
+        ]
+        for (module, shortcut, action) in simple {
+            if isEnabled(module) {
+                if !shortcuts.isActive(shortcut) { shortcuts.activate(shortcut, action: action) }
+            } else {
+                shortcuts.deactivate(shortcut)
+            }
+        }
     }
 
     var enabledCount: Int { enabledModules.count }
@@ -53,6 +76,7 @@ final class AppState {
         case .clipboard: enabled ? clipboard.start() : clipboard.stop()
         default: break
         }
+        updateModuleShortcuts()
         defaults.set(enabledModules.map(\.rawValue).sorted(), forKey: Self.enabledModulesKey)
     }
 

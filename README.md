@@ -52,6 +52,7 @@ New files under `PowerToys/` are picked up by Xcode automatically, with no proje
 1. The module's entry lives in `ModuleCatalog.all` (`Core/Module.swift`). Set `isImplemented: true` once it works.
 2. Put its logic in `Modules/<Name>/` and give `AppState` an instance if it holds state.
 3. Add its settings view to the `switch` in `ModuleDetailView.settings`.
+4. For global shortcuts, give each action a `ShortcutDefinition` (stable ID, title, default keys), add it to `ShortcutCatalog.all`, and call `shortcuts.activate` while the module is on. Show it with `ShortcutRow`, which lets people record their own keys; changes are saved and re-registered automatically.
 
 ## Status
 
@@ -59,6 +60,6 @@ New files under `PowerToys/` are picked up by Xcode automatically, with no proje
 | --- | --- |
 | Zones | Halves, thirds, focus and 2×2 layouts per display; ⇧-drag to snap (⌥ to span), restore on unsnap; ⌃⌥ shortcuts for next/previous zone, fill, next display, switch layout, restore |
 | Clipboard | History (⌃⌥V) of text, links, colors, images and files with search (including text in images), filters, pins and a preview pane; paste, copy, open, show in Finder or save images; paste as plain text, Markdown or JSON; ⌃⌥⇧V pastes as plain text. Can remove old items from the history, and empty the clipboard a set time after each copy. Kept on this Mac, skipping concealed items |
-| Awake | Working: indefinitely, 15 min to 4 h, or until a time of day; optional display-on. Points to [Vigil](https://github.com/sibiraj-s/vigil) for triggers and automation |
-| System Toggles | Dark mode toggle (via System Events) |
+| Awake | Working (optional toggle shortcut): indefinitely, 15 min to 4 h, or until a time of day; optional display-on. Points to [Vigil](https://github.com/sibiraj-s/vigil) for triggers and automation |
+| System Toggles | Dark mode toggle (via System Events), ⌃⌥D |
 | Other 18 | Listed in the main window with permissions and status, not built yet |

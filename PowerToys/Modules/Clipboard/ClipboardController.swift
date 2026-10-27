@@ -18,7 +18,11 @@ final class ClipboardController {
             }
         }
 
-        var hotKey: HotKey {
+        var shortcut: ShortcutDefinition {
+            ShortcutDefinition(id: "clipboard.\(self)", module: .clipboard, title: title, defaultHotKey: defaultHotKey)
+        }
+
+        var defaultHotKey: HotKey {
             switch self {
             case .showHistory: HotKey(keyCode: kVK_ANSI_V, modifiers: [.control, .option], key: "V")
             case .pastePlainText: HotKey(keyCode: kVK_ANSI_V, modifiers: [.control, .option, .shift], key: "V")
@@ -116,7 +120,6 @@ final class ClipboardController {
     }
 
     private(set) var history: ClipboardHistory
-    private(set) var unavailableActions: Set<Action> = []
     private(set) var isRunning = false
 
     static let limitKey = "clipboard.limit"
@@ -135,10 +138,10 @@ final class ClipboardController {
     }
 
     private let defaults: UserDefaults
+    let shortcuts: Shortcuts
     private let historyURL: URL?
     let imagesDirectory: URL
 
-    @ObservationIgnored private var registrations: [HotKeyCenter.Registration] = []
     @ObservationIgnored private var timer: Timer?
     @ObservationIgnored private var lastChangeCount = 0
     /// When the clipboard last changed, for `clearDelay`; nil once it's been cleared.
@@ -146,8 +149,9 @@ final class ClipboardController {
     @ObservationIgnored private lazy var panel = ClipboardPanel(controller: self)
 
     /// With `storeDirectory` nil the history is kept in memory and images in a temporary folder.
-    init(defaults: UserDefaults = .standard, storeDirectory: URL? = ClipboardController.defaultStoreDirectory) {
+    init(defaults: UserDefaults = .standard, storeDirectory: URL? = ClipboardController.defaultStoreDirectory, shortcuts: Shortcuts? = nil) {
         self.defaults = defaults
+        self.shortcuts = shortcuts ?? Shortcuts(defaults: defaults)
         historyURL = storeDirectory?.appending(path: "ClipboardHistory.json")
         imagesDirectory = (storeDirectory ?? URL.temporaryDirectory.appending(path: "PowerToys-\(UUID().uuidString)"))
             .appending(path: "ClipboardImages")
@@ -175,15 +179,9 @@ final class ClipboardController {
     func start() {
         guard !isRunning else { return }
         isRunning = true
-        var unavailable: Set<Action> = []
         for action in Action.allCases {
-            if let registration = HotKeyCenter.shared.register(action.hotKey, action: { [weak self] in self?.perform(action) }) {
-                registrations.append(registration)
-            } else {
-                unavailable.insert(action)
-            }
+            shortcuts.activate(action.shortcut) { [weak self] in self?.perform(action) }
         }
-        unavailableActions = unavailable
         // Whatever is on the pasteboard now was copied before; only record what comes next.
         lastChangeCount = NSPasteboard.general.changeCount
         let timer = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in
@@ -196,9 +194,9 @@ final class ClipboardController {
     func stop() {
         guard isRunning else { return }
         isRunning = false
-        registrations.forEach(HotKeyCenter.shared.unregister)
-        registrations = []
-        unavailableActions = []
+        for action in Action.allCases {
+            shortcuts.deactivate(action.shortcut)
+        }
         timer?.invalidate()
         timer = nil
         panel.hide()

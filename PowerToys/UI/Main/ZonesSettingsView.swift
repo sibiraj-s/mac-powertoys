@@ -53,10 +53,7 @@ struct ZonesSettingsView: View {
 
         CardSection("Shortcuts") {
             ForEach(ZonesController.Action.allCases) { action in
-                CardRow(action.title, hint: zones.unavailableActions.contains(action) ? "Another app is using this shortcut." : nil) {
-                    KeyCaps(keys: action.hotKey.keyCaps)
-                        .opacity(zones.unavailableActions.contains(action) ? 0.5 : 1)
-                }
+                ShortcutRow(definition: action.shortcut)
             }
         }
     }

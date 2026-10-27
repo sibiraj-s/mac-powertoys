@@ -34,7 +34,7 @@ struct MenuBarView: View {
                     }
                 }
                 if state.isEnabled(.clipboard) {
-                    QuickToggle(title: "Clipboard", subtitle: "⌃⌥V", symbol: "doc.on.clipboard", isOn: false) {
+                    QuickToggle(title: "Clipboard", subtitle: historyKeys ?? "History", symbol: "doc.on.clipboard", isOn: false) {
                         state.clipboard.showHistory()
                     }
                 }
@@ -71,6 +71,11 @@ struct MenuBarView: View {
         }
         .padding(.horizontal, 6)
         .padding(.top, 4)
+    }
+
+    /// The keys that open clipboard history, as customized.
+    private var historyKeys: String? {
+        state.shortcuts.hotKey(for: ClipboardController.Action.showHistory.shortcut)?.keyCaps.joined()
     }
 
     private var awakeSubtitle: String {

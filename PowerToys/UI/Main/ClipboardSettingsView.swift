@@ -10,7 +10,7 @@ struct ClipboardSettingsView: View {
 
         CardSection("Recent") {
             if items.isEmpty {
-                CardRow("Nothing copied yet", hint: "Copy text, images or files while Clipboard is on, then press ⌃⌥V.") {
+                CardRow("Nothing copied yet", hint: emptyHint) {
                     EmptyView()
                 }
             }
@@ -98,10 +98,7 @@ struct ClipboardSettingsView: View {
 
         CardSection("Shortcuts") {
             ForEach(ClipboardController.Action.allCases) { action in
-                CardRow(action.title, hint: clipboard.unavailableActions.contains(action) ? "Another app is using this shortcut." : nil) {
-                    KeyCaps(keys: action.hotKey.keyCaps)
-                        .opacity(clipboard.unavailableActions.contains(action) ? 0.5 : 1)
-                }
+                ShortcutRow(definition: action.shortcut)
             }
         }
 
@@ -118,6 +115,12 @@ struct ClipboardSettingsView: View {
                 KeyCaps(keys: ["⌘P", "⌘⌫", "⇥"])
             }
         }
+    }
+
+    private var emptyHint: String {
+        let opening = state.shortcuts.hotKey(for: ClipboardController.Action.showHistory.shortcut)
+            .map { ", then press \($0.keyCaps.joined()) to see them" } ?? ""
+        return "Copy text, images or files while Clipboard is on\(opening)."
     }
 
     private func hint(for format: PasteFormat) -> String {

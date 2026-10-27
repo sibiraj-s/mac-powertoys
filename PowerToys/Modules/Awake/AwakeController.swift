@@ -4,6 +4,9 @@ import Observation
 
 @Observable
 final class AwakeController {
+    /// Starts out unset; people pick their own keys.
+    static let toggleShortcut = ShortcutDefinition(id: "awake.toggle", module: .awake, title: "Toggle Awake", defaultHotKey: nil)
+
     enum Duration: Hashable, CaseIterable, Identifiable {
         case indefinitely, minutes15, minutes30, hour1, hours2, hours4
 

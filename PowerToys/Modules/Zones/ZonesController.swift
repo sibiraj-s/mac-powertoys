@@ -20,7 +20,11 @@ final class ZonesController {
             }
         }
 
-        var hotKey: HotKey {
+        var shortcut: ShortcutDefinition {
+            ShortcutDefinition(id: "zones.\(self)", module: .zones, title: title, defaultHotKey: defaultHotKey)
+        }
+
+        var defaultHotKey: HotKey {
             switch self {
             case .nextZone: HotKey(keyCode: kVK_RightArrow, modifiers: [.control, .option], key: "→")
             case .previousZone: HotKey(keyCode: kVK_LeftArrow, modifiers: [.control, .option], key: "←")
@@ -51,7 +55,6 @@ final class ZonesController {
     private(set) var layoutIDs: [String: String]
 
     /// Shortcuts another app already holds.
-    private(set) var unavailableActions: Set<Action> = []
 
     private(set) var isRunning = false
 
@@ -61,8 +64,8 @@ final class ZonesController {
     static let layoutsKey = "zones.layouts"
 
     private let defaults: UserDefaults
+    let shortcuts: Shortcuts
 
-    @ObservationIgnored private var registrations: [HotKeyCenter.Registration] = []
     @ObservationIgnored private var monitor: Any?
     @ObservationIgnored private let overlay = ZoneOverlay()
     @ObservationIgnored private var snaps: [Snap] = []
@@ -85,8 +88,9 @@ final class ZonesController {
         var target: CGRect?
     }
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard, shortcuts: Shortcuts? = nil) {
         self.defaults = defaults
+        self.shortcuts = shortcuts ?? Shortcuts(defaults: defaults)
         defaults.register(defaults: [
             Self.snapsWhileDraggingKey: true,
             Self.spansWithOptionKey: true,
@@ -118,15 +122,9 @@ final class ZonesController {
     func start() {
         guard !isRunning else { return }
         isRunning = true
-        var unavailable: Set<Action> = []
         for action in Action.allCases {
-            if let registration = HotKeyCenter.shared.register(action.hotKey, action: { [weak self] in self?.perform(action) }) {
-                registrations.append(registration)
-            } else {
-                unavailable.insert(action)
-            }
+            shortcuts.activate(action.shortcut) { [weak self] in self?.perform(action) }
         }
-        unavailableActions = unavailable
         monitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .leftMouseDragged, .leftMouseUp, .flagsChanged]) { [weak self] event in
             // Global monitors are called on the main thread.
             MainActor.assumeIsolated { self?.handle(event) }
@@ -136,9 +134,9 @@ final class ZonesController {
     func stop() {
         guard isRunning else { return }
         isRunning = false
-        registrations.forEach(HotKeyCenter.shared.unregister)
-        registrations = []
-        unavailableActions = []
+        for action in Action.allCases {
+            shortcuts.deactivate(action.shortcut)
+        }
         if let monitor { NSEvent.removeMonitor(monitor) }
         monitor = nil
         drag = nil
