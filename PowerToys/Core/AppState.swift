@@ -11,6 +11,8 @@ final class AppState {
     let zones: ZonesController
     let clipboard: ClipboardController
     let systemToggles: SystemTogglesController
+    let hosts: HostsController
+    let environment: EnvironmentController
 
     private(set) var enabledModules: Set<ModuleID>
 
@@ -21,7 +23,10 @@ final class AppState {
         defaults: UserDefaults = .standard,
         clipboardStore: URL? = ClipboardController.defaultStoreDirectory,
         hotKeys: any HotKeyRegistering = HotKeyCenter.shared,
-        system: any SystemSettingsAccess = LiveSystemSettings()
+        system: any SystemSettingsAccess = LiveSystemSettings(),
+        hostsStore: any HostsStore = LiveHostsStore(),
+        hostsBackup: URL? = HostsController.defaultBackupURL,
+        environment: EnvironmentController? = nil
     ) {
         self.defaults = defaults
         shortcuts = Shortcuts(defaults: defaults, center: hotKeys)
@@ -29,6 +34,8 @@ final class AppState {
         zones = ZonesController(defaults: defaults, shortcuts: shortcuts)
         clipboard = ClipboardController(defaults: defaults, storeDirectory: clipboardStore, shortcuts: shortcuts)
         systemToggles = SystemTogglesController(defaults: defaults, system: system)
+        hosts = HostsController(store: hostsStore, backupURL: hostsBackup)
+        self.environment = environment ?? EnvironmentController()
         if let stored = defaults.stringArray(forKey: Self.enabledModulesKey) {
             enabledModules = Set(stored.compactMap(ModuleID.init(rawValue:)))
         } else {

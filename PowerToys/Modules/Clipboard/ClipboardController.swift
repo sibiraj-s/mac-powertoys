@@ -134,7 +134,7 @@ final class ClipboardController {
     static let maxImageBytes = 25_000_000
 
     static var defaultStoreDirectory: URL {
-        URL.applicationSupportDirectory.appending(path: "PowerToys")
+        URL.powerToysSupportDirectory
     }
 
     private let defaults: UserDefaults

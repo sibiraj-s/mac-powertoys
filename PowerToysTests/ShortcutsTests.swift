@@ -234,7 +234,7 @@ struct AppShortcutTests {
 
     @Test func moduleShortcutsFollowTheirSwitch() throws {
         let center = FakeHotKeys()
-        let state = AppState(defaults: store.defaults, clipboardStore: nil, hotKeys: center, system: FakeSystemSettings())
+        let state = AppState.testing(defaults: store.defaults, hotKeys: center, system: FakeSystemSettings())
         let darkMode = try #require(SystemToggle.darkMode.shortcut.defaultHotKey)
         #expect(!center.hotKeys.contains(darkMode))
 
@@ -255,7 +255,7 @@ struct AppShortcutTests {
 
     @Test func zonesAndClipboardRegisterWhileOn() {
         let center = FakeHotKeys()
-        let state = AppState(defaults: store.defaults, clipboardStore: nil, hotKeys: center, system: FakeSystemSettings())
+        let state = AppState.testing(defaults: store.defaults, hotKeys: center, system: FakeSystemSettings())
         state.setEnabled(.clipboard, true)
         let clipboardKeys = Set(ClipboardController.Action.allCases.compactMap(\.shortcut.defaultHotKey))
         #expect(clipboardKeys.isSubset(of: center.hotKeys))

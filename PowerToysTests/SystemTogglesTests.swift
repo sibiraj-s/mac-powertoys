@@ -213,7 +213,7 @@ struct SystemTogglesControllerTests {
 
     @Test func shortcutsRunTogglesWhileTheModuleIsOn() async throws {
         let center = FakeHotKeys()
-        let state = AppState(defaults: store.defaults, clipboardStore: nil, hotKeys: center, system: system)
+        let state = AppState.testing(defaults: store.defaults, hotKeys: center, system: system)
         let keys = try #require(SystemToggle.darkMode.shortcut.defaultHotKey)
         state.setEnabled(.systemToggles, true)
         center.press(keys)

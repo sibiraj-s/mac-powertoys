@@ -41,6 +41,7 @@ struct ModuleDetailView: View {
         case .zones: ZonesSettingsView()
         case .clipboard: ClipboardSettingsView()
         case .systemToggles: SystemTogglesSettingsView()
+        case .hostsEnv: HostsEnvSettingsView()
         default: EmptyView()
         }
     }
