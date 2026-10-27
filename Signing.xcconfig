@@ -1,0 +1,14 @@
+// Code signing defaults. Builds are signed ad hoc unless Local.xcconfig overrides these.
+//
+// Ad hoc signatures change with every build, so macOS forgets Accessibility, Screen Recording
+// and other grants after each rebuild. To keep them, create Local.xcconfig (gitignored) with
+// your own identity:
+//
+//   CODE_SIGN_STYLE = Manual
+//   CODE_SIGN_IDENTITY = Developer ID Application
+//   DEVELOPMENT_TEAM = <your team ID>
+
+CODE_SIGN_STYLE = Automatic
+CODE_SIGN_IDENTITY = -
+
+#include? "Local.xcconfig"

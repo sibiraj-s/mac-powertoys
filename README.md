@@ -1,0 +1,63 @@
+# PowerToys
+
+A modular menu bar app for macOS that fills the gaps power users usually cover with a handful of separate utilities. Each module turns on separately and asks for permissions only when you enable it.
+
+Design: [Feature map, Settings and menu bar mockups](https://claude.ai/artifact/3zBSiCkd4YyfG8PbhGf4hh)
+
+## Requirements
+
+- macOS 15+
+- Xcode 26+ (the project uses folder-synced groups and Swift 6 with MainActor default isolation)
+
+## Build
+
+```sh
+open PowerToys.xcodeproj
+# or
+xcodebuild -project PowerToys.xcodeproj -scheme PowerToys -derivedDataPath build/DerivedData build
+
+# tests (⌘U in Xcode)
+xcodebuild test -project PowerToys.xcodeproj -scheme PowerToys -derivedDataPath build/DerivedData
+```
+
+### Signing
+
+Builds are signed ad hoc by default (`Signing.xcconfig`). macOS ties permission grants to the signature, and an ad hoc signature changes with every build, so Accessibility and Screen Recording have to be granted again after each rebuild. To keep them, create a gitignored `Local.xcconfig` next to it:
+
+```
+CODE_SIGN_STYLE = Manual
+CODE_SIGN_IDENTITY = Developer ID Application
+DEVELOPMENT_TEAM = <your team ID>
+```
+
+It is a regular app with a Dock icon and a main window, plus a menu bar icon for quick toggles. Closing the window keeps it running in the menu bar. It is not sandboxed: Accessibility APIs and event taps don't work in the sandbox, so it ships outside the Mac App Store.
+
+## Layout
+
+```
+PowerToys/
+  App/            App entry point, scenes
+  Core/           Module catalog, permissions, app state
+  Modules/<Name>/ One folder per module's logic
+  UI/MenuBar/     Menu bar dropdown
+  UI/Main/        Main window (sidebar, overview, permissions, module pages)
+PowerToysTests/  Unit tests (Swift Testing), hosted in the app
+PowerToys.entitlements   Signing entitlements (not sandboxed)
+```
+
+New files under `PowerToys/` are picked up by Xcode automatically, with no project file edits needed.
+
+## Adding a module
+
+1. The module's entry lives in `ModuleCatalog.all` (`Core/Module.swift`). Set `isImplemented: true` once it works.
+2. Put its logic in `Modules/<Name>/` and give `AppState` an instance if it holds state.
+3. Add its settings view to the `switch` in `ModuleDetailView.settings`.
+
+## Status
+
+| Module | State |
+| --- | --- |
+| Zones | Halves, thirds, focus and 2×2 layouts per display; ⇧-drag to snap (⌥ to span), restore on unsnap; ⌃⌥ shortcuts for next/previous zone, fill, next display, switch layout, restore |
+| Awake | Working: indefinitely, 15 min to 4 h, or until a time of day; optional display-on. Points to [Vigil](https://github.com/sibiraj-s/vigil) for triggers and automation |
+| System Toggles | Dark mode toggle (via System Events) |
+| Other 19 | Listed in the main window with permissions and status, not built yet |

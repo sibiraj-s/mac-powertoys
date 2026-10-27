@@ -1,0 +1,80 @@
+import Foundation
+import Observation
+import ServiceManagement
+import SwiftUI
+
+@Observable
+final class AppState {
+    let permissions = PermissionsService()
+    let awake: AwakeController
+    let zones: ZonesController
+
+    private(set) var enabledModules: Set<ModuleID>
+
+    private let defaults: UserDefaults
+    static let enabledModulesKey = "enabledModules"
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        awake = AwakeController(defaults: defaults)
+        zones = ZonesController(defaults: defaults)
+        if let stored = defaults.stringArray(forKey: Self.enabledModulesKey) {
+            enabledModules = Set(stored.compactMap(ModuleID.init(rawValue:)))
+        } else {
+            // First launch: only modules that need no permission are on, so nothing prompts unasked.
+            enabledModules = Set(ModuleCatalog.all.filter { $0.isImplemented && $0.permissions.isEmpty }.map(\.id))
+        }
+        if enabledModules.contains(.zones) { zones.start() }
+    }
+
+    var enabledCount: Int { enabledModules.count }
+
+    func isEnabled(_ id: ModuleID) -> Bool {
+        enabledModules.contains(id)
+    }
+
+    func setEnabled(_ id: ModuleID, _ enabled: Bool) {
+        if enabled {
+            enabledModules.insert(id)
+            // Permissions are requested when a module is turned on, never up front.
+            for permission in ModuleCatalog.descriptor(id).permissions
+            where permissions.status(permission) == .denied {
+                permissions.request(permission)
+            }
+        } else {
+            enabledModules.remove(id)
+        }
+        switch id {
+        case .awake where !enabled: awake.stop()
+        case .zones: enabled ? zones.start() : zones.stop()
+        default: break
+        }
+        defaults.set(enabledModules.map(\.rawValue).sorted(), forKey: Self.enabledModulesKey)
+    }
+
+    func binding(for id: ModuleID) -> Binding<Bool> {
+        Binding(get: { self.isEnabled(id) }, set: { self.setEnabled(id, $0) })
+    }
+
+    // MARK: Launch at login
+
+    var launchesAtLogin: Bool {
+        get {
+            access(keyPath: \.launchesAtLogin)
+            return SMAppService.mainApp.status == .enabled
+        }
+        set {
+            withMutation(keyPath: \.launchesAtLogin) {
+                do {
+                    if newValue {
+                        try SMAppService.mainApp.register()
+                    } else {
+                        try SMAppService.mainApp.unregister()
+                    }
+                } catch {
+                    NSLog("Launch at login change failed: \(error)")
+                }
+            }
+        }
+    }
+}
