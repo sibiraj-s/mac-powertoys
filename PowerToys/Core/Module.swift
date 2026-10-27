@@ -2,7 +2,7 @@ import Foundation
 
 enum ModuleID: String, CaseIterable, Identifiable, Codable, Sendable {
     // Tier 1 — MVP
-    case zones, windowSwitcher, keys, menuBarManager, advancedPaste, awake, systemToggles, scrollMouse
+    case zones, windowSwitcher, keys, menuBarManager, clipboard, awake, systemToggles, scrollMouse
     // Tier 2 — power utilities
     case colorPicker, textExtractor, pinCrop, batchRename, fileLocksmith, finderExtras, displaysAudio
     // Tier 3 — dev & presenter
@@ -58,10 +58,10 @@ enum ModuleCatalog {
               summary: "Hide, reorder and overflow menu bar icons that disappear behind the notch.",
               symbol: "menubar.rectangle", category: .system, tier: .mvp,
               permissions: [.accessibility, .screenRecording], replaces: "Ice, Bartender"),
-        .init(id: .advancedPaste, name: "Advanced Paste",
-              summary: "Searchable, pinnable clipboard history. Paste as plain text, Markdown or JSON.",
+        .init(id: .clipboard, name: "Clipboard",
+              summary: "Searchable history of the text, images and files you copy. Pin and preview items, and paste as plain text, Markdown or JSON.",
               symbol: "doc.on.clipboard", category: .tools, tier: .mvp,
-              permissions: [.accessibility], replaces: "Maccy, Paste"),
+              permissions: [.accessibility], replaces: "Maccy, Paste", isImplemented: true),
         .init(id: .awake, name: "Awake",
               summary: "Keep the Mac awake indefinitely, for a set time or until a time of day. Right-click the menu bar tile for durations.",
               symbol: "cup.and.saucer", category: .system, tier: .mvp,

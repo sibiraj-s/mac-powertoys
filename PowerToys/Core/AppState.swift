@@ -8,16 +8,18 @@ final class AppState {
     let permissions = PermissionsService()
     let awake: AwakeController
     let zones: ZonesController
+    let clipboard: ClipboardController
 
     private(set) var enabledModules: Set<ModuleID>
 
     private let defaults: UserDefaults
     static let enabledModulesKey = "enabledModules"
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard, clipboardStore: URL? = ClipboardController.defaultStoreDirectory) {
         self.defaults = defaults
         awake = AwakeController(defaults: defaults)
         zones = ZonesController(defaults: defaults)
+        clipboard = ClipboardController(defaults: defaults, storeDirectory: clipboardStore)
         if let stored = defaults.stringArray(forKey: Self.enabledModulesKey) {
             enabledModules = Set(stored.compactMap(ModuleID.init(rawValue:)))
         } else {
@@ -25,6 +27,7 @@ final class AppState {
             enabledModules = Set(ModuleCatalog.all.filter { $0.isImplemented && $0.permissions.isEmpty }.map(\.id))
         }
         if enabledModules.contains(.zones) { zones.start() }
+        if enabledModules.contains(.clipboard) { clipboard.start() }
     }
 
     var enabledCount: Int { enabledModules.count }
@@ -47,6 +50,7 @@ final class AppState {
         switch id {
         case .awake where !enabled: awake.stop()
         case .zones: enabled ? zones.start() : zones.stop()
+        case .clipboard: enabled ? clipboard.start() : clipboard.stop()
         default: break
         }
         defaults.set(enabledModules.map(\.rawValue).sorted(), forKey: Self.enabledModulesKey)

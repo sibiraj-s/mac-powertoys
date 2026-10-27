@@ -33,7 +33,7 @@ struct ZonesSettingsView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)) { _ in
             screens = Displays.ordered
-            if !screens.map { Displays.key(for: $0) }.contains(displayKey) {
+            if !screens.map({ Displays.key(for: $0) }).contains(displayKey) {
                 displayKey = NSScreen.main.map { Displays.key(for: $0) } ?? ""
             }
         }

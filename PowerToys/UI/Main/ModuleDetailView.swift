@@ -39,6 +39,7 @@ struct ModuleDetailView: View {
         switch module.id {
         case .awake: AwakeSettingsView()
         case .zones: ZonesSettingsView()
+        case .clipboard: ClipboardSettingsView()
         case .systemToggles: SystemTogglesSettingsView()
         default: EmptyView()
         }

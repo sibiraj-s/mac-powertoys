@@ -33,6 +33,11 @@ struct MenuBarView: View {
                         SystemToggles.toggleDarkMode()
                     }
                 }
+                if state.isEnabled(.clipboard) {
+                    QuickToggle(title: "Clipboard", subtitle: "⌃⌥V", symbol: "doc.on.clipboard", isOn: false) {
+                        state.clipboard.showHistory()
+                    }
+                }
                 QuickToggle(title: "Mic", subtitle: "Soon", symbol: "mic", isOn: false) {}
                     .disabled(true)
                 QuickToggle(title: "Pick color", subtitle: "Soon", symbol: "eyedropper", isOn: false) {}
