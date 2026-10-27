@@ -37,6 +37,6 @@ struct ModuleCatalogTests {
 
     @Test func implementedModules() {
         let implemented = Set(ModuleCatalog.all.filter(\.isImplemented).map(\.id))
-        #expect(implemented == [.zones, .clipboard, .awake, .systemToggles, .hostsEnv])
+        #expect(implemented == [.zones, .clipboard, .awake, .systemToggles, .hostsEnv, .portsProcesses])
     }
 }

@@ -6,13 +6,14 @@ struct AppStateTests {
 
     @Test func firstLaunchEnablesOnlyModulesThatNeedNoPermission() {
         let state = AppState.testing(defaults: store.defaults, hotKeys: FakeHotKeys(), system: FakeSystemSettings())
-        #expect(state.enabledModules == [.awake])
+        #expect(state.enabledModules == [.awake, .portsProcesses])
     }
 
     @Test func enabledModulesPersistAcrossLaunches() {
         let state = AppState.testing(defaults: store.defaults, hotKeys: FakeHotKeys(), system: FakeSystemSettings())
         state.setEnabled(.batchRename, true)
         state.setEnabled(.awake, false)
+        state.setEnabled(.portsProcesses, false)
 
         let relaunched = AppState.testing(defaults: store.defaults, hotKeys: FakeHotKeys(), system: FakeSystemSettings())
         #expect(relaunched.enabledModules == [.batchRename])
@@ -36,11 +37,11 @@ struct AppStateTests {
 
     @Test func bindingReadsAndWritesEnabledState() {
         let state = AppState.testing(defaults: store.defaults, hotKeys: FakeHotKeys(), system: FakeSystemSettings())
-        let binding = state.binding(for: .portsProcesses)
+        let binding = state.binding(for: .launchAgents)
         #expect(!binding.wrappedValue)
 
         binding.wrappedValue = true
-        #expect(state.isEnabled(.portsProcesses))
-        #expect(state.enabledCount == 2)
+        #expect(state.isEnabled(.launchAgents))
+        #expect(state.enabledCount == 3)
     }
 }

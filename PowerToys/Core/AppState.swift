@@ -13,6 +13,7 @@ final class AppState {
     let systemToggles: SystemTogglesController
     let hosts: HostsController
     let environment: EnvironmentController
+    let ports: PortsController
 
     private(set) var enabledModules: Set<ModuleID>
 
@@ -36,6 +37,7 @@ final class AppState {
         systemToggles = SystemTogglesController(defaults: defaults, system: system)
         hosts = HostsController(store: hostsStore, backupURL: hostsBackup)
         self.environment = environment ?? EnvironmentController()
+        ports = PortsController(defaults: defaults)
         if let stored = defaults.stringArray(forKey: Self.enabledModulesKey) {
             enabledModules = Set(stored.compactMap(ModuleID.init(rawValue:)))
         } else {

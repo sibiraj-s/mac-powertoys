@@ -42,6 +42,7 @@ struct ModuleDetailView: View {
         case .clipboard: ClipboardSettingsView()
         case .systemToggles: SystemTogglesSettingsView()
         case .hostsEnv: HostsEnvSettingsView()
+        case .portsProcesses: PortsSettingsView()
         default: EmptyView()
         }
     }

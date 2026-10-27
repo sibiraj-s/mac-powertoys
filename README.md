@@ -63,4 +63,5 @@ New files under `PowerToys/` are picked up by Xcode automatically, with no proje
 | Awake | Working (optional toggle shortcut): indefinitely, 15 min to 4 h, or until a time of day; optional display-on. Points to [Vigil](https://github.com/sibiraj-s/vigil) for triggers and automation |
 | System Toggles | Dark mode (⌃⌥D), hide the Dock, menu bar or desktop icons, show hidden files or file extensions, Wi‑Fi; sleep display, screen saver, eject disks, empty Trash. Each can have a shortcut and a menu bar tile |
 | Hosts & Env | Edit /etc/hosts: switch entries on and off, group them to switch together (groups are marker comments, so they work without the app), flags entries an earlier line overrides; saves with an admin prompt, flushes DNS, keeps the original. PATH and variables of a new zsh, bash or fish login shell and of apps, with missing and duplicate PATH folders flagged and secrets hidden |
-| Other 17 | Listed in the main window with permissions and status, not built yet |
+| Ports & Processes | TCP listeners with the process's command line, folder and uptime, refreshed while shown; flags ports open to the network; quit, then force quit if ignored; open in a browser, copy the URL, show the folder. Hides macOS services unless asked. Also listed in the menu bar |
+| Other 16 | Listed in the main window with permissions and status, not built yet |
