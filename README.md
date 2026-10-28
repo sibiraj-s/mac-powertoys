@@ -1,6 +1,8 @@
 # PowerToys
 
-A modular menu bar app for macOS that fills the gaps power users usually cover with a handful of separate utilities. Each module turns on separately and asks for permissions only when you enable it.
+A collection of tools for macOS in one app: window zones, clipboard history, a color picker, hosts and environment editing, ports and processes, launch agents and more. Each module turns on separately and asks for permissions only when you enable it, and no module takes a global shortcut until you assign one.
+
+It is a regular app with a Dock icon and a main window where each module has its own page, plus a menu bar icon for quick toggles. Closing the window keeps it running in the menu bar. It is not sandboxed: Accessibility APIs and event taps don't work in the sandbox, so it ships outside the Mac App Store.
 
 Design: [Feature map, Settings and menu bar mockups](https://claude.ai/artifact/3zBSiCkd4YyfG8PbhGf4hh)
 
@@ -30,8 +32,6 @@ CODE_SIGN_IDENTITY = Developer ID Application
 DEVELOPMENT_TEAM = <your team ID>
 ```
 
-It is a regular app with a Dock icon and a main window, plus a menu bar icon for quick toggles. Closing the window keeps it running in the menu bar. It is not sandboxed: Accessibility APIs and event taps don't work in the sandbox, so it ships outside the Mac App Store.
-
 ## Layout
 
 ```
@@ -52,7 +52,7 @@ New files under `PowerToys/` are picked up by Xcode automatically, with no proje
 1. The module's entry lives in `ModuleCatalog.all` (`Core/Module.swift`). Set `isImplemented: true` once it works.
 2. Put its logic in `Modules/<Name>/` and give `AppState` an instance if it holds state.
 3. Add its settings view to the `switch` in `ModuleDetailView.settings`.
-4. For global shortcuts, give each action a `ShortcutDefinition` (stable ID, title, default keys), add it to `ShortcutCatalog.all`, and call `shortcuts.activate` while the module is on. Show it with `ShortcutRow`, which lets people record their own keys; changes are saved and re-registered automatically.
+4. For global shortcuts, give each action a `ShortcutDefinition` (stable ID, title, and `defaultHotKey: nil`, since shortcuts start unset), add it to `ShortcutCatalog.all`, and call `shortcuts.activate` while the module is on. Show it with `ShortcutRow`, which lets people record their own keys; changes are saved and re-registered automatically.
 
 ## Status
 
@@ -67,3 +67,7 @@ New files under `PowerToys/` are picked up by Xcode automatically, with no proje
 | Launch Agents | Your agents, agents for all users and daemons (Apple's optional, read-only): what each runs and when in words, running PID or last exit code, on/off switch that also loads or unloads it, start, restart, stop, open the plist or its logs; flags jobs whose program is gone, and moves your own to the Trash. Daemons ask for an admin password |
 | Color Picker | Pick any color on screen with the system magnifier, from the menu bar or a shortcut you assign, copied straight away as HEX, RGB, HSL, HSB, SwiftUI, NSColor or UIColor. Keeps the last 24 colors, each copyable in any format. No Screen Recording permission needed |
 | Other 14 | Listed in the main window with permissions and status, not built yet |
+
+## License
+
+[MIT](LICENSE)
