@@ -188,8 +188,7 @@ private struct LaunchItemRow: View {
             }
         }
         Button("Copy Label") {
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(item.label, forType: .string)
+            NSPasteboard.general.copy(item.label)
         }
         if item.location.canTrash {
             Divider()

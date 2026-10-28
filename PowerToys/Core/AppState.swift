@@ -17,6 +17,7 @@ final class AppState {
     let ports: PortsController
     let launchAgents: LaunchAgentsController
     let colorPicker: ColorPickerController
+    let defaultsBrowser: DefaultsBrowserController
 
     private(set) var enabledModules: Set<ModuleID>
 
@@ -32,7 +33,9 @@ final class AppState {
         hostsBackup: URL? = HostsController.defaultBackupURL,
         environment: EnvironmentController? = nil,
         colorSampler: any ColorSampling = LiveColorSampler(),
-        pasteboard: NSPasteboard = .general
+        pasteboard: NSPasteboard = .general,
+        defaultsStore: any DefaultsStoring = LiveDefaultsStore(),
+        defaultsBackups: URL? = DefaultsBrowserController.defaultBackupDirectory
     ) {
         self.defaults = defaults
         shortcuts = Shortcuts(defaults: defaults, center: hotKeys)
@@ -45,6 +48,7 @@ final class AppState {
         ports = PortsController(defaults: defaults)
         launchAgents = LaunchAgentsController(defaults: defaults)
         colorPicker = ColorPickerController(defaults: defaults, sampler: colorSampler, pasteboard: pasteboard)
+        defaultsBrowser = DefaultsBrowserController(store: defaultsStore, backupDirectory: defaultsBackups)
         if let stored = defaults.stringArray(forKey: Self.enabledModulesKey) {
             enabledModules = Set(stored.compactMap(ModuleID.init(rawValue:)))
         } else {

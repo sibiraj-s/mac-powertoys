@@ -21,7 +21,8 @@ extension AppState {
         AppState(
             defaults: defaults, clipboardStore: nil, hotKeys: hotKeys, system: system,
             hostsStore: FakeHostsStore(), hostsBackup: nil,
-            environment: EnvironmentController(loginShell: nil, sources: [.apps], probe: FakeProbe(), pathSources: { [:] }, exists: { _ in true })
+            environment: EnvironmentController(loginShell: nil, sources: [.apps], probe: FakeProbe(), pathSources: { [:] }, exists: { _ in true }),
+            defaultsStore: FakeDefaultsStore(), defaultsBackups: nil
         )
     }
 }

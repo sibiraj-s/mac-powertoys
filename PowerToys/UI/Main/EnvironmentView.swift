@@ -176,12 +176,6 @@ private struct VariableRow: View {
     }
 
     private func copy(_ text: String) {
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        pasteboard.setString(text, forType: .string)
-        // Keeps secrets out of clipboard history, ours and other apps'.
-        if variable.isSecret {
-            pasteboard.setString("", forType: ClipboardController.concealedType)
-        }
+        NSPasteboard.general.copy(text, concealed: variable.isSecret)
     }
 }

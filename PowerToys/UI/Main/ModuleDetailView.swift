@@ -45,6 +45,7 @@ struct ModuleDetailView: View {
         case .portsProcesses: PortsSettingsView()
         case .launchAgents: LaunchAgentsSettingsView()
         case .colorPicker: ColorPickerSettingsView()
+        case .defaultsBrowser: DefaultsBrowserSettingsView()
         default: EmptyView()
         }
     }

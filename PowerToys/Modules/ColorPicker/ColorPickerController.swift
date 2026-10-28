@@ -87,8 +87,7 @@ final class ColorPickerController {
     }
 
     func copy(_ color: PickedColor, as format: ColorFormat? = nil) {
-        pasteboard.clearContents()
-        pasteboard.setString((format ?? self.format).string(for: color), forType: .string)
+        pasteboard.copy((format ?? self.format).string(for: color))
     }
 
     func remove(_ color: PickedColor) {
