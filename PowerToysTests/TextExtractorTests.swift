@@ -127,6 +127,7 @@ private enum TestImage {
 
 struct TextRecognizerLineTests {
     @Test func readsLinesTopToBottomWithTheirPlace() async throws {
+        try await TextRecognition.requireAvailable()
         let url = try TestImage.text(["First line", "Second line"])
         defer { try? FileManager.default.removeItem(at: url) }
 
@@ -136,6 +137,7 @@ struct TextRecognizerLineTests {
     }
 
     @Test func readsInAChosenLanguage() async throws {
+        try await TextRecognition.requireAvailable()
         let url = try TestImage.text(["Hello there"])
         defer { try? FileManager.default.removeItem(at: url) }
 
