@@ -26,41 +26,6 @@ It's a regular app with a Dock icon and a main window where each module has its 
 
 The app isn't sandboxed, since Accessibility APIs and event taps don't work in the sandbox, so it ships outside the Mac App Store.
 
-## Build
-
-```sh
-open PowerToys.xcodeproj
-
-# or from the command line
-xcodebuild -project PowerToys.xcodeproj -scheme PowerToys -derivedDataPath build/DerivedData build
-
-# tests (⌘U in Xcode)
-xcodebuild test -project PowerToys.xcodeproj -scheme PowerToys -derivedDataPath build/DerivedData
-```
-
-### Signing
-
-Builds are signed ad hoc by default (`Signing.xcconfig`). macOS ties permission grants to the signature, and an ad hoc signature changes with every build, so Accessibility and Screen Recording must be granted again after each rebuild. To keep them, create a gitignored `Local.xcconfig` next to it:
-
-```
-CODE_SIGN_STYLE = Manual
-CODE_SIGN_IDENTITY = Developer ID Application
-DEVELOPMENT_TEAM = <your team ID>
-```
-
-## Release
-
-`scripts/build.sh [version]` builds a Release for Apple Silicon and packages it as `build/PowerToys-<version>.dmg`. With `APPLE_TEAM_ID`, `NOTARY_KEY_PATH`, `NOTARY_KEY_ID` and `NOTARY_ISSUER_ID` set, in the environment or a gitignored `.env`, it signs with your Developer ID certificate and notarizes; otherwise it signs ad hoc.
-
-Versions come from [Changesets](.changeset/README.md): add one with `npx changeset` alongside each user-facing change. On `master`, the Release workflow keeps a "Release powertoys@<version>" pull request open. Merging it builds, signs and notarizes the DMG, then tags `v<version>` and attaches the DMG to the GitHub Release. It needs these repository secrets: `APPLE_TEAM_ID`, `DEVELOPER_ID_CERTIFICATE_P12` (base64), `DEVELOPER_ID_CERTIFICATE_PASSWORD`, `NOTARY_KEY` (the .p8's contents), `NOTARY_KEY_ID` and `NOTARY_ISSUER_ID`.
-
-## Adding a module
-
-1. Add its entry to `ModuleCatalog.all` (`Core/Module.swift`) and set `isImplemented: true` once it works.
-2. Put its logic in `Modules/<Name>/`, and give `AppState` an instance if it holds state.
-3. Add its settings view to the `switch` in `ModuleDetailView.settings`.
-4. For global shortcuts, give each action a `ShortcutDefinition` with a stable ID, a title and `defaultHotKey: nil`, add it to `ShortcutCatalog.all`, and call `shortcuts.activate` while the module is on. Show it with `ShortcutRow`, which records, saves and re-registers keys.
-
 ## License
 
 [MIT](LICENSE)
