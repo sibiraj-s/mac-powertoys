@@ -1,5 +1,4 @@
 import AppKit
-import Carbon.HIToolbox
 import Observation
 
 @Observable
@@ -21,18 +20,7 @@ final class ZonesController {
         }
 
         var shortcut: ShortcutDefinition {
-            ShortcutDefinition(id: "zones.\(self)", module: .zones, title: title, defaultHotKey: defaultHotKey)
-        }
-
-        var defaultHotKey: HotKey {
-            switch self {
-            case .nextZone: HotKey(keyCode: kVK_RightArrow, modifiers: [.control, .option], key: "→")
-            case .previousZone: HotKey(keyCode: kVK_LeftArrow, modifiers: [.control, .option], key: "←")
-            case .fillDisplay: HotKey(keyCode: kVK_Return, modifiers: [.control, .option], key: "↩")
-            case .nextDisplay: HotKey(keyCode: kVK_RightArrow, modifiers: [.control, .option, .command], key: "→")
-            case .nextLayout: HotKey(keyCode: kVK_ANSI_Z, modifiers: [.control, .option], key: "Z")
-            case .restore: HotKey(keyCode: kVK_Delete, modifiers: [.control, .option], key: "⌫")
-            }
+            ShortcutDefinition(id: "zones.\(self)", module: .zones, title: title, defaultHotKey: nil)
         }
     }
 

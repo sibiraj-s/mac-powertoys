@@ -119,10 +119,4 @@ struct ZonesControllerTests {
         #expect(!reloaded.snapsWhileDragging)
         #expect(reloaded.restoresSizeOnUnsnap)
     }
-
-    @Test func everyShortcutIsDistinct() {
-        let hotKeys = ZonesController.Action.allCases.map(\.defaultHotKey)
-        #expect(Set(hotKeys).count == hotKeys.count)
-        #expect(ZonesController.Action.nextDisplay.defaultHotKey.keyCaps == ["⌃", "⌥", "⌘", "→"])
-    }
 }

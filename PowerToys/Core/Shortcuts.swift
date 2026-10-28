@@ -8,7 +8,8 @@ struct ShortcutDefinition: Identifiable, Hashable {
     let id: String
     let module: ModuleID
     let title: String
-    /// nil when the shortcut starts out unset.
+    /// nil when the shortcut starts out unset, as the app's own all do: global keys are only
+    /// taken once the user assigns them.
     let defaultHotKey: HotKey?
 }
 

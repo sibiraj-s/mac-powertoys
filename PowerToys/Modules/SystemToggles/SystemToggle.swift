@@ -1,4 +1,3 @@
-import Carbon.HIToolbox
 
 /// A setting you can flip, or a one-off action, from a shortcut or the menu bar.
 enum SystemToggle: String, CaseIterable, Identifiable {
@@ -119,7 +118,7 @@ enum SystemToggle: String, CaseIterable, Identifiable {
         ShortcutDefinition(
             id: "systemToggles.\(rawValue)", module: .systemToggles,
             title: isAction ? title : "Toggle \(title.lowercasedFirst)",
-            defaultHotKey: self == .darkMode ? HotKey(keyCode: kVK_ANSI_D, modifiers: [.control, .option], key: "D") : nil
+            defaultHotKey: nil
         )
     }
 

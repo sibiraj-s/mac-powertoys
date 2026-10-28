@@ -1,3 +1,4 @@
+import Carbon.HIToolbox
 import Foundation
 import Testing
 @testable import PowerToys
@@ -66,7 +67,6 @@ struct SystemToggleTests {
         #expect(Set(ids).count == ids.count)
         // Kept from before, so a customized dark mode shortcut survives.
         #expect(SystemToggle.darkMode.shortcut.id == "systemToggles.darkMode")
-        #expect(SystemToggle.allCases.compactMap(\.shortcut.defaultHotKey).count == 1)
         #expect(SystemToggle.darkMode.shortcut.title == "Toggle dark mode")
         #expect(SystemToggle.wifi.shortcut.title == "Toggle Wi‑Fi")
         #expect(SystemToggle.emptyTrash.shortcut.title == "Empty Trash")
@@ -214,7 +214,8 @@ struct SystemTogglesControllerTests {
     @Test func shortcutsRunTogglesWhileTheModuleIsOn() async throws {
         let center = FakeHotKeys()
         let state = AppState.testing(defaults: store.defaults, hotKeys: center, system: system)
-        let keys = try #require(SystemToggle.darkMode.shortcut.defaultHotKey)
+        let keys = HotKey(keyCode: kVK_ANSI_D, modifiers: [.control, .option], key: "D")
+        state.shortcuts.set(keys, for: SystemToggle.darkMode.shortcut)
         state.setEnabled(.systemToggles, true)
         center.press(keys)
         await waitUntil { system.values[.darkMode] == true }

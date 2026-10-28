@@ -19,14 +19,7 @@ final class ClipboardController {
         }
 
         var shortcut: ShortcutDefinition {
-            ShortcutDefinition(id: "clipboard.\(self)", module: .clipboard, title: title, defaultHotKey: defaultHotKey)
-        }
-
-        var defaultHotKey: HotKey {
-            switch self {
-            case .showHistory: HotKey(keyCode: kVK_ANSI_V, modifiers: [.control, .option], key: "V")
-            case .pastePlainText: HotKey(keyCode: kVK_ANSI_V, modifiers: [.control, .option, .shift], key: "V")
-            }
+            ShortcutDefinition(id: "clipboard.\(self)", module: .clipboard, title: title, defaultHotKey: nil)
         }
     }
 

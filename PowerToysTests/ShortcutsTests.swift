@@ -158,18 +158,11 @@ struct ShortcutsTests {
         #expect(shortcuts.problem(with: ctrlOptB, for: first) == nil)
     }
 
-    @Test func everyShortcutInTheAppIsDistinctAndUsable() {
+    @Test func everyShortcutInTheAppIsDistinctAndStartsOutUnset() {
         let catalog = ShortcutCatalog.all
         #expect(Set(catalog.map(\.id)).count == catalog.count)
-        let keys = catalog.compactMap(\.defaultHotKey)
-        #expect(Set(keys).count == keys.count)
-
-        let shortcuts = Shortcuts(defaults: store.defaults, center: center)
-        for definition in catalog {
-            if let hotKey = definition.defaultHotKey {
-                #expect(shortcuts.problem(with: hotKey, for: definition) == nil, "\(definition.id)")
-            }
-        }
+        // No global keys are taken until the user assigns them.
+        #expect(catalog.allSatisfy { $0.defaultHotKey == nil })
     }
 }
 
@@ -235,7 +228,8 @@ struct AppShortcutTests {
     @Test func moduleShortcutsFollowTheirSwitch() throws {
         let center = FakeHotKeys()
         let state = AppState.testing(defaults: store.defaults, hotKeys: center, system: FakeSystemSettings())
-        let darkMode = try #require(SystemToggle.darkMode.shortcut.defaultHotKey)
+        let darkMode = HotKey(keyCode: kVK_ANSI_D, modifiers: [.control, .option], key: "D")
+        state.shortcuts.set(darkMode, for: SystemToggle.darkMode.shortcut)
         #expect(!center.hotKeys.contains(darkMode))
 
         state.setEnabled(.systemToggles, true)
@@ -253,12 +247,17 @@ struct AppShortcutTests {
         #expect(!state.awake.isActive)
     }
 
-    @Test func zonesAndClipboardRegisterWhileOn() {
+    @Test func clipboardRegistersAssignedKeysWhileOn() {
         let center = FakeHotKeys()
         let state = AppState.testing(defaults: store.defaults, hotKeys: center, system: FakeSystemSettings())
+        let history = HotKey(keyCode: kVK_ANSI_V, modifiers: [.control, .option], key: "V")
+        state.shortcuts.set(history, for: ClipboardController.Action.showHistory.shortcut)
+        // Nothing is taken until the module is on.
+        #expect(center.hotKeys.isEmpty)
+
         state.setEnabled(.clipboard, true)
-        let clipboardKeys = Set(ClipboardController.Action.allCases.compactMap(\.shortcut.defaultHotKey))
-        #expect(clipboardKeys.isSubset(of: center.hotKeys))
+        #expect(center.hotKeys == [history])
+        let clipboardKeys: Set = [history]
         state.setEnabled(.clipboard, false)
         #expect(center.hotKeys.isDisjoint(with: clipboardKeys))
     }
