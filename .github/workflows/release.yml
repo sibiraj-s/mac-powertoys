@@ -1,0 +1,108 @@
+name: Release
+
+on:
+  push:
+    branches: [master]
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  version:
+    name: Version
+    runs-on: ubuntu-latest
+    outputs:
+      release: ${{ steps.unreleased.outputs.release }}
+      version: ${{ steps.unreleased.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      # The version the pending changesets bump to, for the pull request's title.
+      - id: next
+        run: |
+          npx changeset status --output="$RUNNER_TEMP/status.json"
+          echo "version=$(node -p "require('$RUNNER_TEMP/status.json').releases[0]?.newVersion ?? ''")" >> "$GITHUB_OUTPUT"
+
+      # With pending changesets: opens or updates the "Release powertoys@<version>" pull request.
+      - id: changesets
+        uses: changesets/action@v2.1.2
+        with:
+          pr-title: Release powertoys@${{ steps.next.outputs.version }}
+          commit-message: Release powertoys@${{ steps.next.outputs.version }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Once that's merged, package.json has a version with no tag yet.
+      - id: unreleased
+        if: steps.changesets.outputs.has-changesets == 'false'
+        run: |
+          version="$(node -p 'require("./package.json").version')"
+          release=true
+          git ls-remote --exit-code --tags origin "refs/tags/v$version" >/dev/null && release=false
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+
+  release:
+    name: Build, sign and release
+    needs: version
+    if: needs.version.outputs.release == 'true'
+    runs-on: xcode-27
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+      NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      # Fails the job if any signing secret is missing, so a release never ships unsigned.
+      - name: Install signing certificate and notary key
+        run: scripts/release/install-signing.sh
+        env:
+          CERTIFICATE_P12: ${{ secrets.DEVELOPER_ID_CERTIFICATE_P12 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+          NOTARY_KEY: ${{ secrets.NOTARY_KEY }}
+
+      - name: Build, sign and notarize
+        run: scripts/build.sh "$VERSION"
+
+      - name: Remove signing certificate and notary key
+        if: always()
+        run: scripts/release/remove-signing.sh
+
+      - name: Tag and release
+        uses: changesets/action@v2.1.2
+        with:
+          publish-script: npx changeset publish
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload DMG
+        run: scripts/release/publish.sh "$VERSION"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

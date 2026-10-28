@@ -7,6 +7,8 @@
 //   CODE_SIGN_STYLE = Manual
 //   CODE_SIGN_IDENTITY = Developer ID Application
 //   DEVELOPMENT_TEAM = <your team ID>
+//
+// Release builds (scripts/build.sh) pass their signing settings on the command line instead.
 
 CODE_SIGN_STYLE = Automatic
 CODE_SIGN_IDENTITY = -

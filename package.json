@@ -1,0 +1,13 @@
+{
+  "name": "powertoys",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Release tooling for PowerToys (Changesets)",
+  "license": "MIT",
+  "scripts": {
+    "changeset": "changeset"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^3.0.3"
+  }
+}
