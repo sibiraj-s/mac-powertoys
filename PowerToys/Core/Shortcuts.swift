@@ -19,6 +19,7 @@ enum ShortcutCatalog {
             + ClipboardController.Action.allCases.map(\.shortcut)
             + [AwakeController.toggleShortcut]
             + SystemToggle.allCases.map(\.shortcut)
+            + [ColorPickerController.pickShortcut]
     }
 }
 

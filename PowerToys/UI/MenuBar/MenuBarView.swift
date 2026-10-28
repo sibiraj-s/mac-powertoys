@@ -48,8 +48,19 @@ struct MenuBarView: View {
                 }
                 QuickToggle(title: "Mic", subtitle: "Soon", symbol: "mic", isOn: false) {}
                     .disabled(true)
-                QuickToggle(title: "Pick color", subtitle: "Soon", symbol: "eyedropper", isOn: false) {}
-                    .disabled(true)
+                if state.isEnabled(.colorPicker) {
+                    QuickToggle(title: "Pick color", subtitle: pickSubtitle, symbol: "eyedropper", isOn: false) {
+                        // Out of the way, so the color under the menu can be picked too.
+                        window?.close()
+                        Task { await state.colorPicker.pick() }
+                    }
+                    .disabled(state.colorPicker.isPicking)
+                    .contextMenu {
+                        ForEach(state.colorPicker.history.prefix(8)) { color in
+                            Button("Copy \(color.formatted(as: state.colorPicker.format))") { state.colorPicker.copy(color) }
+                        }
+                    }
+                }
                 QuickToggle(title: "Grab text", subtitle: "Soon", symbol: "text.viewfinder", isOn: false) {}
                     .disabled(true)
                 QuickToggle(title: "Pin window", subtitle: "Soon", symbol: "pin", isOn: false) {}
@@ -104,6 +115,12 @@ struct MenuBarView: View {
     /// The keys that open clipboard history, as customized.
     private var historyKeys: String? {
         state.shortcuts.hotKey(for: ClipboardController.Action.showHistory.shortcut)?.keyCaps.joined()
+    }
+
+    private var pickSubtitle: String {
+        let picker = state.colorPicker
+        if let latest = picker.latest { return latest.formatted(as: picker.format) }
+        return state.shortcuts.hotKey(for: ColorPickerController.pickShortcut)?.keyCaps.joined() ?? "Magnifier"
     }
 
     private var awakeSubtitle: String {

@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Observation
 import ServiceManagement
@@ -15,6 +16,7 @@ final class AppState {
     let environment: EnvironmentController
     let ports: PortsController
     let launchAgents: LaunchAgentsController
+    let colorPicker: ColorPickerController
 
     private(set) var enabledModules: Set<ModuleID>
 
@@ -28,7 +30,9 @@ final class AppState {
         system: any SystemSettingsAccess = LiveSystemSettings(),
         hostsStore: any HostsStore = LiveHostsStore(),
         hostsBackup: URL? = HostsController.defaultBackupURL,
-        environment: EnvironmentController? = nil
+        environment: EnvironmentController? = nil,
+        colorSampler: any ColorSampling = LiveColorSampler(),
+        pasteboard: NSPasteboard = .general
     ) {
         self.defaults = defaults
         shortcuts = Shortcuts(defaults: defaults, center: hotKeys)
@@ -40,6 +44,7 @@ final class AppState {
         self.environment = environment ?? EnvironmentController()
         ports = PortsController(defaults: defaults)
         launchAgents = LaunchAgentsController(defaults: defaults)
+        colorPicker = ColorPickerController(defaults: defaults, sampler: colorSampler, pasteboard: pasteboard)
         if let stored = defaults.stringArray(forKey: Self.enabledModulesKey) {
             enabledModules = Set(stored.compactMap(ModuleID.init(rawValue:)))
         } else {
@@ -51,11 +56,12 @@ final class AppState {
         updateModuleShortcuts()
     }
 
-    /// Awake and System Toggles have no controller lifecycle of their own, so their shortcuts
+    /// Awake, System Toggles and Color Picker have no controller lifecycle of their own, so their shortcuts
     /// follow the module switch here.
     private func updateModuleShortcuts() {
         var simple: [(ModuleID, ShortcutDefinition, () -> Void)] = [
             (.awake, AwakeController.toggleShortcut, { [weak self] in self?.awake.toggle() }),
+            (.colorPicker, ColorPickerController.pickShortcut, { [weak self] in Task { await self?.colorPicker.pick() } }),
         ]
         for toggle in SystemToggle.allCases {
             simple.append((.systemToggles, toggle.shortcut, { [weak self] in Task { await self?.systemToggles.perform(toggle) } }))

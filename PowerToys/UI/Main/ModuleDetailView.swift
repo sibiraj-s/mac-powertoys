@@ -44,6 +44,7 @@ struct ModuleDetailView: View {
         case .hostsEnv: HostsEnvSettingsView()
         case .portsProcesses: PortsSettingsView()
         case .launchAgents: LaunchAgentsSettingsView()
+        case .colorPicker: ColorPickerSettingsView()
         default: EmptyView()
         }
     }

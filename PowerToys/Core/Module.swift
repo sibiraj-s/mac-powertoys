@@ -77,9 +77,9 @@ enum ModuleCatalog {
 
         // MARK: Tier 2 — power utilities
         .init(id: .colorPicker, name: "Color Picker",
-              summary: "Global hotkey and magnifier. Copy as HEX, RGB, HSL or SwiftUI/NSColor, with history.",
+              summary: "Pick any color on screen with a magnifier, from a shortcut or the menu bar. Copy it as HEX, RGB, HSL or SwiftUI and AppKit code.",
               symbol: "eyedropper", category: .tools, tier: .utilities,
-              permissions: [.screenRecording], replaces: "Digital Color Meter"),
+              permissions: [], replaces: "Digital Color Meter", isImplemented: true),
         .init(id: .textExtractor, name: "Text Extractor",
               summary: "OCR any screen region straight to the clipboard.",
               symbol: "text.viewfinder", category: .tools, tier: .utilities,
