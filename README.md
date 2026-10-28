@@ -1,19 +1,37 @@
 # PowerToys
 
-A collection of tools for macOS in one app: window zones, clipboard history, a color picker, text from the screen, hosts and environment editing, ports and processes, launch agents and more. Each module turns on separately and asks for permissions only when you enable it, and no module takes a global shortcut until you assign one.
+A collection of tools for macOS in one app. Each module turns on separately, asks for permissions only when you enable it, and takes no global shortcut until you assign one.
 
-It is a regular app with a Dock icon and a main window where each module has its own page, plus a menu bar icon for quick toggles. Closing the window keeps it running in the menu bar. It is not sandboxed: Accessibility APIs and event taps don't work in the sandbox, so it ships outside the Mac App Store.
+It's a regular app with a Dock icon and a main window where each module has its own page, plus a menu bar icon for quick toggles. Closing the window keeps it running in the menu bar.
+
+## Modules
+
+- **Zones** – Snap windows to halves, thirds, focus or 2×2 layouts per display. ⇧-drag to snap (⌥ to span), with shortcuts for moving between zones and displays.
+- **Clipboard** – Searchable history of text, links, colors, images and files, with pins, a preview pane and paste as plain text, Markdown or JSON. Stays on this Mac and skips concealed items.
+- **Awake** – Keep the Mac awake indefinitely, for a set time or until a time of day, optionally with the display on. See [Vigil](https://github.com/sibiraj-s/vigil) for triggers and automation.
+- **System Toggles** – Dark mode, Dock and menu bar hiding, desktop icons, hidden files, Wi‑Fi, screen saver, eject disks, empty Trash and more, each with an optional shortcut and menu bar tile.
+- **Hosts & Env** – Edit `/etc/hosts` with on/off entries and groups; inspect PATH and environment variables for zsh, bash, fish and apps, with missing and duplicate PATH folders flagged.
+- **Ports & Processes** – TCP listeners with their process, folder and uptime; quit or force quit, open in a browser, and spot ports open to the network.
+- **Launch Agents** – Browse agents and daemons, see what each runs and when, and load, unload, start, stop or restart them.
+- **Color Picker** – Pick any color on screen and copy it as HEX, RGB, HSL, HSB, SwiftUI, NSColor or UIColor. Keeps the last 24 colors.
+- **Text Extractor** – Select part of the screen or a window and copy its text, or read QR codes and barcodes. Recognition runs locally with Vision.
+- **Defaults Browser** – Browse, edit and back up preference domains, copy keys as `defaults` commands, and flip well-known hidden settings for the Dock, Finder and more.
+
+12 more modules are listed in the app but not built yet.
 
 ## Requirements
 
 - macOS 15+
-- Xcode 26+ (the project uses folder-synced groups and Swift 6 with MainActor default isolation)
+- Xcode 26+ (folder-synced groups, Swift 6 with MainActor default isolation)
+
+The app isn't sandboxed, since Accessibility APIs and event taps don't work in the sandbox, so it ships outside the Mac App Store.
 
 ## Build
 
 ```sh
 open PowerToys.xcodeproj
-# or
+
+# or from the command line
 xcodebuild -project PowerToys.xcodeproj -scheme PowerToys -derivedDataPath build/DerivedData build
 
 # tests (⌘U in Xcode)
@@ -22,7 +40,7 @@ xcodebuild test -project PowerToys.xcodeproj -scheme PowerToys -derivedDataPath 
 
 ### Signing
 
-Builds are signed ad hoc by default (`Signing.xcconfig`). macOS ties permission grants to the signature, and an ad hoc signature changes with every build, so Accessibility and Screen Recording have to be granted again after each rebuild. To keep them, create a gitignored `Local.xcconfig` next to it:
+Builds are signed ad hoc by default (`Signing.xcconfig`). macOS ties permission grants to the signature, and an ad hoc signature changes with every build, so Accessibility and Screen Recording must be granted again after each rebuild. To keep them, create a gitignored `Local.xcconfig` next to it:
 
 ```
 CODE_SIGN_STYLE = Manual
@@ -30,43 +48,18 @@ CODE_SIGN_IDENTITY = Developer ID Application
 DEVELOPMENT_TEAM = <your team ID>
 ```
 
-## Layout
+## Release
 
-```
-PowerToys/
-  App/            App entry point, scenes
-  Core/           Module catalog, permissions, app state
-  Modules/<Name>/ One folder per module's logic
-  UI/MenuBar/     Menu bar dropdown
-  UI/Main/        Main window (sidebar, overview, permissions, module pages)
-PowerToysTests/  Unit tests (Swift Testing), hosted in the app
-PowerToys.entitlements   Signing entitlements (not sandboxed)
-```
+`scripts/build.sh [version]` builds a Release for Apple Silicon and packages it as `build/PowerToys-<version>.dmg`. With `APPLE_TEAM_ID`, `NOTARY_KEY_PATH`, `NOTARY_KEY_ID` and `NOTARY_ISSUER_ID` set, in the environment or a gitignored `.env`, it signs with your Developer ID certificate and notarizes; otherwise it signs ad hoc.
 
-New files under `PowerToys/` are picked up by Xcode automatically, with no project file edits needed.
+Versions come from [Changesets](.changeset/README.md): add one with `npx changeset` alongside each user-facing change. On `master`, the Release workflow keeps a "Release powertoys@<version>" pull request open. Merging it builds, signs and notarizes the DMG, then tags `v<version>` and attaches the DMG to the GitHub Release. It needs these repository secrets: `APPLE_TEAM_ID`, `DEVELOPER_ID_CERTIFICATE_P12` (base64), `DEVELOPER_ID_CERTIFICATE_PASSWORD`, `NOTARY_KEY` (the .p8's contents), `NOTARY_KEY_ID` and `NOTARY_ISSUER_ID`.
 
 ## Adding a module
 
-1. The module's entry lives in `ModuleCatalog.all` (`Core/Module.swift`). Set `isImplemented: true` once it works.
-2. Put its logic in `Modules/<Name>/` and give `AppState` an instance if it holds state.
+1. Add its entry to `ModuleCatalog.all` (`Core/Module.swift`) and set `isImplemented: true` once it works.
+2. Put its logic in `Modules/<Name>/`, and give `AppState` an instance if it holds state.
 3. Add its settings view to the `switch` in `ModuleDetailView.settings`.
-4. For global shortcuts, give each action a `ShortcutDefinition` (stable ID, title, and `defaultHotKey: nil`, since shortcuts start unset), add it to `ShortcutCatalog.all`, and call `shortcuts.activate` while the module is on. Show it with `ShortcutRow`, which lets people record their own keys; changes are saved and re-registered automatically.
-
-## Status
-
-| Module | State |
-| --- | --- |
-| Zones | Halves, thirds, focus and 2×2 layouts per display; ⇧-drag to snap (⌥ to span), restore on unsnap; shortcuts you can assign for next/previous zone, fill, next display, switch layout, restore |
-| Clipboard | History (from a shortcut you assign or the menu bar) of text, links, colors, images and files with search (including text in images), filters, pins and a preview pane; paste, copy, open, show in Finder or save images; paste as plain text, Markdown or JSON; a shortcut can paste as plain text. Can remove old items from the history, and empty the clipboard a set time after each copy. Kept on this Mac, skipping concealed items |
-| Awake | Working (optional toggle shortcut): indefinitely, 15 min to 4 h, or until a time of day; optional display-on. Points to [Vigil](https://github.com/sibiraj-s/vigil) for triggers and automation |
-| System Toggles | Dark mode, hide the Dock, menu bar or desktop icons, show hidden files or file extensions, Wi‑Fi; sleep display, screen saver, eject disks, empty Trash. Each can have a shortcut and a menu bar tile |
-| Hosts & Env | Edit /etc/hosts: switch entries on and off, group them to switch together (groups are marker comments, so they work without the app), flags entries an earlier line overrides; saves with an admin prompt, flushes DNS, keeps the original. PATH and variables of a new zsh, bash or fish login shell and of apps, with missing and duplicate PATH folders flagged and secrets hidden |
-| Ports & Processes | TCP listeners with the process's command line, folder and uptime, refreshed while shown; flags ports open to the network; quit, then force quit if ignored; open in a browser, copy the URL, show the folder. Hides macOS services unless asked. Also listed in the menu bar |
-| Launch Agents | Your agents, agents for all users and daemons (Apple's optional, read-only): what each runs and when in words, running PID or last exit code, on/off switch that also loads or unloads it, start, restart, stop, open the plist or its logs; flags jobs whose program is gone, and moves your own to the Trash. Daemons ask for an admin password |
-| Color Picker | Pick any color on screen with the system magnifier, from the menu bar or a shortcut you assign, copied straight away as HEX, RGB, HSL, HSB, SwiftUI, NSColor or UIColor. Keeps the last 24 colors, each copyable in any format. No Screen Recording permission needed |
-| Text Extractor | Select part of the screen, or press Space for a window, and the text in it is copied, from the menu bar or a shortcut you assign. Keeps line breaks, joins lines into paragraphs or puts it all on one line; a language can be chosen and word correction turned off for code. Reads QR codes and barcodes too. Recognition runs on this Mac with Vision; needs Screen Recording. Keeps the last 20 |
-| Defaults Browser | Browse the preference domains in ~/Library/Preferences, filter them by app, domain or key, and change, add or delete keys. Saves a copy of each domain before its first change, to restore later. Warns when the app is running, with a Restart button, and copies any key as a `defaults write`, `read` or `delete` command. A Hidden Settings tab has 20 well-known hidden tweaks for the Dock, Finder, screenshots, typing and drives, each a switch or menu, with a Restart Dock or Finder button when needed |
-| Other 12 | Listed in the main window with permissions and status, not built yet |
+4. For global shortcuts, give each action a `ShortcutDefinition` with a stable ID, a title and `defaultHotKey: nil`, add it to `ShortcutCatalog.all`, and call `shortcuts.activate` while the module is on. Show it with `ShortcutRow`, which records, saves and re-registers keys.
 
 ## License
 
