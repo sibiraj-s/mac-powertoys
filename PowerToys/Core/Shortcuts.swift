@@ -21,6 +21,7 @@ enum ShortcutCatalog {
             + [AwakeController.toggleShortcut]
             + SystemToggle.allCases.map(\.shortcut)
             + [ColorPickerController.pickShortcut]
+            + [TextExtractorController.extractShortcut]
     }
 }
 

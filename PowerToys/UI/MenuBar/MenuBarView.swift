@@ -61,8 +61,19 @@ struct MenuBarView: View {
                         }
                     }
                 }
-                QuickToggle(title: "Grab text", subtitle: "Soon", symbol: "text.viewfinder", isOn: false) {}
-                    .disabled(true)
+                if state.isEnabled(.textExtractor) {
+                    QuickToggle(title: "Grab text", subtitle: grabSubtitle, symbol: "text.viewfinder", isOn: false) {
+                        // Out of the way, so text under the menu can be read too.
+                        window?.close()
+                        Task { await state.textExtractor.extract() }
+                    }
+                    .disabled(state.textExtractor.isExtracting)
+                    .contextMenu {
+                        ForEach(state.textExtractor.history.prefix(8)) { item in
+                            Button("Copy “\(item.menuTitle)”") { state.textExtractor.copy(item) }
+                        }
+                    }
+                }
                 QuickToggle(title: "Pin window", subtitle: "Soon", symbol: "pin", isOn: false) {}
                     .disabled(true)
             }
@@ -121,6 +132,10 @@ struct MenuBarView: View {
         let picker = state.colorPicker
         if let latest = picker.latest { return latest.formatted(as: picker.format) }
         return state.shortcuts.hotKey(for: ColorPickerController.pickShortcut)?.keyCaps.joined() ?? "Magnifier"
+    }
+
+    private var grabSubtitle: String {
+        state.shortcuts.hotKey(for: TextExtractorController.extractShortcut)?.keyCaps.joined() ?? "To clipboard"
     }
 
     private var awakeSubtitle: String {

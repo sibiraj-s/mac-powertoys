@@ -6,7 +6,7 @@ import SwiftUI
 
 @Observable
 final class AppState {
-    let permissions = PermissionsService()
+    let permissions: PermissionsService
     let shortcuts: Shortcuts
     let awake: AwakeController
     let zones: ZonesController
@@ -17,6 +17,7 @@ final class AppState {
     let ports: PortsController
     let launchAgents: LaunchAgentsController
     let colorPicker: ColorPickerController
+    let textExtractor: TextExtractorController
     let defaultsBrowser: DefaultsBrowserController
 
     private(set) var enabledModules: Set<ModuleID>
@@ -26,6 +27,7 @@ final class AppState {
 
     init(
         defaults: UserDefaults = .standard,
+        permissions: PermissionsService? = nil,
         clipboardStore: URL? = ClipboardController.defaultStoreDirectory,
         hotKeys: any HotKeyRegistering = HotKeyCenter.shared,
         system: any SystemSettingsAccess = LiveSystemSettings(),
@@ -33,11 +35,14 @@ final class AppState {
         hostsBackup: URL? = HostsController.defaultBackupURL,
         environment: EnvironmentController? = nil,
         colorSampler: any ColorSampling = LiveColorSampler(),
+        regionCapture: any ScreenRegionCapturing = LiveRegionCapture(),
+        textReader: any ImageTextReading = LiveImageTextReader(),
         pasteboard: NSPasteboard = .general,
         defaultsStore: any DefaultsStoring = LiveDefaultsStore(),
         defaultsBackups: URL? = DefaultsBrowserController.defaultBackupDirectory
     ) {
         self.defaults = defaults
+        self.permissions = permissions ?? PermissionsService(defaults: defaults)
         shortcuts = Shortcuts(defaults: defaults, center: hotKeys)
         awake = AwakeController(defaults: defaults)
         zones = ZonesController(defaults: defaults, shortcuts: shortcuts)
@@ -48,6 +53,12 @@ final class AppState {
         ports = PortsController(defaults: defaults)
         launchAgents = LaunchAgentsController(defaults: defaults)
         colorPicker = ColorPickerController(defaults: defaults, sampler: colorSampler, pasteboard: pasteboard)
+        let permissions = self.permissions
+        textExtractor = TextExtractorController(
+            defaults: defaults, capturer: regionCapture, reader: textReader, pasteboard: pasteboard,
+            requestAccess: { permissions.request(.screenRecording) },
+            explainAccess: { ScreenAccessAlert.show { permissions.openSettings(for: .screenRecording) } }
+        )
         defaultsBrowser = DefaultsBrowserController(store: defaultsStore, backupDirectory: defaultsBackups)
         if let stored = defaults.stringArray(forKey: Self.enabledModulesKey) {
             enabledModules = Set(stored.compactMap(ModuleID.init(rawValue:)))
@@ -60,12 +71,13 @@ final class AppState {
         updateModuleShortcuts()
     }
 
-    /// Awake, System Toggles and Color Picker have no controller lifecycle of their own, so their shortcuts
+    /// Awake, System Toggles, Color Picker and Text Extractor have no controller lifecycle of their own, so their shortcuts
     /// follow the module switch here.
     private func updateModuleShortcuts() {
         var simple: [(ModuleID, ShortcutDefinition, () -> Void)] = [
             (.awake, AwakeController.toggleShortcut, { [weak self] in self?.awake.toggle() }),
             (.colorPicker, ColorPickerController.pickShortcut, { [weak self] in Task { await self?.colorPicker.pick() } }),
+            (.textExtractor, TextExtractorController.extractShortcut, { [weak self] in Task { await self?.textExtractor.extract() } }),
         ]
         for toggle in SystemToggle.allCases {
             simple.append((.systemToggles, toggle.shortcut, { [weak self] in Task { await self?.systemToggles.perform(toggle) } }))

@@ -45,6 +45,14 @@ enum Permission: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
+    /// Whether macOS has a prompt of its own for it, shown once per app.
+    var hasSystemPrompt: Bool {
+        switch self {
+        case .accessibility, .screenRecording, .inputMonitoring: true
+        case .automation, .fullDiskAccess, .microphone, .admin: false
+        }
+    }
+
     /// Deep link into the matching System Settings privacy pane.
     var settingsURL: URL? {
         let anchor: String? = switch self {
@@ -70,7 +78,23 @@ enum PermissionStatus {
 final class PermissionsService {
     private(set) var statuses: [Permission: PermissionStatus] = [:]
 
-    init() {
+    static let promptedKey = "permissions.prompted"
+
+    private let defaults: UserDefaults
+    @ObservationIgnored private let check: (Permission) -> PermissionStatus
+    @ObservationIgnored private let prompt: (Permission) -> Void
+    @ObservationIgnored private let openURL: (URL) -> Void
+
+    init(
+        defaults: UserDefaults = .standard,
+        check: @escaping (Permission) -> PermissionStatus = { PermissionsService.check($0) },
+        prompt: @escaping (Permission) -> Void = { PermissionsService.prompt($0) },
+        openURL: @escaping (URL) -> Void = { NSWorkspace.shared.open($0) }
+    ) {
+        self.defaults = defaults
+        self.check = check
+        self.prompt = prompt
+        self.openURL = openURL
         refresh()
     }
 
@@ -80,11 +104,30 @@ final class PermissionsService {
 
     func refresh() {
         for permission in Permission.allCases {
-            statuses[permission] = Self.check(permission)
+            statuses[permission] = check(permission)
         }
     }
 
+    /// Shows the system's prompt the first time; after that macOS no longer shows it, so the
+    /// permission's pane in System Settings opens instead.
     func request(_ permission: Permission) {
+        var prompted = Set(defaults.stringArray(forKey: Self.promptedKey) ?? [])
+        if permission.hasSystemPrompt, !prompted.contains(permission.rawValue) {
+            prompted.insert(permission.rawValue)
+            defaults.set(prompted.sorted(), forKey: Self.promptedKey)
+            prompt(permission)
+        } else {
+            openSettings(for: permission)
+        }
+        refresh()
+    }
+
+    func openSettings(for permission: Permission) {
+        guard let url = permission.settingsURL else { return }
+        openURL(url)
+    }
+
+    static func prompt(_ permission: Permission) {
         switch permission {
         case .accessibility:
             // String literal instead of kAXTrustedCheckOptionPrompt, which isn't concurrency-safe in Swift 6.
@@ -95,17 +138,11 @@ final class PermissionsService {
         case .inputMonitoring:
             _ = IOHIDRequestAccess(kIOHIDRequestTypeListenEvent)
         case .automation, .fullDiskAccess, .microphone, .admin:
-            openSettings(for: permission)
+            break
         }
-        refresh()
     }
 
-    func openSettings(for permission: Permission) {
-        guard let url = permission.settingsURL else { return }
-        NSWorkspace.shared.open(url)
-    }
-
-    private static func check(_ permission: Permission) -> PermissionStatus {
+    static func check(_ permission: Permission) -> PermissionStatus {
         switch permission {
         case .accessibility:
             AXIsProcessTrusted() ? .granted : .denied

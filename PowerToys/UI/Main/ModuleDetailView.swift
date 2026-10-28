@@ -9,7 +9,18 @@ struct ModuleDetailView: View {
         Page {
             PageHeader(symbol: module.symbol, title: module.name, summary: module.summary) {
                 ForEach(module.permissions) { permission in
-                    PermissionBadge(permission: permission, status: state.permissions.status(permission))
+                    let status = state.permissions.status(permission)
+                    if status == .denied, permission.settingsURL != nil {
+                        Button {
+                            state.permissions.request(permission)
+                        } label: {
+                            PermissionBadge(permission: permission, status: status)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Grant \(permission.title) access")
+                    } else {
+                        PermissionBadge(permission: permission, status: status)
+                    }
                 }
             } trailing: {
                 HStack(spacing: 10) {
@@ -45,6 +56,7 @@ struct ModuleDetailView: View {
         case .portsProcesses: PortsSettingsView()
         case .launchAgents: LaunchAgentsSettingsView()
         case .colorPicker: ColorPickerSettingsView()
+        case .textExtractor: TextExtractorSettingsView()
         case .defaultsBrowser: DefaultsBrowserSettingsView()
         default: EmptyView()
         }

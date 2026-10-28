@@ -1,6 +1,6 @@
 # PowerToys
 
-A collection of tools for macOS in one app: window zones, clipboard history, a color picker, hosts and environment editing, ports and processes, launch agents and more. Each module turns on separately and asks for permissions only when you enable it, and no module takes a global shortcut until you assign one.
+A collection of tools for macOS in one app: window zones, clipboard history, a color picker, text from the screen, hosts and environment editing, ports and processes, launch agents and more. Each module turns on separately and asks for permissions only when you enable it, and no module takes a global shortcut until you assign one.
 
 It is a regular app with a Dock icon and a main window where each module has its own page, plus a menu bar icon for quick toggles. Closing the window keeps it running in the menu bar. It is not sandboxed: Accessibility APIs and event taps don't work in the sandbox, so it ships outside the Mac App Store.
 
@@ -64,8 +64,9 @@ New files under `PowerToys/` are picked up by Xcode automatically, with no proje
 | Ports & Processes | TCP listeners with the process's command line, folder and uptime, refreshed while shown; flags ports open to the network; quit, then force quit if ignored; open in a browser, copy the URL, show the folder. Hides macOS services unless asked. Also listed in the menu bar |
 | Launch Agents | Your agents, agents for all users and daemons (Apple's optional, read-only): what each runs and when in words, running PID or last exit code, on/off switch that also loads or unloads it, start, restart, stop, open the plist or its logs; flags jobs whose program is gone, and moves your own to the Trash. Daemons ask for an admin password |
 | Color Picker | Pick any color on screen with the system magnifier, from the menu bar or a shortcut you assign, copied straight away as HEX, RGB, HSL, HSB, SwiftUI, NSColor or UIColor. Keeps the last 24 colors, each copyable in any format. No Screen Recording permission needed |
+| Text Extractor | Select part of the screen, or press Space for a window, and the text in it is copied, from the menu bar or a shortcut you assign. Keeps line breaks, joins lines into paragraphs or puts it all on one line; a language can be chosen and word correction turned off for code. Reads QR codes and barcodes too. Recognition runs on this Mac with Vision; needs Screen Recording. Keeps the last 20 |
 | Defaults Browser | Browse the preference domains in ~/Library/Preferences, filter them by app, domain or key, and change, add or delete keys. Saves a copy of each domain before its first change, to restore later. Warns when the app is running, with a Restart button, and copies any key as a `defaults write`, `read` or `delete` command. A Hidden Settings tab has 20 well-known hidden tweaks for the Dock, Finder, screenshots, typing and drives, each a switch or menu, with a Restart Dock or Finder button when needed |
-| Other 13 | Listed in the main window with permissions and status, not built yet |
+| Other 12 | Listed in the main window with permissions and status, not built yet |
 
 ## License
 
