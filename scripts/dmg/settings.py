@@ -4,7 +4,7 @@ import os.path
 
 app = defines["app"]
 
-format = "UDZO"
+format = "ULMO"
 files = [app]
 symlinks = {"Applications": "/Applications"}
 icon_locations = {os.path.basename(app): (160, 150), "Applications": (420, 150)}
