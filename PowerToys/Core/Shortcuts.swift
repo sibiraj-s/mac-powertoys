@@ -49,11 +49,15 @@ final class Shortcuts {
 
     static let defaultsKey = "shortcuts"
 
-    init(defaults: UserDefaults = .standard, catalog: [ShortcutDefinition] = ShortcutCatalog.all, center: any HotKeyRegistering = HotKeyCenter.shared) {
+    init(
+        defaults: UserDefaults = .standard, catalog: [ShortcutDefinition] = ShortcutCatalog.all,
+        center: any HotKeyRegistering = HotKeyCenter.shared
+    ) {
         self.defaults = defaults
         self.catalog = catalog
         self.center = center
-        overrides = defaults.data(forKey: Self.defaultsKey)
+        overrides =
+            defaults.data(forKey: Self.defaultsKey)
             .flatMap { try? JSONDecoder().decode([String: HotKey?].self, from: $0) }
             ?? [:]
     }

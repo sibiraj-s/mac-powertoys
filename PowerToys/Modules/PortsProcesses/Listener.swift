@@ -88,7 +88,9 @@ nonisolated struct Listener: Identifiable, Hashable, Sendable {
         func root(of listener: Listener) -> pid_t {
             var current = listener
             var seen: Set<pid_t> = [current.pid]
-            while let parent = current.parentPID, let next = byPortAndPID[Key(port: current.port, pid: parent)], seen.insert(parent).inserted {
+            while let parent = current.parentPID, let next = byPortAndPID[Key(port: current.port, pid: parent)],
+                seen.insert(parent).inserted
+            {
                 current = next
             }
             return current.pid

@@ -1,5 +1,6 @@
 import CoreGraphics
 import Testing
+
 @testable import PowerToys
 
 struct ZoneLayoutTests {
@@ -17,10 +18,11 @@ struct ZoneLayoutTests {
 
     @Test func halvesSplitDownTheMiddle() {
         let frames = ZoneLayout.halves.frames(in: area)
-        #expect(frames == [
-            CGRect(x: 0, y: 25, width: 600, height: 800),
-            CGRect(x: 600, y: 25, width: 600, height: 800),
-        ])
+        #expect(
+            frames == [
+                CGRect(x: 0, y: 25, width: 600, height: 800),
+                CGRect(x: 600, y: 25, width: 600, height: 800),
+            ])
     }
 
     @Test func focusIsTwentySixtyTwenty() {
@@ -55,7 +57,7 @@ struct ZoneMathTests {
     }
 
     @Test func freeWindowGoesToTheZoneUnderItsCenter() {
-        let window = CGRect(x: 450, y: 100, width: 300, height: 300) // center x 600: middle third
+        let window = CGRect(x: 450, y: 100, width: 300, height: 300)  // center x 600: middle third
         #expect(ZoneMath.snappedIndex(of: window, in: thirds) == nil)
         #expect(ZoneMath.target(from: window, in: thirds, step: 1) == 1)
         #expect(ZoneMath.target(from: window, in: thirds, step: -1) == 1)

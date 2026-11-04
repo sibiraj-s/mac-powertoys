@@ -1,6 +1,7 @@
 import AppKit
 import Testing
 import Vision
+
 @testable import PowerToys
 
 /// Vision reads no text on some Macs, such as CI's virtual ones, though it runs without an
@@ -21,7 +22,8 @@ enum TextRecognition {
             return true
         }
         guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil),
-              let observations = try? await RecognizeTextRequest().perform(on: cgImage) else { return false }
+            let observations = try? await RecognizeTextRequest().perform(on: cgImage)
+        else { return false }
         return !observations.isEmpty
     }
 }
@@ -49,10 +51,11 @@ struct TextRecognizerTests {
 
     @Test func blankImageHasNoText() async throws {
         let url = URL.temporaryDirectory.appending(path: "PowerToysTests-\(UUID().uuidString).png")
-        let rep = try #require(NSBitmapImageRep(
-            bitmapDataPlanes: nil, pixelsWide: 50, pixelsHigh: 50, bitsPerSample: 8, samplesPerPixel: 4,
-            hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
-        ))
+        let rep = try #require(
+            NSBitmapImageRep(
+                bitmapDataPlanes: nil, pixelsWide: 50, pixelsHigh: 50, bitsPerSample: 8, samplesPerPixel: 4,
+                hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
+            ))
         try #require(rep.representation(using: .png, properties: [:])).write(to: url)
         defer { try? FileManager.default.removeItem(at: url) }
 

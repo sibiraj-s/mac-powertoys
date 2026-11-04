@@ -1,6 +1,7 @@
 import AppKit
 import Carbon.HIToolbox
 import Testing
+
 @testable import PowerToys
 
 /// Records registrations instead of taking real system-wide shortcuts. Keys in `taken` act as if
@@ -60,12 +61,12 @@ struct ShortcutsTests {
 
         let reloaded = self.shortcuts()
         #expect(reloaded.hotKey(for: first) == ctrlOptC)
-        #expect(reloaded.hotKey(for: second) == nil)   // turned off, not back to its default
+        #expect(reloaded.hotKey(for: second) == nil)  // turned off, not back to its default
         #expect(reloaded.isCustomized(second))
         #expect(reloaded.hotKey(for: unset) == ctrlOptB)
 
         reloaded.reset(first)
-        reloaded.set(ctrlOptB, for: second)   // same as the default: no longer customized
+        reloaded.set(ctrlOptB, for: second)  // same as the default: no longer customized
         #expect(reloaded.hotKey(for: first) == ctrlOptA)
         #expect(!reloaded.isCustomized(first))
         #expect(!reloaded.isCustomized(second))
@@ -101,7 +102,7 @@ struct ShortcutsTests {
         shortcuts.set(ctrlOptC, for: first)
         #expect(center.hotKeys.isEmpty)
         shortcuts.activate(unset) {}
-        #expect(center.hotKeys.isEmpty)   // no keys yet
+        #expect(center.hotKeys.isEmpty)  // no keys yet
     }
 
     @Test func takenKeysAreReportedAndRetried() {
@@ -139,15 +140,20 @@ struct ShortcutsTests {
     @Test func problems() {
         let shortcuts = shortcuts()
         #expect(shortcuts.problem(with: ctrlOptC, for: first) == nil)
-        #expect(shortcuts.problem(with: ctrlOptA, for: first) == nil)   // its own keys
+        #expect(shortcuts.problem(with: ctrlOptA, for: first) == nil)  // its own keys
         #expect(shortcuts.hint(for: first, problem: nil) == nil)
         #expect(shortcuts.hint(for: first, problem: "Bad keys") == "Bad keys")
 
         #expect(shortcuts.problem(with: ctrlOptB, for: first) == "Already used for “Second” in Clipboard.")
-        #expect(shortcuts.problem(with: HotKey(keyCode: kVK_ANSI_A, modifiers: [], key: "A"), for: first)?.hasPrefix("Add ⌘, ⌃ or ⌥") == true)
+        #expect(
+            shortcuts.problem(with: HotKey(keyCode: kVK_ANSI_A, modifiers: [], key: "A"), for: first)?.hasPrefix("Add ⌘, ⌃ or ⌥") == true)
         #expect(shortcuts.problem(with: HotKey(keyCode: kVK_ANSI_A, modifiers: .shift, key: "A"), for: first) != nil)
-        #expect(shortcuts.problem(with: HotKey(keyCode: kVK_ANSI_A, modifiers: .command, key: "A"), for: first)?.hasPrefix("Apps use ⌘") == true)
-        #expect(shortcuts.problem(with: HotKey(keyCode: kVK_Space, modifiers: .command, key: "Space"), for: first) == "macOS uses this for Spotlight.")
+        #expect(
+            shortcuts.problem(with: HotKey(keyCode: kVK_ANSI_A, modifiers: .command, key: "A"), for: first)?.hasPrefix("Apps use ⌘") == true
+        )
+        #expect(
+            shortcuts.problem(with: HotKey(keyCode: kVK_Space, modifiers: .command, key: "Space"), for: first)
+                == "macOS uses this for Spotlight.")
 
         // Function keys work alone, and ⌘⇧ combinations are fine.
         #expect(shortcuts.problem(with: HotKey(keyCode: kVK_F5, modifiers: [], key: "F5"), for: first) == nil)
@@ -194,13 +200,15 @@ struct HotKeyTests {
 
 struct KeyRecorderTests {
     @Test func keyPressesBecomeResults() {
-        #expect(KeyRecorder.result(keyCode: kVK_ANSI_V, modifiers: [.control, .option], characters: "v")
-            == .keys(HotKey(keyCode: kVK_ANSI_V, modifiers: [.control, .option], key: "V")))
+        #expect(
+            KeyRecorder.result(keyCode: kVK_ANSI_V, modifiers: [.control, .option], characters: "v")
+                == .keys(HotKey(keyCode: kVK_ANSI_V, modifiers: [.control, .option], key: "V")))
         #expect(KeyRecorder.result(keyCode: kVK_Escape, modifiers: [], characters: "\u{1B}") == .cancelled)
         #expect(KeyRecorder.result(keyCode: kVK_Delete, modifiers: [], characters: "\u{7F}") == .cleared)
         // With modifiers, ⎋ and ⌫ are ordinary keys.
-        #expect(KeyRecorder.result(keyCode: kVK_Delete, modifiers: [.control, .option], characters: "\u{7F}")
-            == .keys(HotKey(keyCode: kVK_Delete, modifiers: [.control, .option], key: "⌫")))
+        #expect(
+            KeyRecorder.result(keyCode: kVK_Delete, modifiers: [.control, .option], characters: "\u{7F}")
+                == .keys(HotKey(keyCode: kVK_Delete, modifiers: [.control, .option], key: "⌫")))
         #expect(KeyRecorder.result(keyCode: 0xFF, modifiers: [.command], characters: nil) == nil)
     }
 

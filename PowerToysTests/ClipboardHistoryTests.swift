@@ -1,5 +1,6 @@
 import AppKit
 import Testing
+
 @testable import PowerToys
 
 private func clip(_ text: String, pinned: Bool = false, minutesAgo: Double = 0) -> ClipItem {

@@ -1,22 +1,24 @@
 import AppKit
 import Testing
+
 @testable import PowerToys
 
 struct PasteTransformJSONTests {
     @Test func reindentsKeepingKeyOrder() {
         let json = PasteTransform.json(from: #" {"z":1,"a":[true,null,"x, y"],"e":{},"l":[]} "#)
-        #expect(json == """
-        {
-          "z": 1,
-          "a": [
-            true,
-            null,
-            "x, y"
-          ],
-          "e": {},
-          "l": []
-        }
-        """)
+        #expect(
+            json == """
+                {
+                  "z": 1,
+                  "a": [
+                    true,
+                    null,
+                    "x, y"
+                  ],
+                  "e": {},
+                  "l": []
+                }
+                """)
     }
 
     @Test func leavesStringsAlone() {
@@ -26,18 +28,19 @@ struct PasteTransformJSONTests {
 
     @Test func csvBecomesArrayOfObjects() {
         let json = PasteTransform.json(from: "name,zip\nAda,02134\n\"Smith, J\",\"say \"\"hi\"\"\"\n")
-        #expect(json == """
-        [
-          {
-            "name": "Ada",
-            "zip": "02134"
-          },
-          {
-            "name": "Smith, J",
-            "zip": "say \\"hi\\""
-          }
-        ]
-        """)
+        #expect(
+            json == """
+                [
+                  {
+                    "name": "Ada",
+                    "zip": "02134"
+                  },
+                  {
+                    "name": "Smith, J",
+                    "zip": "say \\"hi\\""
+                  }
+                ]
+                """)
     }
 
     @Test func tsvWithWindowsLineEndings() {
@@ -53,9 +56,9 @@ struct PasteTransformJSONTests {
     @Test(arguments: [
         "just some words",
         "{not json",
-        "a,b\n1,2,3",   // ragged rows
-        "single\ncolumn", // one column isn't a table
-        "a,b",          // header only
+        "a,b\n1,2,3",  // ragged rows
+        "single\ncolumn",  // one column isn't a table
+        "a,b",  // header only
     ])
     func nonJSONIsRejected(text: String) {
         #expect(PasteTransform.json(from: text) == nil)

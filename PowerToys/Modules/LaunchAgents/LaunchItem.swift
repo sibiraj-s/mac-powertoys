@@ -197,7 +197,10 @@ nonisolated struct DomainState: Equatable, Sendable {
         var inBlock = false
         for line in output.split(separator: "\n") {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if trimmed == "services = {" { inBlock = true; continue }
+            if trimmed == "services = {" {
+                inBlock = true
+                continue
+            }
             guard inBlock else { continue }
             if trimmed == "}" { break }
             let fields = trimmed.split(whereSeparator: \.isWhitespace)

@@ -58,7 +58,8 @@ final class ColorPickerController {
         defaults.register(defaults: [Self.copiesOnPickKey: true])
         format = defaults.string(forKey: Self.formatKey).flatMap(ColorFormat.init(rawValue:)) ?? .hex
         copiesOnPick = defaults.bool(forKey: Self.copiesOnPickKey)
-        history = defaults.data(forKey: Self.historyKey)
+        history =
+            defaults.data(forKey: Self.historyKey)
             .flatMap { try? JSONDecoder().decode([PickedColor].self, from: $0) }
             ?? []
     }

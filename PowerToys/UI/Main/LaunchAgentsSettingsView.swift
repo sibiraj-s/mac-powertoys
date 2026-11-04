@@ -144,10 +144,13 @@ private struct LaunchItemRow: View {
                 .fixedSize()
                 .accessibilityLabel("Options for \(item.label)")
                 if !item.location.isApple {
-                    RowSwitch(label: "Turn \(item.label) on", isOn: Binding(
-                        get: { status.isEnabled },
-                        set: { on in Task { await launch.setEnabled(item, on) } }
-                    ))
+                    RowSwitch(
+                        label: "Turn \(item.label) on",
+                        isOn: Binding(
+                            get: { status.isEnabled },
+                            set: { on in Task { await launch.setEnabled(item, on) } }
+                        )
+                    )
                     .disabled(isBusy)
                 }
             }

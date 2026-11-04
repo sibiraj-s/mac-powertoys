@@ -46,9 +46,9 @@ nonisolated struct ClipItem: Identifiable, Codable, Hashable {
         guard image == nil, fileURLs == nil else { return nil }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.contains(where: \.isWhitespace),
-              let url = URL(string: trimmed),
-              let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https",
-              url.host() != nil
+            let url = URL(string: trimmed),
+            let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https",
+            url.host() != nil
         else { return nil }
         return url
     }

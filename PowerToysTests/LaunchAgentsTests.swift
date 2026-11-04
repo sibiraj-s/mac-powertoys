@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import PowerToys
 
 private func plist(_ dictionary: [String: Any]) throws -> Data {
@@ -36,17 +37,20 @@ struct LaunchItemTests {
         let data = try plist(["Label": "a", "Program": "/bin/real", "ProgramArguments": ["shown", "-x"]])
         let item = try #require(LaunchItem.parse(data, url: URL(filePath: "/x/a.plist"), location: .agents))
         #expect(item.program == ["/bin/real", "-x"])
-        let bare = try #require(LaunchItem.parse(try plist(["Program": "/bin/only"]), url: URL(filePath: "/x/fallback.plist"), location: .agents))
+        let bare = try #require(
+            LaunchItem.parse(try plist(["Program": "/bin/only"]), url: URL(filePath: "/x/fallback.plist"), location: .agents))
         #expect(bare.label == "fallback")
         #expect(bare.program == ["/bin/only"])
     }
 
     @Test func knowsWhatLaunchdRestarts() throws {
-        let always = try #require(LaunchItem.parse(try plist(["Label": "a", "KeepAlive": true]), url: URL(filePath: "/x/a.plist"), location: .agents))
+        let always = try #require(
+            LaunchItem.parse(try plist(["Label": "a", "KeepAlive": true]), url: URL(filePath: "/x/a.plist"), location: .agents))
         #expect(always.restartsWhenStopped)
-        let sometimes = try #require(LaunchItem.parse(
-            try plist(["Label": "b", "KeepAlive": ["SuccessfulExit": false]]), url: URL(filePath: "/x/b.plist"), location: .agents
-        ))
+        let sometimes = try #require(
+            LaunchItem.parse(
+                try plist(["Label": "b", "KeepAlive": ["SuccessfulExit": false]]), url: URL(filePath: "/x/b.plist"), location: .agents
+            ))
         #expect(!sometimes.restartsWhenStopped)
     }
 
@@ -68,11 +72,17 @@ struct LaunchItemTests {
         #expect(LaunchItem.schedule(of: ["StartCalendarInterval": ["Minute": 15]], isDaemon: false) == "Hourly at :15")
         #expect(LaunchItem.schedule(of: ["StartCalendarInterval": ["Day": 1, "Hour": 0]], isDaemon: false) == "Monthly on day 1 at 00:00")
         #expect(LaunchItem.schedule(of: ["StartCalendarInterval": [["Hour": 9], ["Hour": 17]]], isDaemon: false) == "On a schedule")
-        #expect(LaunchItem.schedule(of: ["StartCalendarInterval": ["Month": 1, "Day": 1, "Hour": 0]], isDaemon: false) == "Yearly on January 1 at 00:00")
-        #expect(LaunchItem.schedule(of: ["StartCalendarInterval": ["Month": 6, "Weekday": 1, "Hour": 9]], isDaemon: false) == "Mondays in June at 09:00")
-        #expect(LaunchItem.schedule(of: ["StartCalendarInterval": ["Month": 12, "Hour": 8]], isDaemon: false) == "Daily in December at 08:00")
+        #expect(
+            LaunchItem.schedule(of: ["StartCalendarInterval": ["Month": 1, "Day": 1, "Hour": 0]], isDaemon: false)
+                == "Yearly on January 1 at 00:00")
+        #expect(
+            LaunchItem.schedule(of: ["StartCalendarInterval": ["Month": 6, "Weekday": 1, "Hour": 9]], isDaemon: false)
+                == "Mondays in June at 09:00")
+        #expect(
+            LaunchItem.schedule(of: ["StartCalendarInterval": ["Month": 12, "Hour": 8]], isDaemon: false) == "Daily in December at 08:00")
         #expect(LaunchItem.schedule(of: ["StartCalendarInterval": ["Month": 13, "Hour": 8]], isDaemon: false) == "On a schedule")
-        #expect(LaunchItem.schedule(of: ["StartCalendarInterval": ["Weekday": 1, "Day": 1, "Hour": 8]], isDaemon: false) == "On a schedule")
+        #expect(
+            LaunchItem.schedule(of: ["StartCalendarInterval": ["Weekday": 1, "Day": 1, "Hour": 8]], isDaemon: false) == "On a schedule")
         #expect(LaunchItem.schedule(of: ["WatchPaths": ["/tmp"]], isDaemon: false) == "When files change")
         #expect(LaunchItem.schedule(of: ["MachServices": ["x": true]], isDaemon: false) == "When something asks for it")
         #expect(LaunchItem.schedule(of: [:], isDaemon: false) == "Only when started")
@@ -132,9 +142,10 @@ struct DomainStateTests {
             \t\t"com.old.on" => false
             \t}
             """
-        #expect(DomainState.disabled(fromPrintDisabled: output) == [
-            "com.apple.Siri.agent": true, "com.microsoft.update.agent": false, "com.old.style": true, "com.old.on": false,
-        ])
+        #expect(
+            DomainState.disabled(fromPrintDisabled: output) == [
+                "com.apple.Siri.agent": true, "com.microsoft.update.agent": false, "com.old.style": true, "com.old.on": false,
+            ])
     }
 
     @Test func readsTheRealDomain() async throws {
@@ -169,27 +180,40 @@ struct LaunchActionTests {
     private let domain = LaunchDomain.gui(501)
 
     @Test func switchingOnLoadsAndOffUnloads() {
-        #expect(LaunchAction.commands(for: .enable, item: sync, domain: domain, isLoaded: false) == [
-            ["enable", "gui/501/com.example.sync"], ["bootstrap", "gui/501", "/tmp/com.example.sync.plist"],
-        ])
-        #expect(LaunchAction.commands(for: .enable, item: sync, domain: domain, isLoaded: true) == [["enable", "gui/501/com.example.sync"]])
-        #expect(LaunchAction.commands(for: .disable, item: sync, domain: domain, isLoaded: true) == [
-            ["bootout", "gui/501/com.example.sync"], ["disable", "gui/501/com.example.sync"],
-        ])
-        #expect(LaunchAction.commands(for: .disable, item: sync, domain: domain, isLoaded: false) == [["disable", "gui/501/com.example.sync"]])
+        #expect(
+            LaunchAction.commands(for: .enable, item: sync, domain: domain, isLoaded: false) == [
+                ["enable", "gui/501/com.example.sync"], ["bootstrap", "gui/501", "/tmp/com.example.sync.plist"],
+            ])
+        #expect(
+            LaunchAction.commands(for: .enable, item: sync, domain: domain, isLoaded: true) == [["enable", "gui/501/com.example.sync"]])
+        #expect(
+            LaunchAction.commands(for: .disable, item: sync, domain: domain, isLoaded: true) == [
+                ["bootout", "gui/501/com.example.sync"], ["disable", "gui/501/com.example.sync"],
+            ])
+        #expect(
+            LaunchAction.commands(for: .disable, item: sync, domain: domain, isLoaded: false) == [["disable", "gui/501/com.example.sync"]])
     }
 
     @Test func startRestartStop() {
-        #expect(LaunchAction.commands(for: .start, item: sync, domain: .system, isLoaded: false) == [
-            ["bootstrap", "system", "/tmp/com.example.sync.plist"], ["kickstart", "system/com.example.sync"],
-        ])
-        #expect(LaunchAction.commands(for: .start, item: sync, domain: .system, isLoaded: true) == [["kickstart", "system/com.example.sync"]])
-        #expect(LaunchAction.commands(for: .restart, item: sync, domain: domain, isLoaded: true) == [["kickstart", "-k", "gui/501/com.example.sync"]])
-        #expect(LaunchAction.commands(for: .stop, item: sync, domain: domain, isLoaded: true) == [["kill", "SIGTERM", "gui/501/com.example.sync"]])
+        #expect(
+            LaunchAction.commands(for: .start, item: sync, domain: .system, isLoaded: false) == [
+                ["bootstrap", "system", "/tmp/com.example.sync.plist"], ["kickstart", "system/com.example.sync"],
+            ])
+        #expect(
+            LaunchAction.commands(for: .start, item: sync, domain: .system, isLoaded: true) == [["kickstart", "system/com.example.sync"]])
+        #expect(
+            LaunchAction.commands(for: .restart, item: sync, domain: domain, isLoaded: true) == [
+                ["kickstart", "-k", "gui/501/com.example.sync"]
+            ])
+        #expect(
+            LaunchAction.commands(for: .stop, item: sync, domain: domain, isLoaded: true) == [
+                ["kill", "SIGTERM", "gui/501/com.example.sync"]
+            ])
     }
 
     @Test func unloadingLeavesItSwitchedOn() {
-        #expect(LaunchAction.commands(for: .unload, item: sync, domain: domain, isLoaded: true) == [["bootout", "gui/501/com.example.sync"]])
+        #expect(
+            LaunchAction.commands(for: .unload, item: sync, domain: domain, isLoaded: true) == [["bootout", "gui/501/com.example.sync"]])
         #expect(LaunchAction.commands(for: .unload, item: sync, domain: domain, isLoaded: false).isEmpty)
     }
 }

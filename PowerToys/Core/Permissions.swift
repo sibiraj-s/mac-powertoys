@@ -55,15 +55,16 @@ enum Permission: String, CaseIterable, Identifiable, Sendable {
 
     /// Deep link into the matching System Settings privacy pane.
     var settingsURL: URL? {
-        let anchor: String? = switch self {
-        case .accessibility: "Privacy_Accessibility"
-        case .screenRecording: "Privacy_ScreenCapture"
-        case .inputMonitoring: "Privacy_ListenEvent"
-        case .automation: "Privacy_Automation"
-        case .fullDiskAccess: "Privacy_AllFiles"
-        case .microphone: "Privacy_Microphone"
-        case .admin: nil
-        }
+        let anchor: String? =
+            switch self {
+            case .accessibility: "Privacy_Accessibility"
+            case .screenRecording: "Privacy_ScreenCapture"
+            case .inputMonitoring: "Privacy_ListenEvent"
+            case .automation: "Privacy_Automation"
+            case .fullDiskAccess: "Privacy_AllFiles"
+            case .microphone: "Privacy_Microphone"
+            case .admin: nil
+            }
         return anchor.flatMap { URL(string: "x-apple.systempreferences:com.apple.preference.security?\($0)") }
     }
 }

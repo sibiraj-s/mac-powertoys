@@ -132,7 +132,8 @@ nonisolated enum DefaultsValue: Hashable, Sendable {
     var children: [(label: String, value: DefaultsValue)] {
         switch self {
         case .array(let values): values.enumerated().map { (String($0.offset), $0.element) }
-        case .dictionary(let values): values.sorted { $0.key.localizedStandardCompare($1.key) == .orderedAscending }.map { ($0.key, $0.value) }
+        case .dictionary(let values):
+            values.sorted { $0.key.localizedStandardCompare($1.key) == .orderedAscending }.map { ($0.key, $0.value) }
         default: []
         }
     }

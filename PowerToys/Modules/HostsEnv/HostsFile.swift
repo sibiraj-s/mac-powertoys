@@ -198,7 +198,7 @@ nonisolated struct HostsFile: Equatable, Sendable {
         var sections = [Section(name: nil, entries: [])] + groups.map { Section(name: $0, entries: []) }
         for (line, group) in zip(lines, groupsByLine) {
             guard case .entry(let entry) = line, !entry.isSystem,
-                  let index = sections.firstIndex(where: { $0.name == group })
+                let index = sections.firstIndex(where: { $0.name == group })
             else { continue }
             sections[index].entries.append(entry)
         }

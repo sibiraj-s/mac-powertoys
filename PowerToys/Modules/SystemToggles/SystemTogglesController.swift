@@ -37,7 +37,8 @@ final class SystemTogglesController {
         self.defaults = defaults
         self.system = system
         self.confirm = confirm
-        menuBarItems = defaults.stringArray(forKey: Self.menuBarItemsKey)?.compactMap(SystemToggle.init(rawValue:))
+        menuBarItems =
+            defaults.stringArray(forKey: Self.menuBarItemsKey)?.compactMap(SystemToggle.init(rawValue:))
             ?? SystemToggle.defaultMenuBarItems
         // Dark mode also changes from Control Center and on a schedule.
         themeObserver = DistributedNotificationCenter.default().addObserver(

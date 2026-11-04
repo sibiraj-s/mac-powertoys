@@ -11,15 +11,16 @@ enum Palette {
     static let off = dynamic(light: 0xC7C7CC, dark: 0x5A5A5E)
 
     private static func dynamic(light: UInt32, dark: UInt32) -> Color {
-        Color(nsColor: NSColor(name: nil) { appearance in
-            let isDark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-            return NSColor(hex: isDark ? dark : light)
-        })
+        Color(
+            nsColor: NSColor(name: nil) { appearance in
+                let isDark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+                return NSColor(hex: isDark ? dark : light)
+            })
     }
 }
 
-private extension NSColor {
-    convenience init(hex: UInt32) {
+extension NSColor {
+    fileprivate convenience init(hex: UInt32) {
         self.init(
             srgbRed: CGFloat((hex >> 16) & 0xFF) / 255,
             green: CGFloat((hex >> 8) & 0xFF) / 255,
@@ -29,8 +30,8 @@ private extension NSColor {
     }
 }
 
-private extension Color {
-    init(hex: UInt32) { self.init(nsColor: NSColor(hex: hex)) }
+extension Color {
+    fileprivate init(hex: UInt32) { self.init(nsColor: NSColor(hex: hex)) }
 }
 
 /// The scrolling content column of the main window.

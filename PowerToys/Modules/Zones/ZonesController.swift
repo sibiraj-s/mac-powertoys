@@ -113,7 +113,8 @@ final class ZonesController {
         for action in Action.allCases {
             shortcuts.activate(action.shortcut) { [weak self] in self?.perform(action) }
         }
-        monitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .leftMouseDragged, .leftMouseUp, .flagsChanged]) { [weak self] event in
+        monitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .leftMouseDragged, .leftMouseUp, .flagsChanged]) {
+            [weak self] event in
             // Global monitors are called on the main thread.
             MainActor.assumeIsolated { self?.handle(event) }
         }
@@ -217,8 +218,8 @@ final class ZonesController {
         case .leftMouseDown:
             drag = nil
             guard snapsWhileDragging || restoresSizeOnUnsnap,
-                  let window = AXWindow.at(Displays.flip(NSEvent.mouseLocation)),
-                  let frame = window.frame
+                let window = AXWindow.at(Displays.flip(NSEvent.mouseLocation)),
+                let frame = window.frame
             else { return }
             drag = Drag(window: window, startFrame: frame, originalFrame: originalFrame(of: window, current: frame))
 
@@ -226,10 +227,13 @@ final class ZonesController {
             guard var drag else { return }
             if !drag.isMoving {
                 // Only a moving window counts; a changed size means it's being resized.
-                guard let frame = drag.window.frame, frame.origin != drag.startFrame.origin, frame.size == drag.startFrame.size else { return }
+                guard let frame = drag.window.frame, frame.origin != drag.startFrame.origin, frame.size == drag.startFrame.size else {
+                    return
+                }
                 drag.isMoving = true
                 if restoresSizeOnUnsnap, let snap = snap(for: drag.window),
-                   ZoneMath.snappedIndex(of: drag.startFrame, in: [snap.frame]) != nil {
+                    ZoneMath.snappedIndex(of: drag.startFrame, in: [snap.frame]) != nil
+                {
                     forget(drag.window)
                     drag.window.setSize(snap.originalFrame.size)
                     drag.originalFrame = snap.originalFrame

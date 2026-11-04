@@ -1,6 +1,7 @@
 import AppKit
 import CoreImage.CIFilterBuiltins
 import Testing
+
 @testable import PowerToys
 
 /// A line at `top` (0 at the bottom of the image, 1 at the top), `height` tall.
@@ -119,9 +120,10 @@ private enum TestImage {
         filter.message = Data(payload.utf8)
         let output = try #require(filter.outputImage).transformed(by: CGAffineTransform(scaleX: 8, y: 8))
         let cgImage = try #require(CIContext().createCGImage(output, from: output.extent))
-        return try write({ _ in
-            NSImage(cgImage: cgImage, size: .zero).draw(in: NSRect(x: 40, y: 40, width: 220, height: 220))
-        }, size: NSSize(width: 300, height: 300))
+        return try write(
+            { _ in
+                NSImage(cgImage: cgImage, size: .zero).draw(in: NSRect(x: 40, y: 40, width: 220, height: 220))
+            }, size: NSSize(width: 300, height: 300))
     }
 }
 

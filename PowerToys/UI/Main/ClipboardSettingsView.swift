@@ -72,7 +72,9 @@ struct ClipboardSettingsView: View {
         }
 
         CardSection("Images") {
-            CardRow("Keep images", hint: "Screenshots and copied images. The newest \(ClipboardHistory.maxImages) are kept, plus pinned ones.") {
+            CardRow(
+                "Keep images", hint: "Screenshots and copied images. The newest \(ClipboardHistory.maxImages) are kept, plus pinned ones."
+            ) {
                 RowSwitch(label: "Keep images", isOn: $clipboard.keepsImages)
             }
             CardRow("Make images searchable", hint: "Reads the text in copied images on this Mac, so search finds screenshots.") {
@@ -85,7 +87,9 @@ struct ClipboardSettingsView: View {
             CardRow("Skip passwords and concealed items", hint: "Password managers mark what they copy so it isn't kept.") {
                 RowSwitch(label: "Skip passwords and concealed items", isOn: $clipboard.skipsConcealed)
             }
-            CardRow("Empty the clipboard after", hint: "What ⌘V pastes is emptied this long after you copy it. Your history isn't affected.") {
+            CardRow(
+                "Empty the clipboard after", hint: "What ⌘V pastes is emptied this long after you copy it. Your history isn't affected."
+            ) {
                 Picker("Empty the clipboard after", selection: $clipboard.clearDelay) {
                     ForEach(ClipboardController.ClearDelay.allCases) { delay in
                         Text(delay.title).tag(delay)
@@ -108,7 +112,10 @@ struct ClipboardSettingsView: View {
                     KeyCaps(keys: format.keyCaps)
                 }
             }
-            CardRow("Copy, open, show in Finder, save image", hint: "Copy puts an item back on the clipboard without pasting. Open and save work on links, files and images.") {
+            CardRow(
+                "Copy, open, show in Finder, save image",
+                hint: "Copy puts an item back on the clipboard without pasting. Open and save work on links, files and images."
+            ) {
                 KeyCaps(keys: ["⌘C", "⌘O", "⌘R", "⌘S"])
             }
             CardRow("Pin, delete, switch filter", hint: "Pinned items stay when the history is trimmed or cleared.") {
@@ -118,7 +125,8 @@ struct ClipboardSettingsView: View {
     }
 
     private var emptyHint: String {
-        let opening = state.shortcuts.hotKey(for: ClipboardController.Action.showHistory.shortcut)
+        let opening =
+            state.shortcuts.hotKey(for: ClipboardController.Action.showHistory.shortcut)
             .map { ", then press \($0.keyCaps.joined()) to see them" } ?? ""
         return "Copy text, images or files while Clipboard is on\(opening)."
     }

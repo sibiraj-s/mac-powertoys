@@ -6,7 +6,8 @@ struct DefaultsBrowserSettingsView: View {
     @State private var tab = Tab.tweaks
 
     private enum Tab: String, CaseIterable, Identifiable {
-        case tweaks = "Hidden Settings", domains = "All Domains"
+        case tweaks = "Hidden Settings"
+        case domains = "All Domains"
         var id: Self { self }
     }
 
@@ -73,10 +74,12 @@ private struct TweakList: View {
                     }
                 }
             }
-            Text("Each key can also be found under All Domains. PowerToys saves a domain's settings before changing it the first time, and they can be restored from there.")
-                .font(.system(size: 11))
-                .foregroundStyle(Palette.secondaryText)
-                .fixedSize(horizontal: false, vertical: true)
+            Text(
+                "Each key can also be found under All Domains. PowerToys saves a domain's settings before changing it the first time, and they can be restored from there."
+            )
+            .font(.system(size: 11))
+            .foregroundStyle(Palette.secondaryText)
+            .fixedSize(horizontal: false, vertical: true)
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             Task { await browser.loadTweaks() }
@@ -114,18 +117,23 @@ private struct TweakRow: View {
         } trailing: {
             switch tweak.control {
             case .toggle(let value):
-                RowSwitch(label: tweak.title, isOn: Binding(
-                    get: { tweak.isOn(stored) },
-                    set: { on in Task { await browser.apply(tweak, on ? value : nil) } }
-                ))
+                RowSwitch(
+                    label: tweak.title,
+                    isOn: Binding(
+                        get: { tweak.isOn(stored) },
+                        set: { on in Task { await browser.apply(tweak, on ? value : nil) } }
+                    ))
             case .choice(let choices):
-                Picker(tweak.title, selection: Binding(
-                    get: { tweak.choice(for: stored) },
-                    set: { choice in
-                        guard let choice else { return }
-                        Task { await browser.apply(tweak, choice.value) }
-                    }
-                )) {
+                Picker(
+                    tweak.title,
+                    selection: Binding(
+                        get: { tweak.choice(for: stored) },
+                        set: { choice in
+                            guard let choice else { return }
+                            Task { await browser.apply(tweak, choice.value) }
+                        }
+                    )
+                ) {
                     ForEach(choices, id: \.self) { Text($0.title).tag(Optional($0)) }
                     if tweak.choice(for: stored) == nil {
                         Text(stored?.summary ?? "Other").tag(DefaultsTweak.Choice?.none)
@@ -137,10 +145,11 @@ private struct TweakRow: View {
         }
         .contextMenu {
             Button("Copy defaults write Command") {
-                let value: DefaultsValue? = switch tweak.control {
-                case .toggle(let value): value
-                case .choice: stored
-                }
+                let value: DefaultsValue? =
+                    switch tweak.control {
+                    case .toggle(let value): value
+                    case .choice: stored
+                    }
                 if let value { copy(DefaultsValue.writeCommand(domain: tweak.domain, key: tweak.key, value: value)) }
             }
             Button("Copy defaults delete Command") { copy(DefaultsValue.deleteCommand(domain: tweak.domain, key: tweak.key)) }
@@ -155,7 +164,9 @@ private struct TweakRow: View {
 // MARK: - Domains
 
 private enum DomainFilter: String, CaseIterable, Identifiable {
-    case all = "All", apps = "Apps", apple = "macOS"
+    case all = "All"
+    case apps = "Apps"
+    case apple = "macOS"
 
     var id: Self { self }
 
@@ -198,10 +209,12 @@ private struct DomainList: View {
                     }
                 }
                 CardRow {
-                    Text("Apps from the App Store keep their settings in their own container, which macOS doesn't let other apps list without asking, so they aren't here. Type one's bundle ID above to open it; macOS may ask whether to allow it.")
-                        .font(.system(size: 11))
-                        .foregroundStyle(Palette.secondaryText)
-                        .fixedSize(horizontal: false, vertical: true)
+                    Text(
+                        "Apps from the App Store keep their settings in their own container, which macOS doesn't let other apps list without asking, so they aren't here. Type one's bundle ID above to open it; macOS may ask whether to allow it."
+                    )
+                    .font(.system(size: 11))
+                    .foregroundStyle(Palette.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
                 } trailing: {
                     EmptyView()
                 }
@@ -209,7 +222,11 @@ private struct DomainList: View {
 
             CardSection(browser.isLoaded ? "Domains · \(domains.count)" : "Domains") {
                 if !browser.isLoaded {
-                    CardRow { ProgressView().controlSize(.small) } trailing: { EmptyView() }
+                    CardRow {
+                        ProgressView().controlSize(.small)
+                    } trailing: {
+                        EmptyView()
+                    }
                 } else if domains.isEmpty {
                     CardRow("No matches", hint: nil) { EmptyView() }
                 } else {
@@ -394,9 +411,12 @@ private struct DomainView: View {
 
             if let app = browser.runningApp {
                 CardRow {
-                    Label("\(domain.title) is running. Apps read most settings when they open, and may save over a change when they quit.", systemImage: "info.circle")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.orange)
+                    Label(
+                        "\(domain.title) is running. Apps read most settings when they open, and may save over a change when they quit.",
+                        systemImage: "info.circle"
+                    )
+                    .font(.system(size: 11))
+                    .foregroundStyle(.orange)
                 } trailing: {
                     Button("Restart") { Task { await browser.restartApp() } }
                         .help("Quit \(app.localizedName ?? domain.title) and open it again")
@@ -419,7 +439,8 @@ private struct DomainView: View {
                     }
                 }
             } else if browser.backupDirectory != nil {
-                CardRow("Original settings", hint: "PowerToys saves a copy of this domain before its first change, so it can be put back.") {
+                CardRow("Original settings", hint: "PowerToys saves a copy of this domain before its first change, so it can be put back.")
+                {
                     EmptyView()
                 }
             }
@@ -468,10 +489,12 @@ private struct KeyRow: View {
                 HStack(spacing: 8) {
                     switch value {
                     case .bool(let isOn):
-                        RowSwitch(label: key, isOn: Binding(
-                            get: { isOn },
-                            set: { on in Task { await browser.set(.bool(on), for: key) } }
-                        ))
+                        RowSwitch(
+                            label: key,
+                            isOn: Binding(
+                                get: { isOn },
+                                set: { on in Task { await browser.set(.bool(on), for: key) } }
+                            ))
                     case .integer, .unsigned, .real, .string:
                         ValueField(value: value) { new in Task { await browser.set(new, for: key) } }
                     case .array, .dictionary:

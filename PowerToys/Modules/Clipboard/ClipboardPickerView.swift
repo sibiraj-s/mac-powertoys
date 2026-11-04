@@ -1,6 +1,5 @@
 import SwiftUI
 
-
 /// The panel's contents: search, filters, the list and the selected item's preview.
 struct ClipboardPickerView: View {
     let picker: ClipboardPicker
@@ -162,7 +161,9 @@ private struct ClipDetail: View {
 
                 HStack(spacing: 6) {
                     ForEach(commands.filter(\.isPrimary)) { command in
-                        Button { picker.run(command) } label: {
+                        Button {
+                            picker.run(command)
+                        } label: {
                             HStack(spacing: 4) {
                                 Text(command.title(for: item))
                                 Text(command.keyCaps.joined()).foregroundStyle(.secondary)
@@ -179,11 +180,15 @@ private struct ClipDetail: View {
                         .fixedSize()
                     }
                     Spacer(minLength: 0)
-                    Button { picker.run(.togglePin) } label: {
+                    Button {
+                        picker.run(.togglePin)
+                    } label: {
                         Image(systemName: item.isPinned ? "pin.slash" : "pin")
                     }
                     .help("\(ClipCommand.togglePin.title(for: item)) (⌘P)")
-                    Button { picker.run(.delete) } label: {
+                    Button {
+                        picker.run(.delete)
+                    } label: {
                         Image(systemName: "trash")
                     }
                     .help("Delete (⌘⌫)")
@@ -275,9 +280,9 @@ private struct ClipDetail: View {
     }
 }
 
-private extension ClipCommand {
+extension ClipCommand {
     /// Shown as buttons; the other paste formats go in the "Paste as" menu.
-    var isPrimary: Bool {
+    fileprivate var isPrimary: Bool {
         switch self {
         case .paste(let format): format == .original
         case .copy, .open, .reveal, .saveImage: true
@@ -285,7 +290,7 @@ private extension ClipCommand {
         }
     }
 
-    var isPasteAs: Bool {
+    fileprivate var isPasteAs: Bool {
         if case .paste(let format) = self { return format != .original }
         return false
     }

@@ -19,7 +19,7 @@ struct AXWindow {
     static func at(_ point: CGPoint) -> AXWindow? {
         var hit: AXUIElement?
         guard AXUIElementCopyElementAtPosition(AXUIElementCreateSystemWide(), Float(point.x), Float(point.y), &hit) == .success,
-              let hit
+            let hit
         else { return nil }
         let window: AXUIElement? = hit.role == kAXWindowRole ? hit : hit.value(of: kAXWindowAttribute)
         guard let window else { return nil }
@@ -30,7 +30,7 @@ struct AXWindow {
 
     var frame: CGRect? {
         guard let positionValue: AXValue = element.value(of: kAXPositionAttribute),
-              let sizeValue: AXValue = element.value(of: kAXSizeAttribute)
+            let sizeValue: AXValue = element.value(of: kAXSizeAttribute)
         else { return nil }
         var position = CGPoint.zero
         var size = CGSize.zero
@@ -79,14 +79,14 @@ struct AXWindow {
     }
 }
 
-private extension AXUIElement {
-    func value<T>(of attribute: String) -> T? {
+extension AXUIElement {
+    fileprivate func value<T>(of attribute: String) -> T? {
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(self, attribute as CFString, &value) == .success else { return nil }
         return value as? T
     }
 
-    var role: String? { value(of: kAXRoleAttribute) }
+    fileprivate var role: String? { value(of: kAXRoleAttribute) }
 }
 
 /// Displays in Accessibility coordinates.
@@ -132,8 +132,8 @@ enum Displays {
     /// A key for a display that survives reconnecting and restarting.
     static func key(for screen: NSScreen) -> String {
         guard let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber,
-              let uuid = CGDisplayCreateUUIDFromDisplayID(number.uint32Value)?.takeRetainedValue(),
-              let string = CFUUIDCreateString(nil, uuid) as String?
+            let uuid = CGDisplayCreateUUIDFromDisplayID(number.uint32Value)?.takeRetainedValue(),
+            let string = CFUUIDCreateString(nil, uuid) as String?
         else { return screen.localizedName }
         return string
     }

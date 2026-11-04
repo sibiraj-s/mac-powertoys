@@ -23,11 +23,13 @@ final class EnvironmentController {
         pathSources: @escaping () -> [String: String] = PathEntry.liveSystemSources,
         exists: @escaping (String) -> Bool = EnvironmentController.folderExists
     ) {
-        let sources = sources ?? EnvSource.available(
-            loginShell: loginShell,
-            etcShells: (try? String(contentsOf: URL(filePath: "/etc/shells"), encoding: .utf8)) ?? "",
-            exists: { FileManager.default.isExecutableFile(atPath: $0) }
-        )
+        let sources =
+            sources
+            ?? EnvSource.available(
+                loginShell: loginShell,
+                etcShells: (try? String(contentsOf: URL(filePath: "/etc/shells"), encoding: .utf8)) ?? "",
+                exists: { FileManager.default.isExecutableFile(atPath: $0) }
+            )
         self.loginShell = loginShell
         self.sources = sources
         selected = sources.first ?? .apps

@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import Testing
+
 @testable import PowerToys
 
 struct DefaultsValueTests {
@@ -11,11 +12,13 @@ struct DefaultsValueTests {
             "array": [1, "two"], "dict": ["nested": false],
         ]
         let values = try #require(DefaultsValue(plist: plist))
-        #expect(values == .dictionary([
-            "bool": .bool(true), "int": .integer(42), "real": .real(1.5), "string": .string("hi"),
-            "date": .date(Date(timeIntervalSince1970: 0)), "data": .data(Data([1, 2])),
-            "array": .array([.integer(1), .string("two")]), "dict": .dictionary(["nested": .bool(false)]),
-        ]))
+        #expect(
+            values
+                == .dictionary([
+                    "bool": .bool(true), "int": .integer(42), "real": .real(1.5), "string": .string("hi"),
+                    "date": .date(Date(timeIntervalSince1970: 0)), "data": .data(Data([1, 2])),
+                    "array": .array([.integer(1), .string("two")]), "dict": .dictionary(["nested": .bool(false)]),
+                ]))
     }
 
     @Test func tellsBooleansFromNumbers() {
@@ -73,18 +76,24 @@ struct DefaultsValueTests {
     }
 
     @Test func writesCommands() {
-        #expect(DefaultsValue.writeCommand(domain: "com.apple.dock", key: "autohide", value: .bool(true))
-            == "defaults write com.apple.dock autohide -bool true")
-        #expect(DefaultsValue.writeCommand(domain: "com.apple.dock", key: "tilesize", value: .integer(48))
-            == "defaults write com.apple.dock tilesize -int 48")
-        #expect(DefaultsValue.writeCommand(domain: "com.apple.dock", key: "autohide-delay", value: .real(0))
-            == "defaults write com.apple.dock autohide-delay -float 0.0")
-        #expect(DefaultsValue.writeCommand(domain: "NSGlobalDomain", key: "My Key", value: .string("it's"))
-            == #"defaults write NSGlobalDomain 'My Key' -string 'it'\''s'"#)
-        #expect(DefaultsValue.writeCommand(domain: "x", key: "d", value: .data(Data([0x0A, 0xFF])))
-            == "defaults write x d -data 0aff")
-        #expect(DefaultsValue.writeCommand(domain: "x", key: "a", value: .array([.integer(1), .string("b")]))
-            == "defaults write x a '<array><integer>1</integer><string>b</string></array>'")
+        #expect(
+            DefaultsValue.writeCommand(domain: "com.apple.dock", key: "autohide", value: .bool(true))
+                == "defaults write com.apple.dock autohide -bool true")
+        #expect(
+            DefaultsValue.writeCommand(domain: "com.apple.dock", key: "tilesize", value: .integer(48))
+                == "defaults write com.apple.dock tilesize -int 48")
+        #expect(
+            DefaultsValue.writeCommand(domain: "com.apple.dock", key: "autohide-delay", value: .real(0))
+                == "defaults write com.apple.dock autohide-delay -float 0.0")
+        #expect(
+            DefaultsValue.writeCommand(domain: "NSGlobalDomain", key: "My Key", value: .string("it's"))
+                == #"defaults write NSGlobalDomain 'My Key' -string 'it'\''s'"#)
+        #expect(
+            DefaultsValue.writeCommand(domain: "x", key: "d", value: .data(Data([0x0A, 0xFF])))
+                == "defaults write x d -data 0aff")
+        #expect(
+            DefaultsValue.writeCommand(domain: "x", key: "a", value: .array([.integer(1), .string("b")]))
+                == "defaults write x a '<array><integer>1</integer><string>b</string></array>'")
         #expect(DefaultsValue.readCommand(domain: "x") == "defaults read x")
         #expect(DefaultsValue.readCommand(domain: "x", key: "a b") == "defaults read x 'a b'")
         #expect(DefaultsValue.deleteCommand(domain: "x", key: "a") == "defaults delete x a")
@@ -582,8 +591,9 @@ struct DefaultsReviewFixTests {
         #expect(DefaultsValue.unsigned(max).summary == "18446744073709551615")
         #expect(DefaultsValue.unsigned(max).kind == .integer)
         #expect(DefaultsValue.parse("18446744073709551615", as: .integer) == .unsigned(max))
-        #expect(DefaultsValue.writeCommand(domain: "x", key: "k", value: .unsigned(max))
-            == "defaults write x k '<integer>18446744073709551615</integer>'")
+        #expect(
+            DefaultsValue.writeCommand(domain: "x", key: "k", value: .unsigned(max))
+                == "defaults write x k '<integer>18446744073709551615</integer>'")
         #expect(try DefaultsValue.values(fromPlist: DefaultsValue.plistData(["k": .unsigned(max)])) == ["k": .unsigned(max)])
     }
 

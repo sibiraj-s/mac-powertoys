@@ -58,10 +58,13 @@ private struct SystemToggleRow: View {
                         .disabled(controller.running.contains(toggle))
                         .frame(minWidth: 44)
                 } else {
-                    RowSwitch(label: toggle.title, isOn: Binding(
-                        get: { controller.isOn(toggle) },
-                        set: { controller.set(toggle, on: $0) }
-                    ))
+                    RowSwitch(
+                        label: toggle.title,
+                        isOn: Binding(
+                            get: { controller.isOn(toggle) },
+                            set: { controller.set(toggle, on: $0) }
+                        )
+                    )
                     .disabled(controller.states[toggle] == nil)
                     .frame(minWidth: 44)
                 }

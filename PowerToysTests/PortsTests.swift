@@ -1,6 +1,7 @@
 import Darwin
 import Foundation
 import Testing
+
 @testable import PowerToys
 
 struct ListenerTests {
@@ -85,7 +86,8 @@ struct ListenerTests {
         // Nothing listening.
         #expect(try LivePortScanner.listeners(from: .init(status: 1, stdout: "", stderr: "")).isEmpty)
         // A warning, with results.
-        let warned = try LivePortScanner.listeners(from: .init(status: 1, stdout: found, stderr: "lsof: WARNING: can't stat() nfs file system"))
+        let warned = try LivePortScanner.listeners(
+            from: .init(status: 1, stdout: found, stderr: "lsof: WARNING: can't stat() nfs file system"))
         #expect(warned.map(\.port) == [3000])
         // A real failure.
         #expect(throws: CommandError.self) {
@@ -206,7 +208,7 @@ final class FakePortScanner: PortScanning, @unchecked Sendable {
 
     func release() {
         holds = false
-        held.forEach { $0.resume() }
+        for continuation in held { continuation.resume() }
         held = []
     }
 }
@@ -377,7 +379,8 @@ struct PortsControllerTests {
         let signaling = FakeSignaling()
         signaling.running = [10]
         signaling.ignoresTerm = [10]
-        let controller = PortsController(defaults: store.defaults, scanner: FakePortScanner(), signaling: signaling, quitTimeout: .seconds(30))
+        let controller = PortsController(
+            defaults: store.defaults, scanner: FakePortScanner(), signaling: signaling, quitTimeout: .seconds(30))
 
         let quit = Task { await controller.quit(node) }
         await waitUntil { controller.quitting.contains(10) }

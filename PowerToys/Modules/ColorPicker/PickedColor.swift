@@ -49,7 +49,8 @@ nonisolated struct PickedColor: Codable, Hashable, Identifiable, Sendable {
 
     /// Hue in degrees, then saturation and lightness from 0 to 1.
     var hsl: (hue: Double, saturation: Double, lightness: Double) {
-        let high = max(red, green, blue), low = min(red, green, blue)
+        let high = max(red, green, blue)
+        let low = min(red, green, blue)
         let lightness = (high + low) / 2
         let chroma = high - low
         let saturation = chroma == 0 ? 0 : chroma / (1 - abs(2 * lightness - 1))
@@ -58,19 +59,22 @@ nonisolated struct PickedColor: Codable, Hashable, Identifiable, Sendable {
 
     /// Hue in degrees, then saturation and brightness from 0 to 1.
     var hsb: (hue: Double, saturation: Double, brightness: Double) {
-        let high = max(red, green, blue), low = min(red, green, blue)
+        let high = max(red, green, blue)
+        let low = min(red, green, blue)
         return (hue, high == 0 ? 0 : (high - low) / high, high)
     }
 
     private var hue: Double {
-        let high = max(red, green, blue), low = min(red, green, blue)
+        let high = max(red, green, blue)
+        let low = min(red, green, blue)
         let chroma = high - low
         guard chroma > 0 else { return 0 }
-        let sector = switch high {
-        case red: (green - blue) / chroma
-        case green: (blue - red) / chroma + 2
-        default: (red - green) / chroma + 4
-        }
+        let sector =
+            switch high {
+            case red: (green - blue) / chroma
+            case green: (blue - red) / chroma + 2
+            default: (red - green) / chroma + 4
+            }
         let degrees = sector * 60
         return degrees < 0 ? degrees + 360 : degrees
     }

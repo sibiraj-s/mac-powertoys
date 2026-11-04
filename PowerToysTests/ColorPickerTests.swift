@@ -1,5 +1,6 @@
 import AppKit
 import Testing
+
 @testable import PowerToys
 
 struct PickedColorTests {
@@ -218,7 +219,7 @@ final class FakeSampler: ColorSampling {
         if waits {
             await withCheckedContinuation { continuation in
                 click = continuation
-                startWaiters.forEach { $0.resume() }
+                for waiter in startWaiters { waiter.resume() }
                 startWaiters.removeAll()
             }
         }

@@ -48,13 +48,14 @@ enum Thumbnails {
     static func image(at url: URL, maxPixels: Int) -> NSImage? {
         let key = "\(url.lastPathComponent)@\(maxPixels)" as NSString
         if let cached = cache.object(forKey: key) { return cached }
-        let options = [
-            kCGImageSourceCreateThumbnailFromImageAlways: true,
-            kCGImageSourceCreateThumbnailWithTransform: true,
-            kCGImageSourceThumbnailMaxPixelSize: maxPixels,
-        ] as CFDictionary
+        let options =
+            [
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceCreateThumbnailWithTransform: true,
+                kCGImageSourceThumbnailMaxPixelSize: maxPixels,
+            ] as CFDictionary
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
-              let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options)
+            let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options)
         else { return nil }
         let image = NSImage(cgImage: cgImage, size: .zero)
         cache.setObject(image, forKey: key)

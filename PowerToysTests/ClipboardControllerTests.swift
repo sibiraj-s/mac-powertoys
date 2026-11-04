@@ -1,5 +1,6 @@
 import AppKit
 import Testing
+
 @testable import PowerToys
 
 @MainActor
@@ -195,9 +196,9 @@ struct ClipboardControllerTests {
         clipboard.tick(pasteboard, now: start.addingTimeInterval(3000))
 
         clipboard.tick(pasteboard, now: start.addingTimeInterval(3700))
-        #expect(clipboard.history.items.count == 3)   // kept forever by default
+        #expect(clipboard.history.items.count == 3)  // kept forever by default
 
-        clipboard.itemLifetime = .hour   // applies right away, against the real clock
+        clipboard.itemLifetime = .hour  // applies right away, against the real clock
         #expect(clipboard.history.items.map(\.text) == ["pinned"])
     }
 
@@ -219,7 +220,7 @@ struct ClipboardControllerTests {
         copy("secret")
         clipboard.tick(pasteboard, now: start)
         clipboard.tick(pasteboard, now: start.addingTimeInterval(600))
-        #expect(pasteboard.string(forType: .string) == "secret")   // off by default
+        #expect(pasteboard.string(forType: .string) == "secret")  // off by default
 
         clipboard.clearDelay = .oneMinute
         copy("secret")
@@ -228,7 +229,7 @@ struct ClipboardControllerTests {
         #expect(pasteboard.string(forType: .string) == "secret")
         clipboard.tick(pasteboard, now: start.addingTimeInterval(61))
         #expect(pasteboard.string(forType: .string) == nil)
-        #expect(clipboard.history.items.first?.text == "secret")   // the history keeps it
+        #expect(clipboard.history.items.first?.text == "secret")  // the history keeps it
 
         // Clearing isn't a copy, and nothing more happens until the next one.
         clipboard.tick(pasteboard, now: start.addingTimeInterval(200))
@@ -298,7 +299,7 @@ struct ClipboardControllerTests {
         picker.query = "b"
         #expect(picker.run(.togglePin))
         #expect(clipboard.history.items.first { $0.text == "b" }?.isPinned == true)
-        #expect(!picker.run(.open))   // plain text can't be opened
+        #expect(!picker.run(.open))  // plain text can't be opened
         #expect(!picker.run(.saveImage))
 
         picker.query = ""

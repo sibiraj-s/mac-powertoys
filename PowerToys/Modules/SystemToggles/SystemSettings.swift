@@ -80,7 +80,8 @@ struct LiveSystemSettings: SystemSettingsAccess {
             }
             let failed = await Self.eject(volumes)
             if !failed.isEmpty {
-                throw SystemSettingsError(errorDescription: "Couldn't eject \(failed.joined(separator: ", ")). Something may still be using it.")
+                throw SystemSettingsError(
+                    errorDescription: "Couldn't eject \(failed.joined(separator: ", ")). Something may still be using it.")
             }
         case .emptyTrash:
             try AppleScript.run("tell application \"Finder\" to empty trash")
@@ -167,7 +168,7 @@ enum Finder {
             }
             try? await Task.sleep(for: .seconds(1.5))
             guard NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).isEmpty,
-                  let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID)
+                let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID)
             else { return }
             _ = try? await NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
         }

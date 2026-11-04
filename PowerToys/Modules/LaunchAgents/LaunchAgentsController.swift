@@ -22,7 +22,7 @@ nonisolated struct LiveLaunchControl: LaunchControlling {
             let urls = (try? files.contentsOfDirectory(at: location.directory, includingPropertiesForKeys: nil)) ?? []
             return urls.filter { $0.pathExtension == "plist" }.compactMap { url -> LaunchItem? in
                 guard let data = try? Data(contentsOf: url),
-                      var item = LaunchItem.parse(data, url: url, location: location)
+                    var item = LaunchItem.parse(data, url: url, location: location)
                 else { return nil }
                 if let program = item.program.first, program.hasPrefix("/") {
                     item.isProgramMissing = !files.fileExists(atPath: program)
@@ -46,7 +46,8 @@ nonisolated struct LiveLaunchControl: LaunchControlling {
 
     func run(_ commands: [[String]], asAdministrator: Bool) async throws {
         if asAdministrator {
-            let script = commands
+            let script =
+                commands
                 .map { ([Self.launchctl] + $0.map(Command.shellQuoted)).joined(separator: " ") }
                 .joined(separator: " && ")
             try await Command.runAsAdministrator(script, prompt: "PowerToys wants to change a launch daemon.")
@@ -175,11 +176,12 @@ final class LaunchAgentsController {
         defer { busy.remove(item.id) }
         let domain = item.location.domain(uid: uid)
         // Asked now rather than taken from the last refresh, which something else may have changed since.
-        let isLoaded = if let current = try? await control.state(of: domain) {
-            current.services[item.label] != nil
-        } else {
-            status(of: item).isLoaded
-        }
+        let isLoaded =
+            if let current = try? await control.state(of: domain) {
+                current.services[item.label] != nil
+            } else {
+                status(of: item).isLoaded
+            }
         let commands = LaunchAction.commands(for: action, item: item, domain: domain, isLoaded: isLoaded)
         var succeeded = true
         if !commands.isEmpty {

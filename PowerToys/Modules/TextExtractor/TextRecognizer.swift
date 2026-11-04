@@ -49,7 +49,8 @@ enum TextRecognizer {
         let request = DetectBarcodesRequest()
         guard let observations = try? await request.perform(on: url) else { return [] }
         var seen: Set<String> = []
-        return observations
+        return
+            observations
             .sorted { $0.boundingBox.cgRect.maxY > $1.boundingBox.cgRect.maxY }
             .compactMap(\.payloadString)
             .filter { !$0.isEmpty && seen.insert($0).inserted }

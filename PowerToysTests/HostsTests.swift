@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import PowerToys
 
 private let stock = """
@@ -92,7 +93,10 @@ struct HostsFileTests {
         var file = HostsFile(text: stock)
         file.add(HostEntry(address: "127.0.0.1", hostnames: ["a.test"]))
         file.add(HostEntry(address: "127.0.0.1", hostnames: ["b.test"]))
-        #expect(file.text == stock.replacing("::1             localhost\n", with: "::1             localhost\n127.0.0.1\ta.test\n127.0.0.1\tb.test\n"))
+        #expect(
+            file.text
+                == stock.replacing("::1             localhost\n", with: "::1             localhost\n127.0.0.1\ta.test\n127.0.0.1\tb.test\n")
+        )
         #expect(file.sections[0].entries.map(\.hostnames) == [["a.test"], ["b.test"]])
     }
 
@@ -103,16 +107,18 @@ struct HostsFileTests {
         file.add(HostEntry(address: "10.0.0.6", hostnames: ["web.test"]), to: "Staging")
         file.add(HostEntry(address: "127.0.0.1", hostnames: ["local.test"]))
 
-        #expect(file.text.hasSuffix("""
-            ::1             localhost
-            127.0.0.1\tlocal.test
+        #expect(
+            file.text.hasSuffix(
+                """
+                ::1             localhost
+                127.0.0.1\tlocal.test
 
-            # >>> PowerToys: Staging
-            10.0.0.5\tapi.test
-            10.0.0.6\tweb.test
-            # <<< PowerToys
+                # >>> PowerToys: Staging
+                10.0.0.5\tapi.test
+                10.0.0.6\tweb.test
+                # <<< PowerToys
 
-            """))
+                """))
         #expect(file.groups == ["Staging"])
         #expect(file.sections.map(\.name) == [nil, "Staging"])
         #expect(file.sections[1].entries.count == 2)
@@ -173,14 +179,15 @@ struct HostsFileTests {
     }
 
     @Test func findsEntriesAnEarlierLineOverrides() throws {
-        let file = HostsFile(text: """
-            127.0.0.1 a.test b.test
-            10.0.0.1 b.test c.test
-            ::1 a.test
-            # 10.0.0.2 c.test
-            10.0.0.3 c.test
+        let file = HostsFile(
+            text: """
+                127.0.0.1 a.test b.test
+                10.0.0.1 b.test c.test
+                ::1 a.test
+                # 10.0.0.2 c.test
+                10.0.0.3 c.test
 
-            """)
+                """)
         let entries = file.entries
         #expect(file.shadowedHostnames(of: entries[0]).isEmpty)
         #expect(file.shadowedHostnames(of: entries[1]) == ["b.test"])
@@ -205,15 +212,16 @@ struct HostsFileTests {
     }
 
     @Test func groupsWithoutAnEndStopAtTheNextGroup() {
-        let text = stock + """
+        let text =
+            stock + """
 
-            # >>> PowerToys: A
-            10.0.0.1 a.test
-            # >>> PowerToys: B
-            10.0.0.2 b.test
-            # <<< PowerToys
+                # >>> PowerToys: A
+                10.0.0.1 a.test
+                # >>> PowerToys: B
+                10.0.0.2 b.test
+                # <<< PowerToys
 
-            """
+                """
         var file = HostsFile(text: text)
         #expect(file.sections.map(\.entries.count) == [0, 1, 1])
 
@@ -228,15 +236,16 @@ struct HostsFileTests {
     }
 
     @Test func aSecondGroupWithTheSameNameIsLeftAlone() {
-        var file = HostsFile(text: stock + """
-            # >>> PowerToys: Staging
-            10.0.0.1 a.test
-            # <<< PowerToys
-            # >>> PowerToys: staging
-            10.0.0.2 b.test
-            # <<< PowerToys
+        var file = HostsFile(
+            text: stock + """
+                # >>> PowerToys: Staging
+                10.0.0.1 a.test
+                # <<< PowerToys
+                # >>> PowerToys: staging
+                10.0.0.2 b.test
+                # <<< PowerToys
 
-            """)
+                """)
         #expect(file.groups == ["Staging"])
         #expect(Set(file.sections.map(\.id)).count == file.sections.count)
         #expect(file.sections.map(\.entries.count) == [1, 1])

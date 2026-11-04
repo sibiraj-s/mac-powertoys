@@ -125,7 +125,8 @@ nonisolated struct EnvSnapshot: Equatable, Sendable {
     static let ignoredNames: Set<String> = ["_", "SHLVL", "PWD", "OLDPWD"]
 
     init(variables: [String: String], pathSources: [String: String], exists: (String) -> Bool) {
-        self.variables = variables
+        self.variables =
+            variables
             .filter { !Self.ignoredNames.contains($0.key) }
             .map { EnvVariable(name: $0.key, value: $0.value) }
             .sorted { $0.name < $1.name }

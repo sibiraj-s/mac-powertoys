@@ -21,7 +21,8 @@ enum ModuleCategory: String, CaseIterable, Identifiable {
 }
 
 enum ModuleTier: Int, Comparable {
-    case mvp = 1, utilities, pro
+    case mvp = 1
+    case utilities, pro
 
     static func < (lhs: Self, rhs: Self) -> Bool { lhs.rawValue < rhs.rawValue }
 }
@@ -42,98 +43,127 @@ struct ModuleDescriptor: Identifiable {
 enum ModuleCatalog {
     static let all: [ModuleDescriptor] = [
         // MARK: Tier 1 — MVP
-        .init(id: .zones, name: "Zones",
-              summary: "Snap windows into custom layouts per display. Hold ⇧ while dragging, or use shortcuts.",
-              symbol: "rectangle.split.3x1", category: .windowsInput, tier: .mvp,
-              permissions: [.accessibility], replaces: "Rectangle, Magnet", isImplemented: true),
-        .init(id: .windowSwitcher, name: "Window Switcher",
-              summary: "⌘⇥ that switches windows rather than apps, with live previews and minimized windows.",
-              symbol: "macwindow.on.rectangle", category: .windowsInput, tier: .mvp,
-              permissions: [.accessibility, .screenRecording], replaces: "AltTab"),
-        .init(id: .keys, name: "Keys",
-              summary: "Remap keys and shortcuts globally or per app. Caps Lock → Hyper, Fn-row tweaks, key chords.",
-              symbol: "keyboard", category: .windowsInput, tier: .mvp,
-              permissions: [.inputMonitoring], replaces: "Karabiner-Elements"),
-        .init(id: .menuBarManager, name: "Menu Bar",
-              summary: "Hide, reorder and overflow menu bar icons that disappear behind the notch.",
-              symbol: "menubar.rectangle", category: .system, tier: .mvp,
-              permissions: [.accessibility, .screenRecording], replaces: "Ice, Bartender"),
-        .init(id: .clipboard, name: "Clipboard",
-              summary: "Searchable history of the text, images and files you copy. Pin and preview items, and paste as plain text, Markdown or JSON.",
-              symbol: "doc.on.clipboard", category: .tools, tier: .mvp,
-              permissions: [.accessibility], replaces: "Maccy, Paste", isImplemented: true),
-        .init(id: .awake, name: "Awake",
-              summary: "Keep the Mac awake indefinitely, for a set time or until a time of day. Right-click the menu bar tile for durations.",
-              symbol: "cup.and.saucer", category: .system, tier: .mvp,
-              permissions: [], replaces: "Amphetamine, caffeinate", isImplemented: true),
-        .init(id: .systemToggles, name: "System Toggles",
-              summary: "Dark mode, hiding the Dock or desktop icons, hidden files, Wi‑Fi and quick actions, from a shortcut or the menu bar.",
-              symbol: "switch.2", category: .system, tier: .mvp,
-              permissions: [.automation], replaces: "One Switch, Shortcuts", isImplemented: true),
-        .init(id: .scrollMouse, name: "Scroll & Mouse",
-              summary: "Separate scroll direction for mouse and trackpad, smooth wheel scrolling, button mapping.",
-              symbol: "computermouse", category: .windowsInput, tier: .mvp,
-              permissions: [.accessibility], replaces: "Mos, LinearMouse"),
+        .init(
+            id: .zones, name: "Zones",
+            summary: "Snap windows into custom layouts per display. Hold ⇧ while dragging, or use shortcuts.",
+            symbol: "rectangle.split.3x1", category: .windowsInput, tier: .mvp,
+            permissions: [.accessibility], replaces: "Rectangle, Magnet", isImplemented: true),
+        .init(
+            id: .windowSwitcher, name: "Window Switcher",
+            summary: "⌘⇥ that switches windows rather than apps, with live previews and minimized windows.",
+            symbol: "macwindow.on.rectangle", category: .windowsInput, tier: .mvp,
+            permissions: [.accessibility, .screenRecording], replaces: "AltTab"),
+        .init(
+            id: .keys, name: "Keys",
+            summary: "Remap keys and shortcuts globally or per app. Caps Lock → Hyper, Fn-row tweaks, key chords.",
+            symbol: "keyboard", category: .windowsInput, tier: .mvp,
+            permissions: [.inputMonitoring], replaces: "Karabiner-Elements"),
+        .init(
+            id: .menuBarManager, name: "Menu Bar",
+            summary: "Hide, reorder and overflow menu bar icons that disappear behind the notch.",
+            symbol: "menubar.rectangle", category: .system, tier: .mvp,
+            permissions: [.accessibility, .screenRecording], replaces: "Ice, Bartender"),
+        .init(
+            id: .clipboard, name: "Clipboard",
+            summary:
+                "Searchable history of the text, images and files you copy. Pin and preview items, and paste as plain text, Markdown or JSON.",
+            symbol: "doc.on.clipboard", category: .tools, tier: .mvp,
+            permissions: [.accessibility], replaces: "Maccy, Paste", isImplemented: true),
+        .init(
+            id: .awake, name: "Awake",
+            summary: "Keep the Mac awake indefinitely, for a set time or until a time of day. Right-click the menu bar tile for durations.",
+            symbol: "cup.and.saucer", category: .system, tier: .mvp,
+            permissions: [], replaces: "Amphetamine, caffeinate", isImplemented: true),
+        .init(
+            id: .systemToggles, name: "System Toggles",
+            summary: "Dark mode, hiding the Dock or desktop icons, hidden files, Wi‑Fi and quick actions, from a shortcut or the menu bar.",
+            symbol: "switch.2", category: .system, tier: .mvp,
+            permissions: [.automation], replaces: "One Switch, Shortcuts", isImplemented: true),
+        .init(
+            id: .scrollMouse, name: "Scroll & Mouse",
+            summary: "Separate scroll direction for mouse and trackpad, smooth wheel scrolling, button mapping.",
+            symbol: "computermouse", category: .windowsInput, tier: .mvp,
+            permissions: [.accessibility], replaces: "Mos, LinearMouse"),
 
         // MARK: Tier 2 — power utilities
-        .init(id: .colorPicker, name: "Color Picker",
-              summary: "Pick any color on screen with a magnifier, from a shortcut or the menu bar. Copy it as HEX, RGB, HSL or SwiftUI and AppKit code.",
-              symbol: "eyedropper", category: .tools, tier: .utilities,
-              permissions: [], replaces: "Digital Color Meter", isImplemented: true),
-        .init(id: .textExtractor, name: "Text Extractor",
-              summary: "Select any part of the screen and copy the text in it, from a shortcut or the menu bar. Reads QR codes and barcodes too.",
-              symbol: "text.viewfinder", category: .tools, tier: .utilities,
-              permissions: [.screenRecording], replaces: "TextSniper", isImplemented: true),
-        .init(id: .pinCrop, name: "Pin & Crop",
-              summary: "Keep any window on top, or crop part of a window into a floating live thumbnail.",
-              symbol: "pin", category: .windowsInput, tier: .utilities,
-              permissions: [.accessibility, .screenRecording], replaces: "No native option"),
-        .init(id: .batchRename, name: "Batch Rename",
-              summary: "Regex find and replace, case changes, numbering and EXIF dates, with preview and undo.",
-              symbol: "character.cursor.ibeam", category: .tools, tier: .utilities,
-              permissions: [], replaces: "Finder Rename (literal only)"),
-        .init(id: .fileLocksmith, name: "File Locksmith",
-              summary: "Shows which process holds a file or blocks a disk eject, and lets you quit it.",
-              symbol: "lock.doc", category: .tools, tier: .utilities,
-              permissions: [.fullDiskAccess], replaces: "lsof in Terminal"),
-        .init(id: .finderExtras, name: "Finder Extras",
-              summary: "New File here, Copy Path, Open in Terminal, toggle hidden files, image resize.",
-              symbol: "folder.badge.gearshape", category: .tools, tier: .utilities,
-              permissions: [], replaces: "OpenInTerminal"),
-        .init(id: .displaysAudio, name: "Displays & Audio",
-              summary: "External monitor brightness via DDC, per-app volume, output switching, global mic mute.",
-              symbol: "speaker.wave.2", category: .system, tier: .utilities,
-              permissions: [.microphone], replaces: "MonitorControl, SoundSource"),
+        .init(
+            id: .colorPicker, name: "Color Picker",
+            summary:
+                "Pick any color on screen with a magnifier, from a shortcut or the menu bar. Copy it as HEX, RGB, HSL or SwiftUI and AppKit code.",
+            symbol: "eyedropper", category: .tools, tier: .utilities,
+            permissions: [], replaces: "Digital Color Meter", isImplemented: true),
+        .init(
+            id: .textExtractor, name: "Text Extractor",
+            summary:
+                "Select any part of the screen and copy the text in it, from a shortcut or the menu bar. Reads QR codes and barcodes too.",
+            symbol: "text.viewfinder", category: .tools, tier: .utilities,
+            permissions: [.screenRecording], replaces: "TextSniper", isImplemented: true),
+        .init(
+            id: .pinCrop, name: "Pin & Crop",
+            summary: "Keep any window on top, or crop part of a window into a floating live thumbnail.",
+            symbol: "pin", category: .windowsInput, tier: .utilities,
+            permissions: [.accessibility, .screenRecording], replaces: "No native option"),
+        .init(
+            id: .batchRename, name: "Batch Rename",
+            summary: "Regex find and replace, case changes, numbering and EXIF dates, with preview and undo.",
+            symbol: "character.cursor.ibeam", category: .tools, tier: .utilities,
+            permissions: [], replaces: "Finder Rename (literal only)"),
+        .init(
+            id: .fileLocksmith, name: "File Locksmith",
+            summary: "Shows which process holds a file or blocks a disk eject, and lets you quit it.",
+            symbol: "lock.doc", category: .tools, tier: .utilities,
+            permissions: [.fullDiskAccess], replaces: "lsof in Terminal"),
+        .init(
+            id: .finderExtras, name: "Finder Extras",
+            summary: "New File here, Copy Path, Open in Terminal, toggle hidden files, image resize.",
+            symbol: "folder.badge.gearshape", category: .tools, tier: .utilities,
+            permissions: [], replaces: "OpenInTerminal"),
+        .init(
+            id: .displaysAudio, name: "Displays & Audio",
+            summary: "External monitor brightness via DDC, per-app volume, output switching, global mic mute.",
+            symbol: "speaker.wave.2", category: .system, tier: .utilities,
+            permissions: [.microphone], replaces: "MonitorControl, SoundSource"),
 
         // MARK: Tier 3 — dev & presenter
-        .init(id: .workspaces, name: "Workspaces",
-              summary: "Launch a saved set of apps, URLs and terminals into a Zones layout in one action.",
-              symbol: "square.grid.2x2", category: .developer, tier: .pro,
-              permissions: [.accessibility], replaces: "Moom"),
-        .init(id: .portsProcesses, name: "Ports & Processes",
-              summary: "See what's listening on each port, such as :3000, with its command and folder, and quit it here or from the menu bar.",
-              symbol: "network", category: .developer, tier: .pro,
-              permissions: [], replaces: "lsof -i, Activity Monitor", isImplemented: true),
-        .init(id: .hostsEnv, name: "Hosts & Env",
-              summary: "Edit /etc/hosts with groups you switch on and off together, and see PATH and the environment each shell and apps start with.",
-              symbol: "server.rack", category: .developer, tier: .pro,
-              permissions: [.admin], replaces: "Text editor + sudo", isImplemented: true),
-        .init(id: .launchAgents, name: "Launch Agents",
-              summary: "See the launchd agents and daemons on your Mac: what they run and when, whether they're running, and turn them on or off.",
-              symbol: "gearshape.2", category: .developer, tier: .pro,
-              permissions: [.admin], replaces: "Lingon, launchctl", isImplemented: true),
-        .init(id: .defaultsBrowser, name: "Defaults Browser",
-              summary: "Browse and change the settings apps keep, hidden ones included, with a copy saved before the first change. Copy any key as a defaults command.",
-              symbol: "list.bullet.rectangle", category: .developer, tier: .pro,
-              permissions: [], replaces: "defaults CLI", isImplemented: true),
-        .init(id: .presenterKit, name: "Presenter Kit",
-              summary: "Zoom, draw on screen, keystroke overlay, click rings and cursor spotlight.",
-              symbol: "rectangle.inset.filled.and.person.filled", category: .developer, tier: .pro,
-              permissions: [.accessibility, .screenRecording], replaces: "Presentify, KeyCastr"),
-        .init(id: .screenRuler, name: "Screen Ruler",
-              summary: "Measure pixels between edges. Hold ⌘ for the frontmost app's shortcut cheat sheet.",
-              symbol: "ruler", category: .developer, tier: .pro,
-              permissions: [.accessibility, .screenRecording], replaces: "xScope, KeyClu"),
+        .init(
+            id: .workspaces, name: "Workspaces",
+            summary: "Launch a saved set of apps, URLs and terminals into a Zones layout in one action.",
+            symbol: "square.grid.2x2", category: .developer, tier: .pro,
+            permissions: [.accessibility], replaces: "Moom"),
+        .init(
+            id: .portsProcesses, name: "Ports & Processes",
+            summary:
+                "See what's listening on each port, such as :3000, with its command and folder, and quit it here or from the menu bar.",
+            symbol: "network", category: .developer, tier: .pro,
+            permissions: [], replaces: "lsof -i, Activity Monitor", isImplemented: true),
+        .init(
+            id: .hostsEnv, name: "Hosts & Env",
+            summary:
+                "Edit /etc/hosts with groups you switch on and off together, and see PATH and the environment each shell and apps start with.",
+            symbol: "server.rack", category: .developer, tier: .pro,
+            permissions: [.admin], replaces: "Text editor + sudo", isImplemented: true),
+        .init(
+            id: .launchAgents, name: "Launch Agents",
+            summary:
+                "See the launchd agents and daemons on your Mac: what they run and when, whether they're running, and turn them on or off.",
+            symbol: "gearshape.2", category: .developer, tier: .pro,
+            permissions: [.admin], replaces: "Lingon, launchctl", isImplemented: true),
+        .init(
+            id: .defaultsBrowser, name: "Defaults Browser",
+            summary:
+                "Browse and change the settings apps keep, hidden ones included, with a copy saved before the first change. Copy any key as a defaults command.",
+            symbol: "list.bullet.rectangle", category: .developer, tier: .pro,
+            permissions: [], replaces: "defaults CLI", isImplemented: true),
+        .init(
+            id: .presenterKit, name: "Presenter Kit",
+            summary: "Zoom, draw on screen, keystroke overlay, click rings and cursor spotlight.",
+            symbol: "rectangle.inset.filled.and.person.filled", category: .developer, tier: .pro,
+            permissions: [.accessibility, .screenRecording], replaces: "Presentify, KeyCastr"),
+        .init(
+            id: .screenRuler, name: "Screen Ruler",
+            summary: "Measure pixels between edges. Hold ⌘ for the frontmost app's shortcut cheat sheet.",
+            symbol: "ruler", category: .developer, tier: .pro,
+            permissions: [.accessibility, .screenRecording], replaces: "xScope, KeyClu"),
     ]
 
     private static let byID = Dictionary(uniqueKeysWithValues: all.map { ($0.id, $0) })

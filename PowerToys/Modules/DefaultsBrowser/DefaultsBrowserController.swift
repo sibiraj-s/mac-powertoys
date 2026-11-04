@@ -22,8 +22,9 @@ nonisolated struct DefaultsDomain: Hashable, Identifiable, Sendable {
         let fileName = id == global ? ".GlobalPreferences" : id
         let appURL = id == global ? nil : NSWorkspace.shared.urlForApplication(withBundleIdentifier: id)
         let appName = appURL.map { FileManager.default.displayName(atPath: $0.path).replacing(#/\.app$/#, with: "") }
-        return DefaultsDomain(id: id, appName: appName, appURL: appURL,
-                              fileURL: preferences.appending(path: "\(fileName).plist"))
+        return DefaultsDomain(
+            id: id, appName: appName, appURL: appURL,
+            fileURL: preferences.appending(path: "\(fileName).plist"))
     }
 
     /// The global domain first, then by name.
@@ -72,7 +73,8 @@ nonisolated struct LiveDefaultsStore: DefaultsStoring {
         for domain in domains {
             // Drops what this process cached, so keys added elsewhere are found.
             CFPreferencesAppSynchronize(Self.application(domain))
-            keys[domain] = CFPreferencesCopyKeyList(Self.application(domain), kCFPreferencesCurrentUser, kCFPreferencesAnyHost) as? [String] ?? []
+            keys[domain] =
+                CFPreferencesCopyKeyList(Self.application(domain), kCFPreferencesCurrentUser, kCFPreferencesAnyHost) as? [String] ?? []
         }
         return keys
     }
@@ -90,8 +92,9 @@ nonisolated struct LiveDefaultsStore: DefaultsStoring {
     func write(_ changes: [DefaultsChange], in domain: String) async throws {
         let application = Self.application(domain)
         for change in changes {
-            CFPreferencesSetValue(change.key as CFString, change.value?.plistObject, application,
-                                  kCFPreferencesCurrentUser, kCFPreferencesAnyHost)
+            CFPreferencesSetValue(
+                change.key as CFString, change.value?.plistObject, application,
+                kCFPreferencesCurrentUser, kCFPreferencesAnyHost)
         }
         guard CFPreferencesSynchronize(application, kCFPreferencesCurrentUser, kCFPreferencesAnyHost) else {
             throw CommandError(errorDescription: "macOS didn't save it. The domain may belong to another user or to the system.")

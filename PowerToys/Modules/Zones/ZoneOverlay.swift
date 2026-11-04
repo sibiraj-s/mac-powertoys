@@ -13,9 +13,10 @@ final class ZoneOverlay {
         self.panel = panel
         let screenFrame = Displays.flip(screen.frame)
         func local(_ rect: CGRect) -> CGRect { rect.offsetBy(dx: -screenFrame.minX, dy: -screenFrame.minY) }
-        panel.contentView = NSHostingView(rootView: ZoneOverlayView(
-            zones: zones.map { local($0) }, highlight: highlight.map { local($0) }, title: title
-        ))
+        panel.contentView = NSHostingView(
+            rootView: ZoneOverlayView(
+                zones: zones.map { local($0) }, highlight: highlight.map { local($0) }, title: title
+            ))
         if panel.frame != screen.frame {
             panel.setFrame(screen.frame, display: false)
         }

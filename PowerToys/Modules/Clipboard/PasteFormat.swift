@@ -81,7 +81,8 @@ enum PasteFormat: CaseIterable, Identifiable {
 
 /// Something you can do with the selected item in the clipboard panel.
 enum ClipCommand: Hashable, Identifiable {
-    case paste(PasteFormat), copy, open, reveal, saveImage, togglePin, delete
+    case paste(PasteFormat)
+    case copy, open, reveal, saveImage, togglePin, delete
 
     var id: Self { self }
 

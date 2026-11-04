@@ -87,14 +87,21 @@ private struct HostsView: View {
                     Button("Flush") { Task { await hosts.flushDNS() } }
                 }
                 if hosts.hasBackup, let backup = hosts.backupURL {
-                    CardRow("Original file", hint: "Before its first change, PowerToys saved a copy of \(HostsFile.path) to \(backup.path(percentEncoded: false).replacing(NSHomeDirectory(), with: "~")).") {
+                    CardRow(
+                        "Original file",
+                        hint:
+                            "Before its first change, PowerToys saved a copy of \(HostsFile.path) to \(backup.path(percentEncoded: false).replacing(NSHomeDirectory(), with: "~"))."
+                    ) {
                         HStack(spacing: 6) {
                             Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([backup]) }
                             Button("Restore…") { confirmingRestore = true }
                         }
                     }
                 }
-                CardRow(HostsFile.path, hint: "Saved as you change it. macOS asks for an administrator password, then remembers it for a few minutes.") {
+                CardRow(
+                    HostsFile.path,
+                    hint: "Saved as you change it. macOS asks for an administrator password, then remembers it for a few minutes."
+                ) {
                     Button("Show in Finder") {
                         NSWorkspace.shared.selectFile(HostsFile.path, inFileViewerRootedAtPath: "")
                     }
@@ -167,10 +174,13 @@ private struct HostsSectionView: View {
                         .menuIndicator(.hidden)
                         .fixedSize()
                         .accessibilityLabel("\(group) options")
-                        RowSwitch(label: "Turn \(group) on", isOn: Binding(
-                            get: { onCount > 0 },
-                            set: { on in Task { await hosts.change { $0.setEnabled(group: group, on) } } }
-                        ))
+                        RowSwitch(
+                            label: "Turn \(group) on",
+                            isOn: Binding(
+                                get: { onCount > 0 },
+                                set: { on in Task { await hosts.change { $0.setEnabled(group: group, on) } } }
+                            )
+                        )
                         .disabled(section.entries.isEmpty)
                     }
                 }
@@ -223,10 +233,12 @@ private struct HostEntryRow: View {
                 .menuIndicator(.hidden)
                 .fixedSize()
                 .accessibilityLabel("Options for \(entry.hostnames.joined(separator: " "))")
-                RowSwitch(label: "Use \(entry.hostnames.joined(separator: " "))", isOn: Binding(
-                    get: { entry.isEnabled },
-                    set: { on in Task { await hosts.change { $0.setEnabled(entry.id, on) } } }
-                ))
+                RowSwitch(
+                    label: "Use \(entry.hostnames.joined(separator: " "))",
+                    isOn: Binding(
+                        get: { entry.isEnabled },
+                        set: { on in Task { await hosts.change { $0.setEnabled(entry.id, on) } } }
+                    ))
             }
         }
         .contentShape(Rectangle())

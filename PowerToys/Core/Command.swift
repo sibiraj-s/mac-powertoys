@@ -45,8 +45,9 @@ nonisolated enum Command {
             try await withCheckedThrowingContinuation { continuation in
                 let pid: pid_t
                 do {
-                    pid = try spawn(executable, arguments, environment: environment ?? ProcessInfo.processInfo.environment,
-                                    stdout: outURL.path, stderr: errURL.path)
+                    pid = try spawn(
+                        executable, arguments, environment: environment ?? ProcessInfo.processInfo.environment,
+                        stdout: outURL.path, stderr: errURL.path)
                 } catch {
                     continuation.resume(throwing: error)
                     return
@@ -97,8 +98,8 @@ nonisolated enum Command {
         let argv = ([executable] + arguments).map { strdup($0) } + [nil]
         let envp = environment.map { strdup("\($0.key)=\($0.value)") } + [nil]
         defer {
-            argv.forEach { free($0) }
-            envp.forEach { free($0) }
+            for arg in argv { free(arg) }
+            for entry in envp { free(entry) }
         }
         var pid: pid_t = 0
         let result = posix_spawn(&pid, executable, &actions, &attributes, argv, envp)
@@ -109,7 +110,8 @@ nonisolated enum Command {
     /// Runs a shell command as root, after macOS asks for an administrator password with `prompt`.
     /// Throws `CancellationError` when the password prompt is cancelled.
     static func runAsAdministrator(_ shellCommand: String, prompt: String) async throws {
-        let script = "do shell script \(appleScriptString(shellCommand)) with prompt \(appleScriptString(prompt)) with administrator privileges"
+        let script =
+            "do shell script \(appleScriptString(shellCommand)) with prompt \(appleScriptString(prompt)) with administrator privileges"
         let output = try await run("/usr/bin/osascript", ["-e", script])
         guard output.status != 0 else { return }
         // -128: the user cancelled.

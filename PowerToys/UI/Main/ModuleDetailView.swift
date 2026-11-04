@@ -108,7 +108,8 @@ private struct AwakeSettingsView: View {
         let awake = state.awake
         guard awake.isActive else { return "Off" }
         guard let endsAt = awake.endsAt else { return "Awake until you stop it" }
-        let style: Date.FormatStyle = endsAt.timeIntervalSinceNow > 12 * 60 * 60
+        let style: Date.FormatStyle =
+            endsAt.timeIntervalSinceNow > 12 * 60 * 60
             ? .dateTime.weekday().hour().minute()
             : .dateTime.hour().minute()
         return "Awake until \(endsAt.formatted(style))"
@@ -130,10 +131,12 @@ private struct VigilSection: View {
                             .foregroundStyle(.secondary)
                     }
                     if isRunning {
-                        Label("Vigil is running. Use one or the other so two apps aren't holding the Mac awake.", systemImage: "info.circle")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.orange)
-                            .padding(.top, 4)
+                        Label(
+                            "Vigil is running. Use one or the other so two apps aren't holding the Mac awake.", systemImage: "info.circle"
+                        )
+                        .font(.system(size: 11))
+                        .foregroundStyle(.orange)
+                        .padding(.top, 4)
                     }
                 }
             } trailing: {

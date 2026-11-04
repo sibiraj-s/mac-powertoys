@@ -168,7 +168,8 @@ final class PortsController {
             for worker in listener.workers { _ = signaling.send(SIGKILL, to: worker) }
         }
         guard result == 0 else {
-            error = result == EPERM
+            error =
+                result == EPERM
                 ? "\(listener.name) belongs to another user, so it can't be quit from here."
                 : "Couldn't quit \(listener.name): \(String(cString: strerror(result)))"
             return

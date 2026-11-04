@@ -21,29 +21,37 @@ nonisolated struct ZoneLayout: Identifiable, Hashable {
 }
 
 nonisolated extension ZoneLayout {
-    static let halves = ZoneLayout(id: "halves", name: "Halves", zones: [
-        CGRect(x: 0, y: 0, width: 0.5, height: 1),
-        CGRect(x: 0.5, y: 0, width: 0.5, height: 1),
-    ])
+    static let halves = ZoneLayout(
+        id: "halves", name: "Halves",
+        zones: [
+            CGRect(x: 0, y: 0, width: 0.5, height: 1),
+            CGRect(x: 0.5, y: 0, width: 0.5, height: 1),
+        ])
 
-    static let thirds = ZoneLayout(id: "thirds", name: "Thirds", zones: [
-        CGRect(x: 0, y: 0, width: 1.0 / 3, height: 1),
-        CGRect(x: 1.0 / 3, y: 0, width: 1.0 / 3, height: 1),
-        CGRect(x: 2.0 / 3, y: 0, width: 1.0 / 3, height: 1),
-    ])
+    static let thirds = ZoneLayout(
+        id: "thirds", name: "Thirds",
+        zones: [
+            CGRect(x: 0, y: 0, width: 1.0 / 3, height: 1),
+            CGRect(x: 1.0 / 3, y: 0, width: 1.0 / 3, height: 1),
+            CGRect(x: 2.0 / 3, y: 0, width: 1.0 / 3, height: 1),
+        ])
 
-    static let focus = ZoneLayout(id: "focus", name: "Focus · 20 / 60 / 20", zones: [
-        CGRect(x: 0, y: 0, width: 0.2, height: 1),
-        CGRect(x: 0.2, y: 0, width: 0.6, height: 1),
-        CGRect(x: 0.8, y: 0, width: 0.2, height: 1),
-    ])
+    static let focus = ZoneLayout(
+        id: "focus", name: "Focus · 20 / 60 / 20",
+        zones: [
+            CGRect(x: 0, y: 0, width: 0.2, height: 1),
+            CGRect(x: 0.2, y: 0, width: 0.6, height: 1),
+            CGRect(x: 0.8, y: 0, width: 0.2, height: 1),
+        ])
 
-    static let grid = ZoneLayout(id: "grid", name: "Grid 2 × 2", zones: [
-        CGRect(x: 0, y: 0, width: 0.5, height: 0.5),
-        CGRect(x: 0.5, y: 0, width: 0.5, height: 0.5),
-        CGRect(x: 0, y: 0.5, width: 0.5, height: 0.5),
-        CGRect(x: 0.5, y: 0.5, width: 0.5, height: 0.5),
-    ])
+    static let grid = ZoneLayout(
+        id: "grid", name: "Grid 2 × 2",
+        zones: [
+            CGRect(x: 0, y: 0, width: 0.5, height: 0.5),
+            CGRect(x: 0.5, y: 0, width: 0.5, height: 0.5),
+            CGRect(x: 0, y: 0.5, width: 0.5, height: 0.5),
+            CGRect(x: 0.5, y: 0.5, width: 0.5, height: 0.5),
+        ])
 
     static let all: [ZoneLayout] = [.halves, .thirds, .focus, .grid]
     static let defaultLayout = ZoneLayout.halves

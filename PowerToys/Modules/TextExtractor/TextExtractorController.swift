@@ -82,7 +82,8 @@ final class TextExtractorController {
     }
 
     /// Unset until assigned, as every shortcut in the app starts out.
-    static let extractShortcut = ShortcutDefinition(id: "textExtractor.extract", module: .textExtractor, title: "Extract text", defaultHotKey: nil)
+    static let extractShortcut = ShortcutDefinition(
+        id: "textExtractor.extract", module: .textExtractor, title: "Extract text", defaultHotKey: nil)
 
     static let historyLimit = 20
     static let historyKey = "textExtractor.history"
@@ -126,7 +127,8 @@ final class TextExtractorController {
         language = defaults.string(forKey: Self.languageKey)
         correctsLanguage = defaults.bool(forKey: Self.correctsLanguageKey)
         readsCodes = defaults.bool(forKey: Self.readsCodesKey)
-        history = defaults.data(forKey: Self.historyKey)
+        history =
+            defaults.data(forKey: Self.historyKey)
             .flatMap { try? JSONDecoder().decode([ExtractedText].self, from: $0) }
             ?? []
     }

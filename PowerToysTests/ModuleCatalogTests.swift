@@ -1,4 +1,5 @@
 import Testing
+
 @testable import PowerToys
 
 struct ModuleCatalogTests {
@@ -37,6 +38,10 @@ struct ModuleCatalogTests {
 
     @Test func implementedModules() {
         let implemented = Set(ModuleCatalog.all.filter(\.isImplemented).map(\.id))
-        #expect(implemented == [.zones, .clipboard, .awake, .systemToggles, .hostsEnv, .portsProcesses, .launchAgents, .colorPicker, .textExtractor, .defaultsBrowser])
+        #expect(
+            implemented == [
+                .zones, .clipboard, .awake, .systemToggles, .hostsEnv, .portsProcesses, .launchAgents, .colorPicker, .textExtractor,
+                .defaultsBrowser,
+            ])
     }
 }

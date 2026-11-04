@@ -1,4 +1,3 @@
-
 /// A setting you can flip, or a one-off action, from a shortcut or the menu bar.
 enum SystemToggle: String, CaseIterable, Identifiable {
     // Toggles
@@ -126,9 +125,9 @@ enum SystemToggle: String, CaseIterable, Identifiable {
     static let defaultMenuBarItems: [SystemToggle] = [.darkMode, .hideDesktopIcons]
 }
 
-private extension String {
+extension String {
     /// "Dark mode" → "dark mode", but "Wi‑Fi" stays as it is.
-    var lowercasedFirst: String {
+    fileprivate var lowercasedFirst: String {
         guard let first, first.isUppercase, dropFirst().first?.isLowercase == true, !contains("‑") else { return self }
         return first.lowercased() + dropFirst()
     }

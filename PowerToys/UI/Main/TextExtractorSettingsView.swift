@@ -9,7 +9,9 @@ struct TextExtractorSettingsView: View {
 
         CardSection("Extract") {
             if state.permissions.status(.screenRecording) != .granted {
-                CardRow("Screen Recording is off", hint: "Needed to read the screen. After allowing it, quit and open \(AppInfo.name) again.") {
+                CardRow(
+                    "Screen Recording is off", hint: "Needed to read the screen. After allowing it, quit and open \(AppInfo.name) again."
+                ) {
                     HStack(spacing: 6) {
                         Button("Open Settings") { state.permissions.openSettings(for: .screenRecording) }
                         Button("Quit & Reopen") { Relaunch.now() }
@@ -44,7 +46,9 @@ struct TextExtractorSettingsView: View {
                 .labelsHidden()
                 .fixedSize()
             }
-            CardRow("Correct words", hint: "Fixes words read uncertainly. Turn off for code, serial numbers and other text that isn't words.") {
+            CardRow(
+                "Correct words", hint: "Fixes words read uncertainly. Turn off for code, serial numbers and other text that isn't words."
+            ) {
                 RowSwitch(label: "Correct words", isOn: $extractor.correctsLanguage)
             }
             CardRow("Read QR codes and barcodes", hint: "What they hold is copied after any text, such as a QR code's link.") {

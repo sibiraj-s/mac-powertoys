@@ -69,88 +69,108 @@ nonisolated struct DefaultsTweak: Identifiable, Hashable, Sendable {
 extension DefaultsTweak {
     nonisolated static let all: [DefaultsTweak] = [
         // MARK: Dock
-        .init(group: .dock, title: "Show the hidden Dock without a delay",
-              hint: "When the Dock hides itself, it comes up as soon as the pointer reaches the edge.",
-              domain: "com.apple.dock", key: "autohide-delay", control: .toggle(.real(0)), restart: .dock),
-        .init(group: .dock, title: "Hide and show the Dock without animation",
-              hint: "The Dock appears at once instead of sliding in.",
-              domain: "com.apple.dock", key: "autohide-time-modifier", control: .toggle(.real(0)), restart: .dock),
-        .init(group: .dock, title: "Dim the icons of hidden apps",
-              hint: "Apps hidden with ⌘H show see-through in the Dock.",
-              domain: "com.apple.dock", key: "showhidden", control: .toggle(.bool(true)), restart: .dock),
-        .init(group: .dock, title: "Show only open apps",
-              hint: "Leaves out apps kept in the Dock that aren't running.",
-              domain: "com.apple.dock", key: "static-only", control: .toggle(.bool(true)), restart: .dock),
-        .init(group: .dock, title: "Scroll up on an icon to show its windows",
-              hint: "Scrolling up over an app in the Dock shows all its windows.",
-              domain: "com.apple.dock", key: "scroll-to-open", control: .toggle(.bool(true)), restart: .dock),
-        .init(group: .dock, title: "Hide other apps when switching from the Dock",
-              hint: "Clicking an app in the Dock hides every other app's windows.",
-              domain: "com.apple.dock", key: "single-app", control: .toggle(.bool(true)), restart: .dock),
-        .init(group: .dock, title: "Don't bounce icons of opening apps",
-              hint: "Apps open without their Dock icon bouncing.",
-              domain: "com.apple.dock", key: "launchanim", control: .toggle(.bool(false)), restart: .dock),
-        .init(group: .dock, title: "Minimize effect",
-              hint: "Suck is an effect System Settings doesn't list.",
-              domain: "com.apple.dock", key: "mineffect",
-              control: .choice([
-                  Choice(title: "Genie", value: nil),
-                  Choice(title: "Scale", value: .string("scale")),
-                  Choice(title: "Suck", value: .string("suck")),
-              ]),
-              restart: .dock),
+        .init(
+            group: .dock, title: "Show the hidden Dock without a delay",
+            hint: "When the Dock hides itself, it comes up as soon as the pointer reaches the edge.",
+            domain: "com.apple.dock", key: "autohide-delay", control: .toggle(.real(0)), restart: .dock),
+        .init(
+            group: .dock, title: "Hide and show the Dock without animation",
+            hint: "The Dock appears at once instead of sliding in.",
+            domain: "com.apple.dock", key: "autohide-time-modifier", control: .toggle(.real(0)), restart: .dock),
+        .init(
+            group: .dock, title: "Dim the icons of hidden apps",
+            hint: "Apps hidden with ⌘H show see-through in the Dock.",
+            domain: "com.apple.dock", key: "showhidden", control: .toggle(.bool(true)), restart: .dock),
+        .init(
+            group: .dock, title: "Show only open apps",
+            hint: "Leaves out apps kept in the Dock that aren't running.",
+            domain: "com.apple.dock", key: "static-only", control: .toggle(.bool(true)), restart: .dock),
+        .init(
+            group: .dock, title: "Scroll up on an icon to show its windows",
+            hint: "Scrolling up over an app in the Dock shows all its windows.",
+            domain: "com.apple.dock", key: "scroll-to-open", control: .toggle(.bool(true)), restart: .dock),
+        .init(
+            group: .dock, title: "Hide other apps when switching from the Dock",
+            hint: "Clicking an app in the Dock hides every other app's windows.",
+            domain: "com.apple.dock", key: "single-app", control: .toggle(.bool(true)), restart: .dock),
+        .init(
+            group: .dock, title: "Don't bounce icons of opening apps",
+            hint: "Apps open without their Dock icon bouncing.",
+            domain: "com.apple.dock", key: "launchanim", control: .toggle(.bool(false)), restart: .dock),
+        .init(
+            group: .dock, title: "Minimize effect",
+            hint: "Suck is an effect System Settings doesn't list.",
+            domain: "com.apple.dock", key: "mineffect",
+            control: .choice([
+                Choice(title: "Genie", value: nil),
+                Choice(title: "Scale", value: .string("scale")),
+                Choice(title: "Suck", value: .string("suck")),
+            ]),
+            restart: .dock),
 
         // MARK: Finder
-        .init(group: .finder, title: "Show the full path in window titles",
-              hint: "Finder windows are titled with the folder's whole path, like /Users/you/Projects.",
-              domain: "com.apple.finder", key: "_FXShowPosixPathInTitle", control: .toggle(.bool(true)), restart: .finder),
-        .init(group: .finder, title: "Add Quit Finder to the Finder menu",
-              hint: "Lets you quit Finder with ⌘Q, which also hides the desktop icons until it's opened again.",
-              domain: "com.apple.finder", key: "QuitMenuItem", control: .toggle(.bool(true)), restart: .finder),
-        .init(group: .finder, title: "Turn off Finder animations",
-              hint: "Windows and Get Info panels open without animating.",
-              domain: "com.apple.finder", key: "DisableAllAnimations", control: .toggle(.bool(true)), restart: .finder),
+        .init(
+            group: .finder, title: "Show the full path in window titles",
+            hint: "Finder windows are titled with the folder's whole path, like /Users/you/Projects.",
+            domain: "com.apple.finder", key: "_FXShowPosixPathInTitle", control: .toggle(.bool(true)), restart: .finder),
+        .init(
+            group: .finder, title: "Add Quit Finder to the Finder menu",
+            hint: "Lets you quit Finder with ⌘Q, which also hides the desktop icons until it's opened again.",
+            domain: "com.apple.finder", key: "QuitMenuItem", control: .toggle(.bool(true)), restart: .finder),
+        .init(
+            group: .finder, title: "Turn off Finder animations",
+            hint: "Windows and Get Info panels open without animating.",
+            domain: "com.apple.finder", key: "DisableAllAnimations", control: .toggle(.bool(true)), restart: .finder),
 
         // MARK: Screenshots
-        .init(group: .screenshots, title: "Leave out window shadows",
-              hint: "Screenshots of a single window are just the window, without the shadow around it.",
-              domain: "com.apple.screencapture", key: "disable-shadow", control: .toggle(.bool(true)), restart: .none),
-        .init(group: .screenshots, title: "Leave the date and time out of file names",
-              hint: "Files are named “Screenshot”, “Screenshot 1” and so on.",
-              domain: "com.apple.screencapture", key: "include-date", control: .toggle(.bool(false)), restart: .none),
-        .init(group: .screenshots, title: "File format",
-              hint: "What screenshots are saved as.",
-              domain: "com.apple.screencapture", key: "type",
-              control: .choice([
-                  Choice(title: "PNG", value: nil),
-                  Choice(title: "JPEG", value: .string("jpg")),
-                  Choice(title: "HEIC", value: .string("heic")),
-                  Choice(title: "PDF", value: .string("pdf")),
-                  Choice(title: "TIFF", value: .string("tiff")),
-              ]),
-              restart: .none),
+        .init(
+            group: .screenshots, title: "Leave out window shadows",
+            hint: "Screenshots of a single window are just the window, without the shadow around it.",
+            domain: "com.apple.screencapture", key: "disable-shadow", control: .toggle(.bool(true)), restart: .none),
+        .init(
+            group: .screenshots, title: "Leave the date and time out of file names",
+            hint: "Files are named “Screenshot”, “Screenshot 1” and so on.",
+            domain: "com.apple.screencapture", key: "include-date", control: .toggle(.bool(false)), restart: .none),
+        .init(
+            group: .screenshots, title: "File format",
+            hint: "What screenshots are saved as.",
+            domain: "com.apple.screencapture", key: "type",
+            control: .choice([
+                Choice(title: "PNG", value: nil),
+                Choice(title: "JPEG", value: .string("jpg")),
+                Choice(title: "HEIC", value: .string("heic")),
+                Choice(title: "PDF", value: .string("pdf")),
+                Choice(title: "TIFF", value: .string("tiff")),
+            ]),
+            restart: .none),
 
         // MARK: Typing & windows
-        .init(group: .typingWindows, title: "Hold a key to repeat it",
-              hint: "Instead of showing accented letters. Apps pick it up when they open again.",
-              domain: DefaultsDomain.global, key: "ApplePressAndHoldEnabled", control: .toggle(.bool(false)), restart: .apps),
-        .init(group: .typingWindows, title: "Open windows without animation",
-              hint: "New windows appear at once instead of zooming in. Apps pick it up when they open again.",
-              domain: DefaultsDomain.global, key: "NSAutomaticWindowAnimationsEnabled", control: .toggle(.bool(false)), restart: .apps),
-        .init(group: .typingWindows, title: "Save new documents on this Mac",
-              hint: "Save dialogs start in a folder on this Mac instead of iCloud Drive. Apps pick it up when they open again.",
-              domain: DefaultsDomain.global, key: "NSDocumentSaveNewDocumentsToCloud", control: .toggle(.bool(false)), restart: .apps),
+        .init(
+            group: .typingWindows, title: "Hold a key to repeat it",
+            hint: "Instead of showing accented letters. Apps pick it up when they open again.",
+            domain: DefaultsDomain.global, key: "ApplePressAndHoldEnabled", control: .toggle(.bool(false)), restart: .apps),
+        .init(
+            group: .typingWindows, title: "Open windows without animation",
+            hint: "New windows appear at once instead of zooming in. Apps pick it up when they open again.",
+            domain: DefaultsDomain.global, key: "NSAutomaticWindowAnimationsEnabled", control: .toggle(.bool(false)), restart: .apps),
+        .init(
+            group: .typingWindows, title: "Save new documents on this Mac",
+            hint: "Save dialogs start in a folder on this Mac instead of iCloud Drive. Apps pick it up when they open again.",
+            domain: DefaultsDomain.global, key: "NSDocumentSaveNewDocumentsToCloud", control: .toggle(.bool(false)), restart: .apps),
 
         // MARK: Files & disks
-        .init(group: .filesDisks, title: "Don't leave .DS_Store files on network drives",
-              hint: "Finder stops writing its folder settings to shared drives. Takes effect after logging out.",
-              domain: "com.apple.desktopservices", key: "DSDontWriteNetworkStores", control: .toggle(.bool(true)), restart: .logOut),
-        .init(group: .filesDisks, title: "Don't leave .DS_Store files on USB drives",
-              hint: "The same for external drives. Takes effect after logging out.",
-              domain: "com.apple.desktopservices", key: "DSDontWriteUSBStores", control: .toggle(.bool(true)), restart: .logOut),
-        .init(group: .filesDisks, title: "Don't offer new disks for Time Machine",
-              hint: "Plugging in a disk no longer asks whether to back up to it.",
-              domain: "com.apple.TimeMachine", key: "DoNotOfferNewDisksForBackup", control: .toggle(.bool(true)), restart: .none),
+        .init(
+            group: .filesDisks, title: "Don't leave .DS_Store files on network drives",
+            hint: "Finder stops writing its folder settings to shared drives. Takes effect after logging out.",
+            domain: "com.apple.desktopservices", key: "DSDontWriteNetworkStores", control: .toggle(.bool(true)), restart: .logOut),
+        .init(
+            group: .filesDisks, title: "Don't leave .DS_Store files on USB drives",
+            hint: "The same for external drives. Takes effect after logging out.",
+            domain: "com.apple.desktopservices", key: "DSDontWriteUSBStores", control: .toggle(.bool(true)), restart: .logOut),
+        .init(
+            group: .filesDisks, title: "Don't offer new disks for Time Machine",
+            hint: "Plugging in a disk no longer asks whether to back up to it.",
+            domain: "com.apple.TimeMachine", key: "DoNotOfferNewDisksForBackup", control: .toggle(.bool(true)), restart: .none),
     ]
 
     nonisolated static func tweaks(in group: Group) -> [DefaultsTweak] {

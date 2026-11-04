@@ -1,6 +1,7 @@
 import Carbon.HIToolbox
 import Foundation
 import Testing
+
 @testable import PowerToys
 
 /// Keeps settings in memory instead of changing the Mac's.
@@ -37,7 +38,7 @@ final class FakeSystemSettings: SystemSettingsAccess {
     }
 
     func release() {
-        held.forEach { $0.resume() }
+        for continuation in held { continuation.resume() }
         held = []
     }
 }
@@ -117,11 +118,11 @@ struct SystemTogglesControllerTests {
         let start = Date(timeIntervalSinceReferenceDate: 1_000_000)
         await toggles.perform(.darkMode, now: start)
         await toggles.perform(.darkMode, now: start.addingTimeInterval(0.3))
-        #expect(system.values[.darkMode] == false)   // on, then off again
+        #expect(system.values[.darkMode] == false)  // on, then off again
 
         await toggles.perform(.darkMode, now: start.addingTimeInterval(0.6))
         toggles.refresh(now: start.addingTimeInterval(1))
-        #expect(toggles.isOn(.darkMode))   // the lagging read doesn't undo what we just set
+        #expect(toggles.isOn(.darkMode))  // the lagging read doesn't undo what we just set
     }
 
     @Test func actionsRun() async {
@@ -138,7 +139,7 @@ struct SystemTogglesControllerTests {
         await waitUntil { toggles.running.contains(.ejectDisks) }
         #expect(toggles.status(of: .ejectDisks) == "Running…")
 
-        await toggles.run(.ejectDisks)   // ignored while the first is running
+        await toggles.run(.ejectDisks)  // ignored while the first is running
         #expect(system.runs == [.ejectDisks])
 
         system.release()
@@ -153,7 +154,10 @@ struct SystemTogglesControllerTests {
             var answer = false
         }
         let prompt = Prompt()
-        let toggles = controller { prompt.asked.append($0); return prompt.answer }
+        let toggles = controller {
+            prompt.asked.append($0)
+            return prompt.answer
+        }
         await toggles.perform(.emptyTrash)
         #expect(system.runs.isEmpty)
         prompt.answer = true
@@ -193,7 +197,7 @@ struct SystemTogglesControllerTests {
         #expect(toggles.menuBarItems == SystemToggle.defaultMenuBarItems)
         toggles.setInMenuBar(.wifi, true)
         toggles.setInMenuBar(.darkMode, false)
-        toggles.setInMenuBar(.wifi, true)   // already there
+        toggles.setInMenuBar(.wifi, true)  // already there
         toggles.setInMenuBar(.emptyTrash, true)
 
         let reloaded = controller()

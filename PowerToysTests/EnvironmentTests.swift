@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import PowerToys
 
 struct EnvSourceTests {
@@ -15,12 +16,13 @@ struct EnvSourceTests {
 
     @Test func loginShellComesFirstThenApps() {
         let sources = EnvSource.available(loginShell: URL(filePath: "/opt/homebrew/bin/fish"), etcShells: etcShells, exists: { _ in true })
-        #expect(sources == [
-            .shell(URL(filePath: "/opt/homebrew/bin/fish")),
-            .shell(URL(filePath: "/bin/zsh")),
-            .shell(URL(filePath: "/opt/homebrew/bin/bash")),
-            .apps,
-        ])
+        #expect(
+            sources == [
+                .shell(URL(filePath: "/opt/homebrew/bin/fish")),
+                .shell(URL(filePath: "/bin/zsh")),
+                .shell(URL(filePath: "/opt/homebrew/bin/bash")),
+                .apps,
+            ])
     }
 
     @Test func loginShellWinsOverOtherCopies() {
@@ -104,7 +106,9 @@ struct EnvironmentProbeTests {
     }
 
     @Test func appEnvironmentDropsDebuggerVariables() {
-        let env = LiveEnvironmentProbe.appEnvironment(["PATH": "/usr/bin", "DYLD_LIBRARY_PATH": "x", "__XCODE_BUILT_PRODUCTS_DIR_PATHS": "x", "XPC_SERVICE_NAME": "x"])
+        let env = LiveEnvironmentProbe.appEnvironment([
+            "PATH": "/usr/bin", "DYLD_LIBRARY_PATH": "x", "__XCODE_BUILT_PRODUCTS_DIR_PATHS": "x", "XPC_SERVICE_NAME": "x",
+        ])
         #expect(env == ["PATH": "/usr/bin"])
     }
 
@@ -140,7 +144,8 @@ struct EnvironmentControllerTests {
     @Test func readsEachSourceOnceUnlessAsked() async {
         let probe = FakeProbe()
         probe.variables = [zsh: ["PATH": "/a:/b"], .apps: ["PATH": "/usr/bin"]]
-        let controller = EnvironmentController(loginShell: nil, sources: [zsh, .apps], probe: probe, pathSources: { [:] }, exists: { _ in true })
+        let controller = EnvironmentController(
+            loginShell: nil, sources: [zsh, .apps], probe: probe, pathSources: { [:] }, exists: { _ in true })
         #expect(controller.selected == zsh)
 
         await controller.load(zsh)

@@ -142,7 +142,8 @@ final class ClipboardController {
     @ObservationIgnored private lazy var panel = ClipboardPanel(controller: self)
 
     /// With `storeDirectory` nil the history is kept in memory and images in a temporary folder.
-    init(defaults: UserDefaults = .standard, storeDirectory: URL? = ClipboardController.defaultStoreDirectory, shortcuts: Shortcuts? = nil) {
+    init(defaults: UserDefaults = .standard, storeDirectory: URL? = ClipboardController.defaultStoreDirectory, shortcuts: Shortcuts? = nil)
+    {
         self.defaults = defaults
         self.shortcuts = shortcuts ?? Shortcuts(defaults: defaults)
         historyURL = storeDirectory?.appending(path: "ClipboardHistory.json")
@@ -160,7 +161,8 @@ final class ClipboardController {
         recognizesText = defaults.bool(forKey: Self.recognizesTextKey)
         itemLifetime = ItemLifetime(rawValue: defaults.integer(forKey: Self.itemLifetimeKey)) ?? .forever
         clearDelay = ClearDelay(rawValue: defaults.integer(forKey: Self.clearDelayKey)) ?? .never
-        history = historyURL
+        history =
+            historyURL
             .flatMap { try? Data(contentsOf: $0) }
             .flatMap { try? JSONDecoder().decode(ClipboardHistory.self, from: $0) }
             ?? ClipboardHistory()
@@ -222,7 +224,7 @@ final class ClipboardController {
         // Counts even for what isn't recorded, such as a concealed password.
         clipboardChangedAt = now
         guard let clipping = Self.read(pasteboard, skipsConcealed: skipsConcealed, keepsImages: keepsImages),
-              let item = makeItem(clipping, source: NSWorkspace.shared.frontmostApplication?.bundleIdentifier, date: now)
+            let item = makeItem(clipping, source: NSWorkspace.shared.frontmostApplication?.bundleIdentifier, date: now)
         else { return }
         history.record(item, limit: limit)
         save()
@@ -243,11 +245,12 @@ final class ClipboardController {
     static func read(_ pasteboard: NSPasteboard, skipsConcealed: Bool, keepsImages: Bool) -> Clipping? {
         let types = Set(pasteboard.types ?? [])
         guard types.isDisjoint(with: alwaysSkippedTypes),
-              !(skipsConcealed && types.contains(concealedType))
+            !(skipsConcealed && types.contains(concealedType))
         else { return nil }
 
         if let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL],
-           !urls.isEmpty {
+            !urls.isEmpty
+        {
             return .files(urls)
         }
         if let text = pasteboard.string(forType: .string), !text.allSatisfy(\.isWhitespace) {
@@ -324,9 +327,9 @@ final class ClipboardController {
     /// Empties the clipboard once it has sat unchanged for `clearDelay`.
     private func clearClipboardIfDue(_ pasteboard: NSPasteboard, now: Date) {
         guard clearDelay != .never,
-              let changedAt = clipboardChangedAt,
-              now.timeIntervalSince(changedAt) >= TimeInterval(clearDelay.rawValue),
-              pasteboard.changeCount == lastChangeCount
+            let changedAt = clipboardChangedAt,
+            now.timeIntervalSince(changedAt) >= TimeInterval(clearDelay.rawValue),
+            pasteboard.changeCount == lastChangeCount
         else { return }
         pasteboard.clearContents()
         lastChangeCount = pasteboard.changeCount
@@ -335,7 +338,7 @@ final class ClipboardController {
 
     private func removeExpiredItems(now: Date = .now) {
         guard itemLifetime != .forever,
-              history.removeItems(copiedBefore: now.addingTimeInterval(-TimeInterval(itemLifetime.rawValue)))
+            history.removeItems(copiedBefore: now.addingTimeInterval(-TimeInterval(itemLifetime.rawValue)))
         else { return }
         save()
     }
@@ -411,18 +414,19 @@ final class ClipboardController {
 
     /// Opens a link in the browser, files in their apps, or an image in Preview.
     func open(_ item: ClipItem) {
-        let urls: [URL] = switch item.kind {
-        case .link: item.linkURL.map { [$0] } ?? []
-        case .files: item.fileURLs ?? []
-        case .image: item.image.map { [imageURL(for: $0)] } ?? []
-        case .text, .color: []
-        }
+        let urls: [URL] =
+            switch item.kind {
+            case .link: item.linkURL.map { [$0] } ?? []
+            case .files: item.fileURLs ?? []
+            case .image: item.image.map { [imageURL(for: $0)] } ?? []
+            case .text, .color: []
+            }
         guard !urls.isEmpty else {
             NSSound.beep()
             return
         }
         panel.hide()
-        urls.forEach { NSWorkspace.shared.open($0) }
+        for url in urls { NSWorkspace.shared.open(url) }
     }
 
     func revealInFinder(_ item: ClipItem) {

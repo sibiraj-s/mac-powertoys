@@ -159,8 +159,9 @@ final class KeyRecorder {
         monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { [weak self] event in
             // Local monitors run on the main thread. Only a Bool crosses back, since NSEvent isn't Sendable.
             let isHandled = MainActor.assumeIsolated {
-                self?.handle(type: event.type, keyCode: Int(event.keyCode), modifiers: event.modifierFlags,
-                             characters: event.characters(byApplyingModifiers: [])) ?? false
+                self?.handle(
+                    type: event.type, keyCode: Int(event.keyCode), modifiers: event.modifierFlags,
+                    characters: event.characters(byApplyingModifiers: [])) ?? false
             }
             return isHandled ? nil : event
         }

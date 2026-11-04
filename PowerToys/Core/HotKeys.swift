@@ -91,7 +91,7 @@ struct HotKey: Hashable, Codable {
         if let special = specialKeys[keyCode] { return special }
         if let index = functionKeys.firstIndex(of: keyCode) { return "F\(index + 1)" }
         guard let characters = characters?.trimmingCharacters(in: .whitespacesAndNewlines.union(.controlCharacters)),
-              !characters.isEmpty
+            !characters.isEmpty
         else { return nil }
         return characters.uppercased()
     }
@@ -117,7 +117,7 @@ final class HotKeyCenter: HotKeyRegistering {
     private var nextID: UInt32 = 1
     private var handler: EventHandlerRef?
 
-    private static let signature: OSType = 0x5054_4B59 // "PTKY"
+    private static let signature: OSType = 0x5054_4B59  // "PTKY"
 
     func register(_ hotKey: HotKey, action: @escaping () -> Void) -> Registration? {
         installHandlerIfNeeded()

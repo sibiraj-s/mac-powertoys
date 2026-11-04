@@ -28,7 +28,7 @@ enum PasteTransform {
     static func prettyJSON(_ text: String) -> String? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.first == "{" || trimmed.first == "[",
-              (try? JSONSerialization.jsonObject(with: Data(trimmed.utf8))) != nil
+            (try? JSONSerialization.jsonObject(with: Data(trimmed.utf8))) != nil
         else { return nil }
         return indent(json: trimmed)
     }
@@ -37,7 +37,7 @@ enum PasteTransform {
         let delimiter: Character = text.prefix { $0 != "\n" }.contains("\t") ? "\t" : ","
         let rows = parseTable(text, delimiter: delimiter)
         guard rows.count >= 2, let header = rows.first, header.count >= 2,
-              rows.allSatisfy({ $0.count == header.count })
+            rows.allSatisfy({ $0.count == header.count })
         else { return nil }
         let objects = rows.dropFirst().map { row in
             "{" + zip(header, row).map { "\(quoted($0)):\(quoted($1))" }.joined(separator: ",") + "}"
@@ -176,7 +176,7 @@ enum PasteTransform {
                 content.length -= 1
             }
             guard content.length > 0,
-                  !string.substring(with: content).allSatisfy(\.isWhitespace)
+                !string.substring(with: content).allSatisfy(\.isWhitespace)
             else { continue }
 
             let style = attributed.attribute(.paragraphStyle, at: paragraph.location, effectiveRange: nil) as? NSParagraphStyle
@@ -236,11 +236,12 @@ enum PasteTransform {
         let string = text.string as NSString
         text.enumerateAttributes(in: NSRange(location: 0, length: text.length)) { attributes, range, _ in
             let traits = (attributes[.font] as? NSFont)?.fontDescriptor.symbolicTraits ?? []
-            let link: String? = switch attributes[.link] {
-            case let url as URL: url.absoluteString
-            case let string as String: string
-            default: nil
-            }
+            let link: String? =
+                switch attributes[.link] {
+                case let url as URL: url.absoluteString
+                case let string as String: string
+                default: nil
+                }
             let style = InlineStyle(
                 isBold: includesBold && traits.contains(.bold),
                 isItalic: traits.contains(.italic),

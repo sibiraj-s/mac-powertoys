@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import PowerToys
 
 struct PasteFormatTests {
@@ -67,7 +68,8 @@ struct ClipCommandTests {
     }
 
     @Test func everyCommandHasDistinctKeys() {
-        let commands: [ClipCommand] = PasteFormat.allCases.map(ClipCommand.paste) + [.copy, .open, .reveal, .saveImage, .togglePin, .delete]
+        let commands: [ClipCommand] =
+            PasteFormat.allCases.map(ClipCommand.paste) + [.copy, .open, .reveal, .saveImage, .togglePin, .delete]
         let keys = commands.map(\.keyCaps)
         #expect(Set(keys).count == keys.count)
     }
