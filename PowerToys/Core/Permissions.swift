@@ -103,6 +103,11 @@ final class PermissionsService {
         statuses[permission] ?? .unknown
     }
 
+    /// Checks one permission now, without waiting for the next `refresh`.
+    func currentStatus(_ permission: Permission) -> PermissionStatus {
+        check(permission)
+    }
+
     func refresh() {
         for permission in Permission.allCases {
             statuses[permission] = check(permission)

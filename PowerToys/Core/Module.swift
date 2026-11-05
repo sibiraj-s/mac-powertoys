@@ -81,9 +81,9 @@ enum ModuleCatalog {
             permissions: [.automation], replaces: "One Switch, Shortcuts", isImplemented: true),
         .init(
             id: .scrollMouse, name: "Scroll & Mouse",
-            summary: "Separate scroll direction for mouse and trackpad, smooth wheel scrolling, button mapping.",
+            summary: "Separate scroll direction for mouse and trackpad, smooth wheel scrolling, and other jobs for extra mouse buttons.",
             symbol: "computermouse", category: .windowsInput, tier: .mvp,
-            permissions: [.accessibility], replaces: "Mos, LinearMouse"),
+            permissions: [.accessibility], replaces: "Mos, LinearMouse", isImplemented: true),
 
         // MARK: Tier 2 — power utilities
         .init(

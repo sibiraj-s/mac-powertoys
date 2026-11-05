@@ -41,7 +41,7 @@ struct ModuleCatalogTests {
         #expect(
             implemented == [
                 .zones, .clipboard, .awake, .systemToggles, .hostsEnv, .portsProcesses, .launchAgents, .colorPicker, .textExtractor,
-                .defaultsBrowser,
+                .defaultsBrowser, .scrollMouse,
             ])
     }
 }

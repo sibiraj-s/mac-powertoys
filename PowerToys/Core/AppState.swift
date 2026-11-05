@@ -19,6 +19,7 @@ final class AppState {
     let colorPicker: ColorPickerController
     let textExtractor: TextExtractorController
     let defaultsBrowser: DefaultsBrowserController
+    let scrollMouse: ScrollMouseController
 
     private(set) var enabledModules: Set<ModuleID>
 
@@ -60,6 +61,7 @@ final class AppState {
             explainAccess: { ScreenAccessAlert.show { permissions.openSettings(for: .screenRecording) } }
         )
         defaultsBrowser = DefaultsBrowserController(store: defaultsStore, backupDirectory: defaultsBackups)
+        scrollMouse = ScrollMouseController(defaults: defaults, isTrusted: { permissions.currentStatus(.accessibility) == .granted })
         if let stored = defaults.stringArray(forKey: Self.enabledModulesKey) {
             enabledModules = Set(stored.compactMap(ModuleID.init(rawValue:)))
         } else {
@@ -68,6 +70,7 @@ final class AppState {
         }
         if enabledModules.contains(.zones) { zones.start() }
         if enabledModules.contains(.clipboard) { clipboard.start() }
+        if enabledModules.contains(.scrollMouse) { scrollMouse.start() }
         updateModuleShortcuts()
     }
 
@@ -112,6 +115,7 @@ final class AppState {
         case .awake where !enabled: awake.stop()
         case .zones: enabled ? zones.start() : zones.stop()
         case .clipboard: enabled ? clipboard.start() : clipboard.stop()
+        case .scrollMouse: enabled ? scrollMouse.start() : scrollMouse.stop()
         default: break
         }
         updateModuleShortcuts()

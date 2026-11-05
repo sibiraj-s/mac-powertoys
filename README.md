@@ -15,9 +15,10 @@ It's a regular app with a Dock icon and a main window where each module has its 
 - **Launch Agents** – Browse agents and daemons, see what each runs and when, and load, unload, start, stop or restart them.
 - **Color Picker** – Pick any color on screen and copy it as HEX, RGB, HSL, HSB, SwiftUI, NSColor or UIColor. Keeps the last 24 colors.
 - **Text Extractor** – Select part of the screen or a window and copy its text, or read QR codes and barcodes. Recognition runs locally with Vision.
+- **Scroll & Mouse** – Reverse scrolling for the mouse wheel and trackpad separately, smooth wheel scrolling, and Back, Forward or any keys on the middle and side buttons.
 - **Defaults Browser** – Browse, edit and back up preference domains, copy keys as `defaults` commands, and flip well-known hidden settings for the Dock, Finder and more.
 
-12 more modules are listed in the app but not built yet.
+11 more modules are listed in the app but not built yet.
 
 ## Requirements
 
