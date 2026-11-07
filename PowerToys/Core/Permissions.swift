@@ -39,7 +39,7 @@ enum Permission: String, CaseIterable, Identifiable, Sendable {
         case .screenRecording: "Show window previews, pick colors and read text from the screen."
         case .inputMonitoring: "Listen for global shortcuts and remap keys."
         case .automation: "Ask System Events and Finder to switch settings such as dark mode and to empty the Trash."
-        case .fullDiskAccess: "See which process holds a file anywhere on disk."
+        case .fullDiskAccess: "See which process holds a file anywhere on disk, and clear data uninstalled apps left."
         case .microphone: "Mute and unmute the microphone globally."
         case .admin: "Edit system files such as /etc/hosts. Asked for each change."
         }
@@ -156,8 +156,26 @@ final class PermissionsService {
             CGPreflightScreenCaptureAccess() ? .granted : .denied
         case .inputMonitoring:
             IOHIDCheckAccess(kIOHIDRequestTypeListenEvent) == kIOHIDAccessTypeGranted ? .granted : .denied
-        case .automation, .fullDiskAccess, .microphone, .admin:
+        case .fullDiskAccess:
+            FullDiskAccess.isGranted() ? .granted : .denied
+        case .automation, .microphone, .admin:
             .unknown
+        }
+    }
+}
+
+/// macOS has no call for whether an app has Full Disk Access, but only with it can the app open
+/// the privacy database's own file.
+nonisolated enum FullDiskAccess {
+    static func isGranted(home: URL = FileManager.default.homeDirectoryForCurrentUser) -> Bool {
+        let database = home.appending(path: "Library/Application Support/com.apple.TCC/TCC.db")
+        if let handle = FileHandle(forReadingAtPath: database.path) {
+            try? handle.close()
+            return true
+        }
+        // Where that file is missing, folders only Full Disk Access can look into tell instead.
+        return ["Library/Safari", "Library/Mail"].contains { folder in
+            (try? FileManager.default.contentsOfDirectory(atPath: home.appending(path: folder).path)) != nil
         }
     }
 }

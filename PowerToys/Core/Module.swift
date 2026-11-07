@@ -4,7 +4,7 @@ enum ModuleID: String, CaseIterable, Identifiable, Codable, Sendable {
     // Tier 1 — MVP
     case zones, windowSwitcher, keys, menuBarManager, clipboard, awake, systemToggles, scrollMouse
     // Tier 2 — power utilities
-    case colorPicker, textExtractor, pinCrop, batchRename, fileLocksmith, finderExtras, displaysAudio
+    case colorPicker, textExtractor, pinCrop, batchRename, fileLocksmith, finderExtras, displaysAudio, cleaner
     // Tier 3 — dev & presenter
     case workspaces, portsProcesses, hostsEnv, launchAgents, defaultsBrowser, presenterKit, screenRuler
 
@@ -123,6 +123,11 @@ enum ModuleCatalog {
             summary: "External monitor brightness via DDC, per-app volume, output switching, global mic mute.",
             symbol: "speaker.wave.2", category: .system, tier: .utilities,
             permissions: [.microphone], replaces: "MonitorControl, SoundSource"),
+        .init(
+            id: .cleaner, name: "Cleaner",
+            summary: "See CPU, memory and disk use, quit the busiest processes, and delete caches, logs and build data to free space.",
+            symbol: "gauge.with.dots.needle.50percent", category: .system, tier: .utilities,
+            permissions: [.admin], replaces: "Mole, CleanMyMac, iStat Menus", isImplemented: true),
 
         // MARK: Tier 3 — dev & presenter
         .init(

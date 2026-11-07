@@ -25,14 +25,14 @@ struct PermissionTests {
 
     @Test func permissionsWithoutPreflightReportUnknown() {
         let service = PermissionsService()
-        for permission in [Permission.automation, .fullDiskAccess, .microphone, .admin] {
+        for permission in [Permission.automation, .microphone, .admin] {
             #expect(service.status(permission) == .unknown)
         }
     }
 
     @Test func checkablePermissionsReportAConcreteStatus() {
         let service = PermissionsService()
-        for permission in [Permission.accessibility, .screenRecording, .inputMonitoring] {
+        for permission in [Permission.accessibility, .screenRecording, .inputMonitoring, .fullDiskAccess] {
             #expect(service.status(permission) != .unknown)
         }
     }

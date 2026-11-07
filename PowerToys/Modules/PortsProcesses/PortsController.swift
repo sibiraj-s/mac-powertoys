@@ -42,7 +42,7 @@ nonisolated final class LivePortScanner: PortScanning, Sendable {
         let cached = cache.withLock { $0 }
         let details = ProcessDetails.details(
             for: Set(listeners.map(\.pid)), cached: cached,
-            startTime: ProcessDetails.startTime, read: ProcessDetails.read
+            startTime: ProcessStart.read, read: ProcessDetails.read
         )
         cache.withLock { $0 = details }
         return listeners.map { listener in

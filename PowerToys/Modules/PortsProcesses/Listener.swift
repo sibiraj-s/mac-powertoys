@@ -36,8 +36,7 @@ nonisolated struct Listener: Identifiable, Hashable, Sendable {
 
     /// Something macOS runs, rather than something you started.
     var isSystem: Bool {
-        guard let path = process?.path else { return false }
-        return ["/System/", "/usr/libexec/", "/usr/sbin/", "/Library/Apple/"].contains { path.hasPrefix($0) }
+        process?.path.map(SystemPaths.contains) ?? false
     }
 
     func matches(_ query: String) -> Bool {
@@ -195,13 +194,6 @@ nonisolated struct ProcessDetails: Hashable, Sendable {
             String(decoding: bytes.prefix { $0 != 0 }, as: UTF8.self)
         }
         return path.isEmpty ? nil : path
-    }
-
-    static func startTime(_ pid: pid_t) -> Date? {
-        var info = proc_bsdinfo()
-        let size = Int32(MemoryLayout<proc_bsdinfo>.size)
-        guard proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &info, size) == size, info.pbi_start_tvsec > 0 else { return nil }
-        return Date(timeIntervalSince1970: TimeInterval(info.pbi_start_tvsec) + TimeInterval(info.pbi_start_tvusec) / 1_000_000)
     }
 
     private static func arguments(_ pid: pid_t) -> [String]? {

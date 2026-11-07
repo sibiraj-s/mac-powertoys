@@ -20,6 +20,7 @@ final class AppState {
     let textExtractor: TextExtractorController
     let defaultsBrowser: DefaultsBrowserController
     let scrollMouse: ScrollMouseController
+    let cleaner: CleanerController
 
     private(set) var enabledModules: Set<ModuleID>
 
@@ -40,7 +41,8 @@ final class AppState {
         textReader: any ImageTextReading = LiveImageTextReader(),
         pasteboard: NSPasteboard = .general,
         defaultsStore: any DefaultsStoring = LiveDefaultsStore(),
-        defaultsBackups: URL? = DefaultsBrowserController.defaultBackupDirectory
+        defaultsBackups: URL? = DefaultsBrowserController.defaultBackupDirectory,
+        cleaner: CleanerController? = nil
     ) {
         self.defaults = defaults
         self.permissions = permissions ?? PermissionsService(defaults: defaults)
@@ -62,6 +64,7 @@ final class AppState {
         )
         defaultsBrowser = DefaultsBrowserController(store: defaultsStore, backupDirectory: defaultsBackups)
         scrollMouse = ScrollMouseController(defaults: defaults, isTrusted: { permissions.currentStatus(.accessibility) == .granted })
+        self.cleaner = cleaner ?? CleanerController(defaults: defaults)
         if let stored = defaults.stringArray(forKey: Self.enabledModulesKey) {
             enabledModules = Set(stored.compactMap(ModuleID.init(rawValue:)))
         } else {

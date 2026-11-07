@@ -168,7 +168,7 @@ struct ListenerTests {
     }
 
     @Test func readsThisProcess() {
-        let details = ProcessDetails.read(getpid(), started: ProcessDetails.startTime(getpid()))
+        let details = ProcessDetails.read(getpid(), started: ProcessStart.read(getpid()))
         #expect(details.path != nil)
         #expect(!details.arguments.isEmpty)
         #expect(details.started.map { $0 < .now } == true)

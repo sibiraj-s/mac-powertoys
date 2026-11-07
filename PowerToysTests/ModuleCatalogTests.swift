@@ -12,7 +12,7 @@ struct ModuleCatalogTests {
     @Test func tiersMatchTheFeatureMap() {
         let counts = Dictionary(grouping: ModuleCatalog.all, by: \.tier).mapValues(\.count)
         #expect(counts[.mvp] == 8)
-        #expect(counts[.utilities] == 7)
+        #expect(counts[.utilities] == 8)
         #expect(counts[.pro] == 7)
     }
 
@@ -41,7 +41,7 @@ struct ModuleCatalogTests {
         #expect(
             implemented == [
                 .zones, .clipboard, .awake, .systemToggles, .hostsEnv, .portsProcesses, .launchAgents, .colorPicker, .textExtractor,
-                .defaultsBrowser, .scrollMouse,
+                .defaultsBrowser, .scrollMouse, .cleaner,
             ])
     }
 }
