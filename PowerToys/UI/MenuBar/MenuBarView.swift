@@ -74,8 +74,23 @@ struct MenuBarView: View {
                         }
                     }
                 }
-                QuickToggle(title: "Pin window", subtitle: "Soon", symbol: "pin", isOn: false) {}
-                    .disabled(true)
+                if state.isEnabled(.pinCrop) {
+                    QuickToggle(title: "Pin window", subtitle: pinSubtitle, symbol: "pin", isOn: !state.pinCrop.pins.isEmpty) {
+                        // Out of the way, so the window under the menu can be picked too.
+                        window?.close()
+                        Task { await state.pinCrop.pick() }
+                    }
+                    .disabled(state.pinCrop.isPicking)
+                    .contextMenu {
+                        ForEach(state.pinCrop.pins) { pin in
+                            Button("Close \(pin.appName) pin") { state.pinCrop.close(pin) }
+                        }
+                        if !state.pinCrop.pins.isEmpty {
+                            Divider()
+                            Button("Close All") { state.pinCrop.closeAll() }
+                        }
+                    }
+                }
             }
 
             if state.isEnabled(.portsProcesses), state.ports.showsInMenuBar {
@@ -136,6 +151,12 @@ struct MenuBarView: View {
 
     private var grabSubtitle: String {
         state.shortcuts.hotKey(for: TextExtractorController.extractShortcut)?.keyCaps.joined() ?? "To clipboard"
+    }
+
+    private var pinSubtitle: String {
+        let count = state.pinCrop.pins.count
+        if count > 0 { return "\(count) pinned" }
+        return state.shortcuts.hotKey(for: PinCropController.pinShortcut)?.keyCaps.joined() ?? "Or crop"
     }
 
     private var awakeSubtitle: String {

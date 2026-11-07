@@ -21,6 +21,7 @@ final class AppState {
     let defaultsBrowser: DefaultsBrowserController
     let scrollMouse: ScrollMouseController
     let cleaner: CleanerController
+    let pinCrop: PinCropController
 
     private(set) var enabledModules: Set<ModuleID>
 
@@ -42,7 +43,8 @@ final class AppState {
         pasteboard: NSPasteboard = .general,
         defaultsStore: any DefaultsStoring = LiveDefaultsStore(),
         defaultsBackups: URL? = DefaultsBrowserController.defaultBackupDirectory,
-        cleaner: CleanerController? = nil
+        cleaner: CleanerController? = nil,
+        pinCrop: PinCropController? = nil
     ) {
         self.defaults = defaults
         self.permissions = permissions ?? PermissionsService(defaults: defaults)
@@ -59,12 +61,14 @@ final class AppState {
         let permissions = self.permissions
         textExtractor = TextExtractorController(
             defaults: defaults, capturer: regionCapture, reader: textReader, pasteboard: pasteboard,
-            requestAccess: { permissions.request(.screenRecording) },
-            explainAccess: { ScreenAccessAlert.show { permissions.openSettings(for: .screenRecording) } }
+            access: ScreenAccess(for: .textExtractor, permissions: permissions)
         )
         defaultsBrowser = DefaultsBrowserController(store: defaultsStore, backupDirectory: defaultsBackups)
         scrollMouse = ScrollMouseController(defaults: defaults, isTrusted: { permissions.currentStatus(.accessibility) == .granted })
         self.cleaner = cleaner ?? CleanerController(defaults: defaults)
+        self.pinCrop =
+            pinCrop
+            ?? PinCropController(access: ScreenAccess(for: .pinCrop, permissions: permissions))
         if let stored = defaults.stringArray(forKey: Self.enabledModulesKey) {
             enabledModules = Set(stored.compactMap(ModuleID.init(rawValue:)))
         } else {
@@ -77,13 +81,14 @@ final class AppState {
         updateModuleShortcuts()
     }
 
-    /// Awake, System Toggles, Color Picker and Text Extractor have no controller lifecycle of their own, so their shortcuts
+    /// Awake, System Toggles, Color Picker, Text Extractor and Pin & Crop have no controller lifecycle of their own, so their shortcuts
     /// follow the module switch here.
     private func updateModuleShortcuts() {
         var simple: [(ModuleID, ShortcutDefinition, () -> Void)] = [
             (.awake, AwakeController.toggleShortcut, { [weak self] in self?.awake.toggle() }),
             (.colorPicker, ColorPickerController.pickShortcut, { [weak self] in Task { await self?.colorPicker.pick() } }),
             (.textExtractor, TextExtractorController.extractShortcut, { [weak self] in Task { await self?.textExtractor.extract() } }),
+            (.pinCrop, PinCropController.pinShortcut, { [weak self] in Task { await self?.pinCrop.pick() } }),
         ]
         for toggle in SystemToggle.allCases {
             simple.append((.systemToggles, toggle.shortcut, { [weak self] in Task { await self?.systemToggles.perform(toggle) } }))
@@ -116,6 +121,7 @@ final class AppState {
         }
         switch id {
         case .awake where !enabled: awake.stop()
+        case .pinCrop where !enabled: pinCrop.stop()
         case .zones: enabled ? zones.start() : zones.stop()
         case .clipboard: enabled ? clipboard.start() : clipboard.stop()
         case .scrollMouse: enabled ? scrollMouse.start() : scrollMouse.stop()

@@ -163,7 +163,6 @@ struct TextRecognizerLineTests {
 }
 
 private final class FakeCapture: ScreenRegionCapturing {
-    var hasAccess = true
     var captures = 0
     /// Each capture writes an empty file here, so the controller's cleanup can be seen; nil cancels.
     var url: URL? = URL.temporaryDirectory.appending(path: "PowerToysTests-\(UUID().uuidString).png")
@@ -197,17 +196,22 @@ struct TextExtractorControllerTests {
     let alerts = Counter()
     let accessRequests = Counter()
     let accessExplanations = Counter()
+    let access = Access()
 
     final class Counter { var count = 0 }
+    final class Access { var isGranted = true }
 
     func makeController() -> TextExtractorController {
         let alerts = alerts
         let accessRequests = accessRequests
         let accessExplanations = accessExplanations
+        let access = access
         return TextExtractorController(
             defaults: store.defaults, capturer: capture, reader: reader, pasteboard: pasteboard,
-            alert: { alerts.count += 1 }, requestAccess: { accessRequests.count += 1 },
-            explainAccess: { accessExplanations.count += 1 },
+            alert: { alerts.count += 1 },
+            access: ScreenAccess(
+                isGranted: { access.isGranted }, request: { accessRequests.count += 1 },
+                explain: { accessExplanations.count += 1 }),
             supportedLanguages: { ["ja-Jpan-JP", "de-Latn-DE"] }
         )
     }
@@ -255,7 +259,7 @@ struct TextExtractorControllerTests {
     }
 
     @Test func asksForAccessInsteadOfCapturing() async {
-        capture.hasAccess = false
+        access.isGranted = false
         let controller = makeController()
 
         #expect(await controller.extract() == nil)
@@ -265,7 +269,7 @@ struct TextExtractorControllerTests {
     }
 
     @Test func asksOnceThenExplainsInsteadOfAskingAgain() async {
-        capture.hasAccess = false
+        access.isGranted = false
         let controller = makeController()
 
         await controller.extract()

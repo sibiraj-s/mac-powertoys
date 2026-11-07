@@ -83,4 +83,14 @@ struct PermissionRequestTests {
         #expect(recorder.prompts.isEmpty)
         #expect(recorder.opened == [permission.settingsURL])
     }
+
+    @Test func screenAccessChecksAndAsksThroughTheService() {
+        let recorder = Recorder()
+        // Only the first try: later ones explain with an alert.
+        #expect(!ScreenAccess(for: .pinCrop, permissions: makeService(recorder)).check())
+        #expect(recorder.prompts == [.screenRecording])
+
+        let granted = PermissionsService(defaults: store.defaults, check: { _ in .granted }, prompt: { _ in }, openURL: { _ in })
+        #expect(ScreenAccess(for: .pinCrop, permissions: granted).check())
+    }
 }

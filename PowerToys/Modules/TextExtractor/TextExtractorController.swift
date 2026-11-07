@@ -4,15 +4,12 @@ import Observation
 
 /// Lets the user select part of the screen and saves it as an image; a protocol so tests don't show it.
 protocol ScreenRegionCapturing {
-    var hasAccess: Bool { get }
     /// An image of the region selected, or nil when selecting was cancelled with Esc.
     func capture() async -> URL?
 }
 
 /// The system's own selection, as ⇧⌘4 shows: drag over a region, or press Space and click a window.
 struct LiveRegionCapture: ScreenRegionCapturing {
-    var hasAccess: Bool { CGPreflightScreenCaptureAccess() }
-
     func capture() async -> URL? {
         let url = URL.temporaryDirectory.appending(path: "PowerToys-text-\(UUID().uuidString).png")
         // -i selects interactively, -x without the shutter sound, -o without window shadows.
@@ -97,12 +94,8 @@ final class TextExtractorController {
     @ObservationIgnored private let reader: any ImageTextReading
     @ObservationIgnored private let pasteboard: NSPasteboard
     @ObservationIgnored private let alert: () -> Void
-    @ObservationIgnored private let requestAccess: () -> Void
-    @ObservationIgnored private let explainAccess: () -> Void
+    @ObservationIgnored private let access: ScreenAccess
     @ObservationIgnored private let supportedLanguages: () -> [String]
-    /// Access granted in System Settings only counts once the app is opened again, so after
-    /// asking once, presses explain that instead of asking again.
-    @ObservationIgnored private var hasRequestedAccess = false
 
     init(
         defaults: UserDefaults = .standard,
@@ -110,8 +103,7 @@ final class TextExtractorController {
         reader: any ImageTextReading = LiveImageTextReader(),
         pasteboard: NSPasteboard = .general,
         alert: @escaping () -> Void = { NSSound.beep() },
-        requestAccess: @escaping () -> Void = {},
-        explainAccess: @escaping () -> Void = {},
+        access: ScreenAccess,
         supportedLanguages: @escaping () -> [String] = { TextRecognizer.supportedLanguages }
     ) {
         self.defaults = defaults
@@ -119,8 +111,7 @@ final class TextExtractorController {
         self.reader = reader
         self.pasteboard = pasteboard
         self.alert = alert
-        self.requestAccess = requestAccess
-        self.explainAccess = explainAccess
+        self.access = access
         self.supportedLanguages = supportedLanguages
         defaults.register(defaults: [Self.correctsLanguageKey: true, Self.readsCodesKey: true])
         layout = defaults.string(forKey: Self.layoutKey).flatMap(TextLayout.init(rawValue:)) ?? .lines
@@ -141,13 +132,7 @@ final class TextExtractorController {
     @discardableResult
     func extract() async -> ExtractedText? {
         guard !isExtracting else { return nil }
-        guard capturer.hasAccess else {
-            if hasRequestedAccess {
-                explainAccess()
-            } else {
-                hasRequestedAccess = true
-                requestAccess()
-            }
+        guard access.check() else {
             lastOutcome = .needsAccess
             return nil
         }

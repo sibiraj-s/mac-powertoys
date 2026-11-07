@@ -60,6 +60,7 @@ struct ModuleDetailView: View {
         case .defaultsBrowser: DefaultsBrowserSettingsView()
         case .scrollMouse: ScrollMouseSettingsView()
         case .cleaner: CleanerSettingsView()
+        case .pinCrop: PinCropSettingsView()
         default: EmptyView()
         }
     }

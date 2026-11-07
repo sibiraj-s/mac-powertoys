@@ -100,9 +100,9 @@ enum ModuleCatalog {
             permissions: [.screenRecording], replaces: "TextSniper", isImplemented: true),
         .init(
             id: .pinCrop, name: "Pin & Crop",
-            summary: "Keep any window on top, or crop part of a window into a floating live thumbnail.",
+            summary: "Keep a live copy of any window on top of the others, or crop part of one into a floating thumbnail.",
             symbol: "pin", category: .windowsInput, tier: .utilities,
-            permissions: [.accessibility, .screenRecording], replaces: "No native option"),
+            permissions: [.screenRecording], replaces: "No native option", isImplemented: true),
         .init(
             id: .batchRename, name: "Batch Rename",
             summary: "Regex find and replace, case changes, numbering and EXIF dates, with preview and undo.",

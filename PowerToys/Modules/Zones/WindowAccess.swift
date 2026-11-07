@@ -28,6 +28,14 @@ struct AXWindow {
         return AXWindow(element: window, pid: pid)
     }
 
+    /// The app's window at `frame`, as the window list reports it. The list and Accessibility
+    /// share coordinates, and Accessibility has no public call from a window number to its window.
+    static func window(of pid: pid_t, at frame: CGRect) -> AXWindow? {
+        let app = AXUIElementCreateApplication(pid)
+        let windows: [AXUIElement] = app.value(of: kAXWindowsAttribute) ?? []
+        return windows.lazy.map { AXWindow(element: $0, pid: pid) }.first { $0.frame?.integral == frame.integral }
+    }
+
     var frame: CGRect? {
         guard let positionValue: AXValue = element.value(of: kAXPositionAttribute),
             let sizeValue: AXValue = element.value(of: kAXSizeAttribute)
@@ -47,6 +55,18 @@ struct AXWindow {
             setPosition(frame.origin)
             setSize(frame.size)
         }
+    }
+
+    func move(to origin: CGPoint) {
+        withoutEnhancedUserInterface { setPosition(origin) }
+    }
+
+    /// Restores the window if minimized, puts it in front of its app's other windows, and brings the app forward.
+    func raise() {
+        AXUIElementSetAttributeValue(element, kAXMinimizedAttribute as CFString, kCFBooleanFalse)
+        AXUIElementPerformAction(element, kAXRaiseAction as CFString)
+        AXUIElementSetAttributeValue(element, kAXMainAttribute as CFString, kCFBooleanTrue)
+        AXUIElementSetAttributeValue(AXUIElementCreateApplication(pid), kAXFrontmostAttribute as CFString, kCFBooleanTrue)
     }
 
     func setSize(_ size: CGSize) {

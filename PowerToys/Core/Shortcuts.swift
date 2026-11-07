@@ -22,6 +22,7 @@ enum ShortcutCatalog {
             + SystemToggle.allCases.map(\.shortcut)
             + [ColorPickerController.pickShortcut]
             + [TextExtractorController.extractShortcut]
+            + [PinCropController.pinShortcut]
     }
 }
 

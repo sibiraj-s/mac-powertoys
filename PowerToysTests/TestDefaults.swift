@@ -18,7 +18,9 @@ final class TestDefaults {
 
 extension AppState {
     /// An app state that touches no files, shortcuts or settings outside the test.
-    static func testing(defaults: UserDefaults, hotKeys: any HotKeyRegistering, system: any SystemSettingsAccess) -> AppState {
+    static func testing(
+        defaults: UserDefaults, hotKeys: any HotKeyRegistering, system: any SystemSettingsAccess, pinCrop: PinCropController? = nil
+    ) -> AppState {
         AppState(
             defaults: defaults,
             permissions: PermissionsService(defaults: defaults, check: { _ in .denied }, prompt: { _ in }, openURL: { _ in }),
@@ -26,7 +28,7 @@ extension AppState {
             hostsStore: FakeHostsStore(), hostsBackup: nil,
             environment: EnvironmentController(
                 loginShell: nil, sources: [.apps], probe: FakeProbe(), pathSources: { [:] }, exists: { _ in true }),
-            defaultsStore: FakeDefaultsStore(), defaultsBackups: nil
+            defaultsStore: FakeDefaultsStore(), defaultsBackups: nil, pinCrop: pinCrop
         )
     }
 }
