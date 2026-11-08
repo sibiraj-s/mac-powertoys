@@ -1,5 +1,11 @@
 # powertoys
 
+## 1.0.0
+
+### Major Changes
+
+- de99d1f: First stable release
+
 ## 0.1.0
 
 ### Minor Changes
