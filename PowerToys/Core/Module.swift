@@ -2,7 +2,7 @@ import Foundation
 
 enum ModuleID: String, CaseIterable, Identifiable, Codable, Sendable {
     // Tier 1 — MVP
-    case zones, windowSwitcher, keys, menuBarManager, clipboard, awake, systemToggles, scrollMouse
+    case zones, windowSwitcher, keys, clipboard, awake, systemToggles, scrollMouse
     // Tier 2 — power utilities
     case colorPicker, textExtractor, pinCrop, batchRename, fileLocksmith, finderExtras, displaysAudio, cleaner
     // Tier 3 — dev & presenter
@@ -61,11 +61,6 @@ enum ModuleCatalog {
             symbol: "keyboard", category: .windowsInput, tier: .mvp,
             permissions: [.accessibility], replaces: "Karabiner-Elements", isImplemented: true),
         .init(
-            id: .menuBarManager, name: "Menu Bar",
-            summary: "Hide, reorder and overflow menu bar icons that disappear behind the notch.",
-            symbol: "menubar.rectangle", category: .system, tier: .mvp,
-            permissions: [.accessibility, .screenRecording], replaces: "Ice, Bartender"),
-        .init(
             id: .clipboard, name: "Clipboard",
             summary:
                 "Searchable history of the text, images and files you copy. Pin and preview items, and paste as plain text, Markdown or JSON.",
@@ -122,9 +117,11 @@ enum ModuleCatalog {
             permissions: [], replaces: "OpenInTerminal"),
         .init(
             id: .displaysAudio, name: "Displays & Audio",
-            summary: "External monitor brightness via DDC, per-app volume, output switching, global mic mute.",
+            summary:
+                "Switch speakers and microphones, mute the microphone from a shortcut, set each app's volume, and change external displays' brightness and speaker volume.",
             symbol: "speaker.wave.2", category: .system, tier: .utilities,
-            permissions: [.microphone], replaces: "MonitorControl, SoundSource"),
+            // System Audio Recording is only for per-app volume, and is asked for when an app's volume is first changed.
+            permissions: [], replaces: "MonitorControl, SoundSource", isImplemented: true),
         .init(
             id: .cleaner, name: "Cleaner",
             summary: "See CPU, memory and disk use, quit the busiest processes, and delete caches, logs and build data to free space.",

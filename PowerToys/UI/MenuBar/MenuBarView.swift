@@ -46,8 +46,34 @@ struct MenuBarView: View {
                         state.clipboard.showHistory()
                     }
                 }
-                QuickToggle(title: "Mic", subtitle: "Soon", symbol: "mic", isOn: false) {}
-                    .disabled(true)
+                if state.isEnabled(.displaysAudio) {
+                    let audio = state.displaysAudio
+                    QuickToggle(
+                        title: "Mic",
+                        subtitle: audio.isMicMuted ? "Muted" : audio.muteProblem != nil ? "Can't mute" : audio.deviceName(.input),
+                        symbol: audio.isMicMuted ? "mic.slash" : "mic", isOn: audio.isMicMuted
+                    ) {
+                        audio.toggleMicMute()
+                    }
+                    .disabled(audio.defaultInput == nil)
+                    .contextMenu {
+                        ForEach(audio.inputs) { device in
+                            Button(device.name) { audio.select(device, for: .input) }
+                        }
+                    }
+                    QuickToggle(
+                        title: "Output", subtitle: audio.deviceName(.output),
+                        symbol: audio.currentOutput?.symbol ?? "speaker.wave.2", isOn: false
+                    ) {
+                        audio.selectNextOutput()
+                    }
+                    .disabled(audio.outputs.count < 2)
+                    .contextMenu {
+                        ForEach(audio.outputs) { device in
+                            Button(device.name) { audio.select(device, for: .output) }
+                        }
+                    }
+                }
                 if state.isEnabled(.colorPicker) {
                     QuickToggle(title: "Pick color", subtitle: pickSubtitle, symbol: "eyedropper", isOn: false) {
                         // Out of the way, so the color under the menu can be picked too.
@@ -121,6 +147,7 @@ struct MenuBarView: View {
 
     private func refresh() {
         state.systemToggles.refresh()
+        state.displaysAudio.refresh()
         if state.isEnabled(.portsProcesses), state.ports.showsInMenuBar {
             Task { await state.ports.refresh() }
         }

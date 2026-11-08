@@ -25,7 +25,7 @@ struct PermissionTests {
 
     @Test func permissionsWithoutPreflightReportUnknown() {
         let service = PermissionsService()
-        for permission in [Permission.automation, .microphone, .admin] {
+        for permission in [Permission.automation, .admin] {
             #expect(service.status(permission) == .unknown)
         }
     }
@@ -50,7 +50,7 @@ struct PermissionRequestTests {
     func makeService(_ recorder: Recorder) -> PermissionsService {
         PermissionsService(
             defaults: store.defaults, check: { _ in .denied },
-            prompt: { recorder.prompts.append($0) }, openURL: { recorder.opened.append($0) }
+            prompt: { permission, _ in recorder.prompts.append(permission) }, openURL: { recorder.opened.append($0) }
         )
     }
 
@@ -67,6 +67,30 @@ struct PermissionRequestTests {
         #expect(recorder.opened == [permission.settingsURL])
     }
 
+    @Test func saysWhenThePromptIsAnswered() {
+        var answer: (@MainActor @Sendable () -> Void)?
+        var checks = 0
+        let service = PermissionsService(
+            defaults: store.defaults,
+            check: { _ in
+                checks += 1
+                return .denied
+            },
+            prompt: { _, answered in answer = answered }, openURL: { _ in })
+        var answered = false
+        service.request(.audioCapture) { answered = true }
+        #expect(!answered)
+        let before = checks
+        answer?()
+        #expect(answered)
+        #expect(checks > before)  // read again once answered
+
+        // Asked before, so settings open instead, and it says so at once.
+        answered = false
+        service.request(.audioCapture) { answered = true }
+        #expect(answered)
+    }
+
     @Test func promptingForOneDoesNotCountForAnother() {
         let recorder = Recorder()
         let service = makeService(recorder)
@@ -76,7 +100,7 @@ struct PermissionRequestTests {
         #expect(recorder.opened.isEmpty)
     }
 
-    @Test(arguments: [Permission.automation, .fullDiskAccess, .microphone])
+    @Test(arguments: [Permission.automation, .fullDiskAccess])
     func withoutAPromptOpensSettingsStraightAway(permission: Permission) {
         let recorder = Recorder()
         makeService(recorder).request(permission)
@@ -90,7 +114,7 @@ struct PermissionRequestTests {
         #expect(!ScreenAccess(for: .pinCrop, permissions: makeService(recorder)).check())
         #expect(recorder.prompts == [.screenRecording])
 
-        let granted = PermissionsService(defaults: store.defaults, check: { _ in .granted }, prompt: { _ in }, openURL: { _ in })
+        let granted = PermissionsService(defaults: store.defaults, check: { _ in .granted }, prompt: { _, _ in }, openURL: { _ in })
         #expect(ScreenAccess(for: .pinCrop, permissions: granted).check())
     }
 }

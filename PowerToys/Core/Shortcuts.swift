@@ -24,6 +24,10 @@ enum ShortcutCatalog {
             + [TextExtractorController.extractShortcut]
             + [PinCropController.pinShortcut]
             + [WindowSwitcherController.switchShortcut]
+            + [
+                DisplaysAudioController.muteShortcut, DisplaysAudioController.nextOutputShortcut,
+                DisplaysAudioController.brightnessUpShortcut, DisplaysAudioController.brightnessDownShortcut,
+            ]
     }
 }
 

@@ -24,6 +24,7 @@ final class AppState {
     let cleaner: CleanerController
     let pinCrop: PinCropController
     let windowSwitcher: WindowSwitcherController
+    let displaysAudio: DisplaysAudioController
 
     private(set) var enabledModules: Set<ModuleID>
 
@@ -48,7 +49,8 @@ final class AppState {
         cleaner: CleanerController? = nil,
         pinCrop: PinCropController? = nil,
         keyMapping: any KeyMappingStore = LiveKeyMappingStore(),
-        windowSwitcher: WindowSwitcherController? = nil
+        windowSwitcher: WindowSwitcherController? = nil,
+        displaysAudio: DisplaysAudioController? = nil
     ) {
         self.defaults = defaults
         self.permissions = permissions ?? PermissionsService(defaults: defaults)
@@ -76,6 +78,7 @@ final class AppState {
             pinCrop
             ?? PinCropController(access: ScreenAccess(for: .pinCrop, permissions: permissions))
         self.windowSwitcher = windowSwitcher ?? WindowSwitcherController(defaults: defaults, shortcuts: shortcuts)
+        self.displaysAudio = displaysAudio ?? Self.makeDisplaysAudio(defaults: defaults, permissions: permissions)
         if let stored = defaults.stringArray(forKey: Self.enabledModulesKey) {
             enabledModules = Set(stored.compactMap(ModuleID.init(rawValue:)))
         } else {
@@ -86,10 +89,11 @@ final class AppState {
         if enabledModules.contains(.clipboard) { clipboard.start() }
         if enabledModules.contains(.scrollMouse) { scrollMouse.start() }
         if enabledModules.contains(.keys) { keys.start() }
+        if enabledModules.contains(.displaysAudio) { self.displaysAudio.start() }
         updateModuleShortcuts()
     }
 
-    /// Awake, System Toggles, Color Picker, Text Extractor, Pin & Crop and Window Switcher have no controller lifecycle of their own, so their shortcuts
+    /// Awake, System Toggles, Color Picker, Text Extractor, Pin & Crop, Window Switcher and Displays & Audio register no shortcuts of their own, so their shortcuts
     /// follow the module switch here.
     private func updateModuleShortcuts() {
         var simple: [(ModuleID, ShortcutDefinition, () -> Void)] = [
@@ -98,6 +102,16 @@ final class AppState {
             (.textExtractor, TextExtractorController.extractShortcut, { [weak self] in Task { await self?.textExtractor.extract() } }),
             (.pinCrop, PinCropController.pinShortcut, { [weak self] in Task { await self?.pinCrop.pick() } }),
             (.windowSwitcher, WindowSwitcherController.switchShortcut, { [weak self] in self?.windowSwitcher.trigger() }),
+            (.displaysAudio, DisplaysAudioController.muteShortcut, { [weak self] in self?.displaysAudio.toggleMicMute() }),
+            (.displaysAudio, DisplaysAudioController.nextOutputShortcut, { [weak self] in self?.displaysAudio.selectNextOutput() }),
+            (
+                .displaysAudio, DisplaysAudioController.brightnessUpShortcut,
+                { [weak self] in self?.displaysAudio.externalDisplays.step(.up) }
+            ),
+            (
+                .displaysAudio, DisplaysAudioController.brightnessDownShortcut,
+                { [weak self] in self?.displaysAudio.externalDisplays.step(.down) }
+            ),
         ]
         for toggle in SystemToggle.allCases {
             simple.append((.systemToggles, toggle.shortcut, { [weak self] in Task { await self?.systemToggles.perform(toggle) } }))
@@ -136,6 +150,7 @@ final class AppState {
         case .clipboard: enabled ? clipboard.start() : clipboard.stop()
         case .scrollMouse: enabled ? scrollMouse.start() : scrollMouse.stop()
         case .keys: enabled ? keys.start() : keys.stop()
+        case .displaysAudio: enabled ? displaysAudio.start() : displaysAudio.stop()
         default: break
         }
         updateModuleShortcuts()
@@ -166,5 +181,24 @@ final class AppState {
                 }
             }
         }
+    }
+}
+
+extension AppState {
+    /// The live Displays & Audio module, made only when one isn't passed in.
+    fileprivate static func makeDisplaysAudio(defaults: UserDefaults, permissions: PermissionsService) -> DisplaysAudioController {
+        let audioDevices = LiveAudioDevices(defaults: defaults)
+        return DisplaysAudioController(
+            devices: audioDevices,
+            appVolume: AppVolumeController(
+                defaults: defaults,
+                access: { permissions.currentStatus(.audioCapture) },
+                // Straight to macOS: its check can say "not asked" after access was allowed, and then
+                // a second request through the permissions service would open System Settings unasked.
+                requestAccess: { AudioCaptureAccess.request(answered: $0) },
+                openAccessSettings: { permissions.openSettings(for: .audioCapture) }),
+            externalDisplays: ExternalDisplaysController(
+                defaults: defaults, outputNeedsDDC: { audioDevices.outputNeedsDDC() },
+                isTrusted: { permissions.currentStatus(.accessibility) == .granted }))
     }
 }

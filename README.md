@@ -20,9 +20,10 @@ It's a regular app with a Dock icon and a main window where each module has its 
 - **Pin & Crop** – Keep a live copy of any window floating above the others, or drag over part of one to crop it into a live thumbnail. Pins follow you across Spaces; double-click one to bring its window forward, right-click for opacity.
 - **Window Switcher** – Switch between windows rather than apps, with previews, including minimized windows and those of hidden apps. Hold your shortcut's modifiers and tap its key to step through; let go to switch. Shows as a grid or a stack of cards, dims the screen around the selected window, and closes, minimizes, hides or quits from the keyboard.
 - **Keys** – Remap keys and shortcuts everywhere or in one app, or turn them off, and make Caps Lock Escape, Control or Hyper (⌃⌥⇧⌘), optionally Escape when tapped on its own.
+- **Displays & Audio** – Switch speakers and microphones from the menu bar or a shortcut, mute the microphone everywhere (it stays muted when you switch mics), set each app's volume or mute it, and change external displays' brightness and speaker volume over DDC on Apple silicon, optionally with the keyboard's brightness, volume and mute keys (and F14/F15 or a volume knob), showing macOS's own indicator.
 - **Defaults Browser** – Browse, edit and back up preference domains, copy keys as `defaults` commands, and flip well-known hidden settings for the Dock, Finder and more.
 
-8 more modules are listed in the app but not built yet.
+6 more modules are listed in the app but not built yet.
 
 ## Requirements
 

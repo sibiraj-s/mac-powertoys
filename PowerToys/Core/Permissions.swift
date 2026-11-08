@@ -5,7 +5,7 @@ import IOKit.hid
 import Observation
 
 enum Permission: String, CaseIterable, Identifiable, Sendable {
-    case accessibility, screenRecording, inputMonitoring, automation, fullDiskAccess, microphone, admin
+    case accessibility, screenRecording, inputMonitoring, automation, fullDiskAccess, audioCapture, admin
 
     var id: Self { self }
 
@@ -16,7 +16,7 @@ enum Permission: String, CaseIterable, Identifiable, Sendable {
         case .inputMonitoring: "Input Monitoring"
         case .automation: "Automation"
         case .fullDiskAccess: "Full Disk Access"
-        case .microphone: "Microphone"
+        case .audioCapture: "System Audio Recording"
         case .admin: "Administrator"
         }
     }
@@ -28,7 +28,7 @@ enum Permission: String, CaseIterable, Identifiable, Sendable {
         case .inputMonitoring: "keyboard.badge.eye"
         case .automation: "gearshape.arrow.triangle.2.circlepath"
         case .fullDiskAccess: "internaldrive"
-        case .microphone: "mic"
+        case .audioCapture: "waveform"
         case .admin: "lock.shield"
         }
     }
@@ -40,7 +40,7 @@ enum Permission: String, CaseIterable, Identifiable, Sendable {
         case .inputMonitoring: "Listen for global shortcuts and remap keys."
         case .automation: "Ask System Events and Finder to switch settings such as dark mode and to empty the Trash."
         case .fullDiskAccess: "See which process holds a file anywhere on disk, and clear data uninstalled apps left."
-        case .microphone: "Mute and unmute the microphone globally."
+        case .audioCapture: "Change the volume of each app by playing its sound through at the volume you set."
         case .admin: "Edit system files such as /etc/hosts. Asked for each change."
         }
     }
@@ -48,8 +48,8 @@ enum Permission: String, CaseIterable, Identifiable, Sendable {
     /// Whether macOS has a prompt of its own for it, shown once per app.
     var hasSystemPrompt: Bool {
         switch self {
-        case .accessibility, .screenRecording, .inputMonitoring: true
-        case .automation, .fullDiskAccess, .microphone, .admin: false
+        case .accessibility, .screenRecording, .inputMonitoring, .audioCapture: true
+        case .automation, .fullDiskAccess, .admin: false
         }
     }
 
@@ -62,7 +62,8 @@ enum Permission: String, CaseIterable, Identifiable, Sendable {
             case .inputMonitoring: "Privacy_ListenEvent"
             case .automation: "Privacy_Automation"
             case .fullDiskAccess: "Privacy_AllFiles"
-            case .microphone: "Privacy_Microphone"
+            // System Audio Recording Only is listed in the Screen & System Audio Recording pane.
+            case .audioCapture: "Privacy_ScreenCapture"
             case .admin: nil
             }
         return anchor.flatMap { URL(string: "x-apple.systempreferences:com.apple.preference.security?\($0)") }
@@ -83,13 +84,17 @@ final class PermissionsService {
 
     private let defaults: UserDefaults
     @ObservationIgnored private let check: (Permission) -> PermissionStatus
-    @ObservationIgnored private let prompt: (Permission) -> Void
+    /// Shows the system's prompt, then calls back on the main actor once it's answered, for the
+    /// prompts that say; others call back at once.
+    @ObservationIgnored private let prompt: (Permission, @escaping @MainActor @Sendable () -> Void) -> Void
     @ObservationIgnored private let openURL: (URL) -> Void
 
     init(
         defaults: UserDefaults = .standard,
         check: @escaping (Permission) -> PermissionStatus = { PermissionsService.check($0) },
-        prompt: @escaping (Permission) -> Void = { PermissionsService.prompt($0) },
+        prompt: @escaping (Permission, @escaping @MainActor @Sendable () -> Void) -> Void = {
+            PermissionsService.prompt($0, answered: $1)
+        },
         openURL: @escaping (URL) -> Void = { NSWorkspace.shared.open($0) }
     ) {
         self.defaults = defaults
@@ -116,16 +121,29 @@ final class PermissionsService {
 
     /// Shows the system's prompt the first time; after that macOS no longer shows it, so the
     /// permission's pane in System Settings opens instead.
-    func request(_ permission: Permission) {
-        var prompted = Set(defaults.stringArray(forKey: Self.promptedKey) ?? [])
-        if permission.hasSystemPrompt, !prompted.contains(permission.rawValue) {
-            prompted.insert(permission.rawValue)
-            defaults.set(prompted.sorted(), forKey: Self.promptedKey)
-            prompt(permission)
+    /// `answered` runs once the prompt is answered, or at once when System Settings opens instead.
+    func request(_ permission: Permission, answered: @escaping @MainActor @Sendable () -> Void = {}) {
+        if permission.hasSystemPrompt, !hasPrompted(permission) {
+            notePrompted(permission)
+            prompt(permission) { [weak self] in
+                self?.refresh()
+                answered()
+            }
         } else {
             openSettings(for: permission)
+            answered()
         }
         refresh()
+    }
+
+    private func hasPrompted(_ permission: Permission) -> Bool {
+        defaults.stringArray(forKey: Self.promptedKey)?.contains(permission.rawValue) ?? false
+    }
+
+    private func notePrompted(_ permission: Permission) {
+        var prompted = Set(defaults.stringArray(forKey: Self.promptedKey) ?? [])
+        prompted.insert(permission.rawValue)
+        defaults.set(prompted.sorted(), forKey: Self.promptedKey)
     }
 
     func openSettings(for permission: Permission) {
@@ -133,7 +151,8 @@ final class PermissionsService {
         openURL(url)
     }
 
-    static func prompt(_ permission: Permission) {
+    static func prompt(_ permission: Permission, answered: @escaping @MainActor @Sendable () -> Void) {
+        defer { if permission != .audioCapture { answered() } }
         switch permission {
         case .accessibility:
             // String literal instead of kAXTrustedCheckOptionPrompt, which isn't concurrency-safe in Swift 6.
@@ -143,7 +162,9 @@ final class PermissionsService {
             _ = CGRequestScreenCaptureAccess()
         case .inputMonitoring:
             _ = IOHIDRequestAccess(kIOHIDRequestTypeListenEvent)
-        case .automation, .fullDiskAccess, .microphone, .admin:
+        case .audioCapture:
+            AudioCaptureAccess.request(answered: answered)
+        case .automation, .fullDiskAccess, .admin:
             break
         }
     }
@@ -158,7 +179,9 @@ final class PermissionsService {
             IOHIDCheckAccess(kIOHIDRequestTypeListenEvent) == kIOHIDAccessTypeGranted ? .granted : .denied
         case .fullDiskAccess:
             FullDiskAccess.isGranted() ? .granted : .denied
-        case .automation, .microphone, .admin:
+        case .audioCapture:
+            AudioCaptureAccess.status()
+        case .automation, .admin:
             .unknown
         }
     }

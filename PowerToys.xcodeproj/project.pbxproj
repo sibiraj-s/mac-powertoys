@@ -332,6 +332,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = PowerToys;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_NSAppleEventsUsageDescription = "PowerToys uses System Events and Finder to switch system settings such as dark mode and to empty the Trash.";
+				INFOPLIST_KEY_NSAudioCaptureUsageDescription = "PowerToys plays each app's sound through at the volume you set for it.";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -363,6 +364,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = PowerToys;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_NSAppleEventsUsageDescription = "PowerToys uses System Events and Finder to switch system settings such as dark mode and to empty the Trash.";
+				INFOPLIST_KEY_NSAudioCaptureUsageDescription = "PowerToys plays each app's sound through at the volume you set for it.";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

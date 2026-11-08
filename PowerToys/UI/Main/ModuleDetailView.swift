@@ -63,6 +63,7 @@ struct ModuleDetailView: View {
         case .cleaner: CleanerSettingsView()
         case .pinCrop: PinCropSettingsView()
         case .windowSwitcher: WindowSwitcherSettingsView()
+        case .displaysAudio: DisplaysAudioSettingsView()
         default: EmptyView()
         }
     }
