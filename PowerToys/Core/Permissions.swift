@@ -35,8 +35,8 @@ enum Permission: String, CaseIterable, Identifiable, Sendable {
 
     var explanation: String {
         switch self {
-        case .accessibility: "Move and resize windows, read the menu bar and simulate key presses."
-        case .screenRecording: "Show window previews, pick colors and read text from the screen."
+        case .accessibility: "Move and resize windows, paste, and change what keys, scrolling and mouse buttons do."
+        case .screenRecording: "Show window previews and pins, read text from the screen and measure it."
         case .inputMonitoring: "Listen for global shortcuts and remap keys."
         case .automation: "Ask System Events and Finder to switch settings such as dark mode, empty the Trash and read Finder's selection."
         case .fullDiskAccess: "Clear data that uninstalled apps left in protected folders."

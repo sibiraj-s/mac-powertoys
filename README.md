@@ -24,7 +24,7 @@ It's a regular app with a Dock icon and a main window where each module has its 
 - **Batch Rename** – Rename many files at once with find and replace or regular expressions, `{name}`, `{n}` and `{date}` (when a photo was taken) in the new name, and case changes. The preview marks names that clash or can't be used; files can swap names, and the last rename can be undone.
 - **File Locksmith** – See which processes are using a file, folder or disk, such as one that won't eject, and quit or force quit them. Check as administrator to include system processes like Spotlight, then eject from the same page.
 - **Finder Extras** – New file in the folder Finder is showing, copy paths, open the selected folder in your terminal, and save resized copies of images, from a shortcut you assign or a PowerToys submenu in Finder's right-click menu (turn on the extension once in System Settings).
-- **Screen Ruler** – Freeze the screen and see the space between the nearest edges around the pointer, or drag over an area, then click to copy its size in points or pixels. The edge tolerance can be set.
+- **Screen Ruler** – Freeze the screen and see the space between the nearest edges around the pointer; click to copy it, or drag over an area to copy its size, in points or pixels. The edge tolerance can be set.
 - **Defaults Browser** – Browse, edit and back up preference domains, copy keys as `defaults` commands, and flip well-known hidden settings for the Dock, Finder and more.
 
 ## Requirements

@@ -45,7 +45,7 @@ enum ModuleCatalog {
         // MARK: Tier 1 — MVP
         .init(
             id: .zones, name: "Zones",
-            summary: "Snap windows into custom layouts per display. Hold ⇧ while dragging, or use shortcuts.",
+            summary: "Snap windows into halves, thirds or a grid, with a layout for each display. Hold ⇧ while dragging, or use shortcuts.",
             symbol: "rectangle.split.3x1", category: .windowsInput, tier: .mvp,
             permissions: [.accessibility], replaces: "Rectangle, Magnet", isImplemented: true),
         .init(
@@ -57,7 +57,8 @@ enum ModuleCatalog {
             permissions: [.accessibility], replaces: "AltTab", isImplemented: true),
         .init(
             id: .keys, name: "Keys",
-            summary: "Remap keys and shortcuts everywhere or in one app, and turn Caps Lock into Hyper, Escape or Control.",
+            summary:
+                "Remap keys and shortcuts or turn them off, everywhere or in one app, and turn Caps Lock into Hyper, Escape or Control.",
             symbol: "keyboard", category: .windowsInput, tier: .mvp,
             permissions: [.accessibility], replaces: "Karabiner-Elements", isImplemented: true),
         .init(
@@ -68,17 +69,19 @@ enum ModuleCatalog {
             permissions: [.accessibility], replaces: "Maccy, Paste", isImplemented: true),
         .init(
             id: .awake, name: "Awake",
-            summary: "Keep the Mac awake indefinitely, for a set time or until a time of day. Right-click the menu bar tile for durations.",
+            summary: "Keep the Mac awake indefinitely, for a set time or until a time of day, with or without the display on.",
             symbol: "cup.and.saucer", category: .system, tier: .mvp,
             permissions: [], replaces: "Amphetamine, caffeinate", isImplemented: true),
         .init(
             id: .systemToggles, name: "System Toggles",
-            summary: "Dark mode, hiding the Dock or desktop icons, hidden files, Wi‑Fi and quick actions, from a shortcut or the menu bar.",
+            summary:
+                "Switch dark mode, Dock and menu bar hiding, desktop icons, hidden files and Wi‑Fi, or eject disks and empty the Trash, from a shortcut or the menu bar.",
             symbol: "switch.2", category: .system, tier: .mvp,
             permissions: [.automation], replaces: "One Switch, Shortcuts", isImplemented: true),
         .init(
             id: .scrollMouse, name: "Scroll & Mouse",
-            summary: "Separate scroll direction for mouse and trackpad, smooth wheel scrolling, and other jobs for extra mouse buttons.",
+            summary:
+                "Set the scroll direction separately for the mouse and trackpad, smooth out wheel scrolling, and make extra mouse buttons go Back, Forward or press keys.",
             symbol: "computermouse", category: .windowsInput, tier: .mvp,
             permissions: [.accessibility], replaces: "Mos, LinearMouse", isImplemented: true),
 
@@ -86,18 +89,18 @@ enum ModuleCatalog {
         .init(
             id: .colorPicker, name: "Color Picker",
             summary:
-                "Pick any color on screen with a magnifier, from a shortcut or the menu bar. Copy it as HEX, RGB, HSL or SwiftUI and AppKit code.",
+                "Pick any color on screen with a magnifier, from a shortcut or the menu bar. Copy it as HEX, RGB, HSL, HSB, or SwiftUI, AppKit or UIKit code.",
             symbol: "eyedropper", category: .tools, tier: .utilities,
             permissions: [], replaces: "Digital Color Meter", isImplemented: true),
         .init(
             id: .textExtractor, name: "Text Extractor",
             summary:
-                "Select any part of the screen and copy the text in it, from a shortcut or the menu bar. Reads QR codes and barcodes too.",
+                "Select part of the screen or a window and copy the text in it, from a shortcut or the menu bar. Reads QR codes and barcodes too.",
             symbol: "text.viewfinder", category: .tools, tier: .utilities,
             permissions: [.screenRecording], replaces: "TextSniper", isImplemented: true),
         .init(
             id: .pinCrop, name: "Pin & Crop",
-            summary: "Keep a live copy of any window on top of the others, or crop part of one into a floating thumbnail.",
+            summary: "Keep a live copy of a window, or just part of one, floating above the others on every Space.",
             symbol: "pin", category: .windowsInput, tier: .utilities,
             permissions: [.screenRecording], replaces: "No native option", isImplemented: true),
         .init(
@@ -114,7 +117,7 @@ enum ModuleCatalog {
         .init(
             id: .finderExtras, name: "Finder Extras",
             summary:
-                "Make a new file in the folder Finder is showing, copy paths, open folders in a terminal and resize images, from shortcuts.",
+                "Make a new file in the folder Finder is showing, copy paths, open folders in a terminal and resize images, from shortcuts or Finder's right-click menu.",
             symbol: "folder.badge.gearshape", category: .tools, tier: .utilities,
             permissions: [.automation], replaces: "OpenInTerminal", isImplemented: true),
         .init(
@@ -126,7 +129,8 @@ enum ModuleCatalog {
             permissions: [], replaces: "MonitorControl, SoundSource", isImplemented: true),
         .init(
             id: .cleaner, name: "Cleaner",
-            summary: "See CPU, memory and disk use, quit the busiest processes, and delete caches, logs and build data to free space.",
+            summary:
+                "See CPU, memory and disk use, quit the busiest processes, and free space by deleting caches, logs, build data and what uninstalled apps left behind.",
             symbol: "gauge.with.dots.needle.50percent", category: .system, tier: .utilities,
             permissions: [.admin], replaces: "Mole, CleanMyMac, iStat Menus", isImplemented: true),
 
