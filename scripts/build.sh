@@ -119,9 +119,11 @@ if codesign -d --entitlements - --xml "$app" 2>/dev/null | grep -q get-task-allo
 fi
 if [[ -n "$team" ]]; then
     # Notarization rejects code without the hardened runtime or a secure timestamp.
-    details="$(codesign -dvv "$app" 2>&1)"
-    grep -q "flags=.*runtime" <<<"$details" || { echo "error: no hardened runtime on $app" >&2; exit 1; }
-    grep -q "^Timestamp=" <<<"$details" || { echo "error: no secure timestamp on $app" >&2; exit 1; }
+    for code in "$app" "$app"/Contents/PlugIns/*.appex; do
+        details="$(codesign -dvv "$code" 2>&1)"
+        grep -q "flags=.*runtime" <<<"$details" || { echo "error: no hardened runtime on $code" >&2; exit 1; }
+        grep -q "^Timestamp=" <<<"$details" || { echo "error: no secure timestamp on $code" >&2; exit 1; }
+    done
 fi
 
 echo "==> Packaging $dmg"
