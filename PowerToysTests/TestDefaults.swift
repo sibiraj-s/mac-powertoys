@@ -37,3 +37,12 @@ extension AppState {
         )
     }
 }
+
+/// Waits like a stuck tool: it doesn't notice cancellation. Unlike usleep it doesn't hold one of
+/// Swift's concurrency threads, which are as few as the cores; on a CI runner a few of those at
+/// once stall every other test.
+nonisolated func stall(seconds: Double) async {
+    await withCheckedContinuation { continuation in
+        DispatchQueue.global().asyncAfter(deadline: .now() + seconds) { continuation.resume() }
+    }
+}

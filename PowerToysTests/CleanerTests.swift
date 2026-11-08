@@ -857,7 +857,7 @@ struct CleanerControllerTests {
     @Test func theTaggedImagesSwitchTakesAndRescansAfterTheScan() async throws {
         let lookups = Mutex(0)
         let slow = DockerCLI(path: "/usr/local/bin/docker") { _, _ in
-            usleep(300_000)
+            await stall(seconds: 0.3)
             return Command.Output(status: 1, stdout: "", stderr: "")
         }
         let controller = CleanerController.testing(
@@ -897,7 +897,7 @@ struct CleanerControllerTests {
             switch arguments.first {
             case "context": return Command.Output(status: 0, stdout: "unix:///var/run/docker.sock\n", stderr: "")
             case "image", "builder":
-                usleep(3_000_000)
+                await stall(seconds: 3)
                 return Command.Output(status: 0, stdout: "", stderr: "")
             default:
                 let images = #"[{"Containers":"0","Repository":"<none>","Size":"1GB","UniqueSize":"1GB"}]"#
@@ -921,7 +921,7 @@ struct CleanerControllerTests {
     @Test func aScanAskedForMidScanFollowsIt() async throws {
         let lookups = Mutex(0)
         let slow = DockerCLI(path: "/usr/local/bin/docker") { _, _ in
-            usleep(200_000)
+            await stall(seconds: 0.2)
             return Command.Output(status: 1, stdout: "", stderr: "")
         }
         let controller = CleanerController.testing(
@@ -941,7 +941,7 @@ struct CleanerControllerTests {
         let home = try makeHome(["Library/Caches/a/x": 100])
         defer { try? FileManager.default.removeItem(at: home) }
         let slow = DockerCLI(path: "/usr/local/bin/docker") { _, _ in
-            usleep(300_000)
+            await stall(seconds: 0.3)
             return Command.Output(status: 1, stdout: "", stderr: "")
         }
         let controller = CleanerController.testing(home: home, docker: slow)
@@ -1009,7 +1009,7 @@ struct CleanerControllerTests {
             switch arguments.first {
             case "context": return Command.Output(status: 0, stdout: "unix:///var/run/docker.sock\n", stderr: "")
             case "image", "builder":
-                usleep(1_000_000)
+                await stall(seconds: 1)
                 return Command.Output(status: 0, stdout: "", stderr: "")
             default:
                 if arguments.contains("-v") { scans.withLock { $0 += 1 } }
@@ -1069,7 +1069,7 @@ struct CleanerControllerTests {
 
     @Test func leavingThePageStopsTheFirstScan() async throws {
         let stuck = DockerCLI(path: "/usr/local/bin/docker") { _, _ in
-            usleep(3_000_000)
+            await stall(seconds: 3)
             return Command.Output(status: 0, stdout: "", stderr: "")
         }
         let controller = CleanerController.testing(docker: stuck)
@@ -1103,7 +1103,7 @@ struct CleanerControllerTests {
 
     @Test func comingBackFinishesAPartScanAndFindsDockerAgain() async throws {
         let stuck = DockerCLI(path: "/usr/local/bin/docker") { _, _ in
-            usleep(3_000_000)
+            await stall(seconds: 3)
             return Command.Output(status: 0, stdout: "", stderr: "")
         }
         // Docker is looked for at each scan: stuck the first time, then uninstalled.
@@ -1183,7 +1183,7 @@ struct CleanerControllerTests {
 
     @Test func wontCleanWhileScanning() async throws {
         let stuck = DockerCLI(path: "/usr/local/bin/docker") { _, _ in
-            usleep(500_000)
+            await stall(seconds: 0.5)
             return Command.Output(status: 1, stdout: "", stderr: "")
         }
         let controller = CleanerController.testing(docker: stuck)
@@ -1196,7 +1196,7 @@ struct CleanerControllerTests {
 
     @Test func aScanThatTakesTooLongKeepsTheOldListAndTriesAgain() async throws {
         let stuck = DockerCLI(path: "/usr/local/bin/docker") { _, _ in
-            usleep(1_000_000)
+            await stall(seconds: 1)
             return Command.Output(status: 0, stdout: "", stderr: "")
         }
         // Not installed, then stuck, then not installed again.
@@ -1282,7 +1282,7 @@ struct CleanerControllerTests {
     @Test func aStuckScanDoesntHoldUpTheRest() async throws {
         // A Docker that blocks without noticing it's been cancelled, like a stalled disk.
         let stuck = DockerCLI(path: "/usr/local/bin/docker") { _, _ in
-            usleep(3_000_000)
+            await stall(seconds: 3)
             return Command.Output(status: 0, stdout: "", stderr: "")
         }
         let controller = CleanerController.testing(docker: stuck, scanTimeout: .milliseconds(200))
@@ -1688,4 +1688,10 @@ struct AppLeftoversTests {
         // The unticked one stays.
         #expect(exists(home, "Library/Preferences/com.gone.App.plist"))
     }
+}
+
+/// Waits like a stuck command: it doesn't notice being cancelled, yet holds no thread, so the
+/// other tests running alongside keep theirs (`usleep` here starves them on small machines).
+nonisolated func stall(_ duration: Duration) async {
+    await Task { try? await Task.sleep(for: duration) }.value
 }
