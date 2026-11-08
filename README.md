@@ -15,7 +15,7 @@ It's a regular app with a Dock icon and a main window where each module has its 
 - **Launch Agents** – Browse agents and daemons, see what each runs and when, and load, unload, start, stop or restart them.
 - **Color Picker** – Pick any color on screen and copy it as HEX, RGB, HSL, HSB, SwiftUI, NSColor or UIColor. Keeps the last 24 colors.
 - **Text Extractor** – Select part of the screen or a window and copy its text, or read QR codes and barcodes. Recognition runs locally with Vision.
-- **Cleaner** – CPU, memory and disk use at a glance, quit the busiest processes, free inactive memory, and delete caches, logs, Xcode and package build data, and unused Docker images and build cache, with a list to untick anything you want to keep. Data left by apps you uninstalled can be moved to the Trash, item by item.
+- **Cleaner** – CPU, memory and disk use at a glance, quit the busiest processes, and delete caches, logs, Xcode and package build data, and unused Docker images and build cache, with a list to untick anything you want to keep. Data left by apps you uninstalled can be moved to the Trash, item by item.
 - **Scroll & Mouse** – Reverse scrolling for the mouse wheel and trackpad separately, smooth wheel scrolling, and Back, Forward or any keys on the middle and side buttons.
 - **Pin & Crop** – Keep a live copy of any window floating above the others, or drag over part of one to crop it into a live thumbnail. Pins follow you across Spaces; double-click one to bring its window forward, right-click for opacity.
 - **Window Switcher** – Switch between windows rather than apps, with previews, including minimized windows and those of hidden apps. Hold your shortcut's modifiers and tap its key to step through; let go to switch. Shows as a grid or a stack of cards, dims the screen around the selected window, and closes, minimizes, hides or quits from the keyboard.
@@ -24,9 +24,8 @@ It's a regular app with a Dock icon and a main window where each module has its 
 - **Batch Rename** – Rename many files at once with find and replace or regular expressions, `{name}`, `{n}` and `{date}` (when a photo was taken) in the new name, and case changes. The preview marks names that clash or can't be used; files can swap names, and the last rename can be undone.
 - **File Locksmith** – See which processes are using a file, folder or disk, such as one that won't eject, and quit or force quit them. Check as administrator to include system processes like Spotlight, then eject from the same page.
 - **Finder Extras** – New file in the folder Finder is showing, copy paths, open the selected folder in your terminal, and save resized copies of images, from a shortcut you assign or a PowerToys submenu in Finder's right-click menu (turn on the extension once in System Settings).
+- **Screen Ruler** – Freeze the screen and see the space between the nearest edges around the pointer, or drag over an area, then click to copy its size in points or pixels. The edge tolerance can be set.
 - **Defaults Browser** – Browse, edit and back up preference domains, copy keys as `defaults` commands, and flip well-known hidden settings for the Dock, Finder and more.
-
-6 more modules are listed in the app but not built yet.
 
 ## Requirements
 

@@ -5,8 +5,8 @@ enum ModuleID: String, CaseIterable, Identifiable, Codable, Sendable {
     case zones, windowSwitcher, keys, clipboard, awake, systemToggles, scrollMouse
     // Tier 2 — power utilities
     case colorPicker, textExtractor, pinCrop, batchRename, fileLocksmith, finderExtras, displaysAudio, cleaner
-    // Tier 3 — dev & presenter
-    case workspaces, portsProcesses, hostsEnv, launchAgents, defaultsBrowser, presenterKit, screenRuler
+    // Tier 3 — developer
+    case portsProcesses, hostsEnv, launchAgents, defaultsBrowser, screenRuler
 
     var id: Self { self }
 }
@@ -15,7 +15,7 @@ enum ModuleCategory: String, CaseIterable, Identifiable {
     case windowsInput = "Windows & input"
     case system = "System"
     case tools = "Tools"
-    case developer = "Dev & presenter"
+    case developer = "Developer"
 
     var id: Self { self }
 }
@@ -130,12 +130,7 @@ enum ModuleCatalog {
             symbol: "gauge.with.dots.needle.50percent", category: .system, tier: .utilities,
             permissions: [.admin], replaces: "Mole, CleanMyMac, iStat Menus", isImplemented: true),
 
-        // MARK: Tier 3 — dev & presenter
-        .init(
-            id: .workspaces, name: "Workspaces",
-            summary: "Launch a saved set of apps, URLs and terminals into a Zones layout in one action.",
-            symbol: "square.grid.2x2", category: .developer, tier: .pro,
-            permissions: [.accessibility], replaces: "Moom"),
+        // MARK: Tier 3 — developer
         .init(
             id: .portsProcesses, name: "Ports & Processes",
             summary:
@@ -161,15 +156,10 @@ enum ModuleCatalog {
             symbol: "list.bullet.rectangle", category: .developer, tier: .pro,
             permissions: [], replaces: "defaults CLI", isImplemented: true),
         .init(
-            id: .presenterKit, name: "Presenter Kit",
-            summary: "Zoom, draw on screen, keystroke overlay, click rings and cursor spotlight.",
-            symbol: "rectangle.inset.filled.and.person.filled", category: .developer, tier: .pro,
-            permissions: [.accessibility, .screenRecording], replaces: "Presentify, KeyCastr"),
-        .init(
             id: .screenRuler, name: "Screen Ruler",
-            summary: "Measure pixels between edges. Hold ⌘ for the frontmost app's shortcut cheat sheet.",
+            summary: "Measure the space between edges on screen, or drag over an area, and copy its size in points or pixels.",
             symbol: "ruler", category: .developer, tier: .pro,
-            permissions: [.accessibility, .screenRecording], replaces: "xScope, KeyClu"),
+            permissions: [.screenRecording], replaces: "xScope", isImplemented: true),
     ]
 
     private static let byID = Dictionary(uniqueKeysWithValues: all.map { ($0.id, $0) })

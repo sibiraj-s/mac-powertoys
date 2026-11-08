@@ -3,7 +3,7 @@ import Observation
 import Synchronization
 
 /// Shows how much processor, memory and disk the Mac is using, kept up to date while it's on
-/// screen, and frees them: quitting busy processes, purging inactive memory and deleting caches.
+/// screen, and frees them: quitting busy processes and deleting caches.
 @Observable
 final class CleanerController {
     /// How busy all cores were over the last refresh, from 0 to 1.
@@ -16,7 +16,7 @@ final class CleanerController {
     private(set) var memoryHistory: [Double] = []
     /// Why usage couldn't be read, until a reading works.
     private(set) var readError: String?
-    /// Why the last quit or memory purge failed.
+    /// Why the last quit failed.
     private(set) var actionError: String?
     /// Whether the last scan couldn't tell which files are in use, so it left everything alone.
     private(set) var cantCheckActivity = false
@@ -24,7 +24,7 @@ final class CleanerController {
     var error: String? {
         actionError ?? readError ?? (cantCheckActivity ? Self.unknownActivityError : nil)
     }
-    /// What the last cleanup or memory purge did.
+    /// What the last cleanup did.
     private(set) var result: String?
 
     /// What each cleanup target holds, once scanned.
@@ -57,7 +57,6 @@ final class CleanerController {
     private(set) var scannedAt: Date?
     private(set) var isScanning = false
     private(set) var isCleaning = false
-    private(set) var isFreeingMemory = false
     /// Processes asked to quit, until they're gone.
     private(set) var quitting: Set<pid_t> = []
     var selected: Set<CleanupTarget> = CleanupTarget.selectedByDefault {
@@ -88,7 +87,6 @@ final class CleanerController {
     @ObservationIgnored private let home: URL
     @ObservationIgnored private let sampler: any UsageSampling
     @ObservationIgnored private let signaling: any ProcessSignaling
-    @ObservationIgnored private let purgeMemory: () async throws -> Void
     @ObservationIgnored private let readActivity: @Sendable () async -> ActivitySnapshot
     /// How long an asked process gets before it's offered a quit again, as an app can cancel
     /// quitting at its save prompt.
@@ -117,9 +115,6 @@ final class CleanerController {
         home: URL = FileManager.default.homeDirectoryForCurrentUser,
         sampler: any UsageSampling = LiveUsageSampler(),
         signaling: any ProcessSignaling = LiveProcessSignaling(),
-        purgeMemory: @escaping () async throws -> Void = {
-            try await Command.runAsAdministrator("/usr/sbin/purge", prompt: "PowerToys wants to free inactive memory.")
-        },
         readActivity: @escaping @Sendable () async -> ActivitySnapshot = { await ActivitySnapshot.read() },
         quitTimeout: Duration = .seconds(5),
         cleanupLog: URL? = CleanerController.defaultCleanupLog,
@@ -147,7 +142,6 @@ final class CleanerController {
         self.home = home
         self.sampler = sampler
         self.signaling = signaling
-        self.purgeMemory = purgeMemory
         updateSizes()
     }
 
@@ -270,25 +264,6 @@ final class CleanerController {
         quitDeadlines[process.pid] = .now + quitTimeout
     }
 
-    /// Runs `purge`, which needs an administrator password, to drop the disk cache macOS keeps in
-    /// memory.
-    func freeMemory() async {
-        guard !isFreeingMemory else { return }
-        isFreeingMemory = true
-        defer { isFreeingMemory = false }
-        do {
-            try await purgeMemory()
-            actionError = nil
-            // purge drops the file cache, which memory in use doesn't count, so there's no
-            // honest before-and-after number to show.
-            result = "Freed inactive memory."
-        } catch is CancellationError {
-            return
-        } catch {
-            actionError = "Couldn't free memory: \(error.localizedDescription)"
-        }
-    }
-
     // MARK: Cleanup
 
     /// The space cleaning frees in each target, once scanned, leaving out kept items. Worked out
@@ -396,7 +371,7 @@ final class CleanerController {
             canChangeAppContainers: readsApps && fullDiskAccess())
     }
 
-    /// Hides the last result and quit or purge error. Usage problems stay until they're gone.
+    /// Hides the last result and quit error. Usage problems stay until they're gone.
     func dismissMessage() {
         result = nil
         actionError = nil

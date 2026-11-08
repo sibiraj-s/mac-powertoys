@@ -100,6 +100,18 @@ struct MenuBarView: View {
                         }
                     }
                 }
+                if state.isEnabled(.screenRuler) {
+                    QuickToggle(title: "Measure", subtitle: measureSubtitle, symbol: "ruler", isOn: false) {
+                        // Out of the way, so what's under the menu can be measured too, and gone
+                        // from the screen before it's captured.
+                        window?.close()
+                        Task {
+                            try? await Task.sleep(for: .milliseconds(250))
+                            await state.screenRuler.measure()
+                        }
+                    }
+                    .disabled(state.screenRuler.isMeasuring)
+                }
                 if state.isEnabled(.pinCrop) {
                     QuickToggle(title: "Pin window", subtitle: pinSubtitle, symbol: "pin", isOn: !state.pinCrop.pins.isEmpty) {
                         // Out of the way, so the window under the menu can be picked too.
@@ -178,6 +190,12 @@ struct MenuBarView: View {
 
     private var grabSubtitle: String {
         state.shortcuts.hotKey(for: TextExtractorController.extractShortcut)?.keyCaps.joined() ?? "To clipboard"
+    }
+
+    private var measureSubtitle: String {
+        let ruler = state.screenRuler
+        if let latest = ruler.latest { return latest.text(in: ruler.unit) }
+        return state.shortcuts.hotKey(for: ScreenRulerController.measureShortcut)?.keyCaps.joined() ?? "Edges"
     }
 
     private var pinSubtitle: String {

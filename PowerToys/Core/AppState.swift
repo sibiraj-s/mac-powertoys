@@ -28,6 +28,7 @@ final class AppState {
     let batchRename: BatchRenameController
     let locksmith: LocksmithController
     let finderExtras: FinderExtrasController
+    let screenRuler: ScreenRulerController
 
     private(set) var enabledModules: Set<ModuleID>
 
@@ -55,7 +56,8 @@ final class AppState {
         windowSwitcher: WindowSwitcherController? = nil,
         displaysAudio: DisplaysAudioController? = nil,
         finder: any FinderAccess = LiveFinder(),
-        locksmith: LocksmithController? = nil
+        locksmith: LocksmithController? = nil,
+        screenRuler: ScreenRulerController? = nil
     ) {
         self.defaults = defaults
         self.permissions = permissions ?? PermissionsService(defaults: defaults)
@@ -87,6 +89,10 @@ final class AppState {
         batchRename = BatchRenameController(defaults: defaults, finder: finder)
         self.locksmith = locksmith ?? LocksmithController(finder: finder)
         finderExtras = FinderExtrasController(defaults: defaults, finder: finder, pasteboard: pasteboard)
+        self.screenRuler =
+            screenRuler
+            ?? ScreenRulerController(
+                defaults: defaults, pasteboard: pasteboard, access: ScreenAccess(for: .screenRuler, permissions: permissions))
         if let stored = defaults.stringArray(forKey: Self.enabledModulesKey) {
             enabledModules = Set(stored.compactMap(ModuleID.init(rawValue:)))
         } else {
@@ -101,7 +107,7 @@ final class AppState {
         updateModuleShortcuts()
     }
 
-    /// Awake, System Toggles, Color Picker, Text Extractor, Pin & Crop, Window Switcher, Displays & Audio and Finder Extras register no shortcuts of their own, so their shortcuts
+    /// Awake, System Toggles, Color Picker, Text Extractor, Pin & Crop, Screen Ruler, Window Switcher, Displays & Audio and Finder Extras register no shortcuts of their own, so their shortcuts
     /// follow the module switch here.
     private func updateModuleShortcuts() {
         var simple: [(ModuleID, ShortcutDefinition, () -> Void)] = [
@@ -109,6 +115,7 @@ final class AppState {
             (.colorPicker, ColorPickerController.pickShortcut, { [weak self] in Task { await self?.colorPicker.pick() } }),
             (.textExtractor, TextExtractorController.extractShortcut, { [weak self] in Task { await self?.textExtractor.extract() } }),
             (.pinCrop, PinCropController.pinShortcut, { [weak self] in Task { await self?.pinCrop.pick() } }),
+            (.screenRuler, ScreenRulerController.measureShortcut, { [weak self] in Task { await self?.screenRuler.measure() } }),
             (.windowSwitcher, WindowSwitcherController.switchShortcut, { [weak self] in self?.windowSwitcher.trigger() }),
             (.displaysAudio, DisplaysAudioController.muteShortcut, { [weak self] in self?.displaysAudio.toggleMicMute() }),
             (.displaysAudio, DisplaysAudioController.nextOutputShortcut, { [weak self] in self?.displaysAudio.selectNextOutput() }),
@@ -162,6 +169,7 @@ final class AppState {
         switch id {
         case .awake where !enabled: awake.stop()
         case .pinCrop where !enabled: pinCrop.stop()
+        case .screenRuler where !enabled: screenRuler.cancel()
         case .windowSwitcher where !enabled: windowSwitcher.cancel()
         case .zones: enabled ? zones.start() : zones.stop()
         case .clipboard: enabled ? clipboard.start() : clipboard.stop()

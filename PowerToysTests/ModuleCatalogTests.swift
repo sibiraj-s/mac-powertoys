@@ -13,7 +13,7 @@ struct ModuleCatalogTests {
         let counts = Dictionary(grouping: ModuleCatalog.all, by: \.tier).mapValues(\.count)
         #expect(counts[.mvp] == 7)
         #expect(counts[.utilities] == 8)
-        #expect(counts[.pro] == 7)
+        #expect(counts[.pro] == 5)
     }
 
     @Test func everyCategoryHasModules() {
@@ -42,7 +42,7 @@ struct ModuleCatalogTests {
             implemented == [
                 .zones, .clipboard, .awake, .systemToggles, .hostsEnv, .portsProcesses, .launchAgents, .colorPicker, .textExtractor,
                 .defaultsBrowser, .scrollMouse, .cleaner, .pinCrop, .keys, .windowSwitcher, .displaysAudio, .batchRename,
-                .fileLocksmith, .finderExtras,
+                .fileLocksmith, .finderExtras, .screenRuler,
             ])
     }
 }

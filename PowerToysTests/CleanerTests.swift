@@ -697,30 +697,6 @@ struct CleanerControllerTests {
         #expect(signaling.sent.isEmpty)
     }
 
-    @Test func freeingMemoryReportsWhatWasFreed() async {
-        let sampler = FakeUsageSampler([
-            Self.sample(ticks: .init(busy: 0, total: 0), used: 10_000_000_000),
-            Self.sample(ticks: .init(busy: 1, total: 2), used: 8_000_000_000),
-        ])
-        var purged = 0
-        let controller = CleanerController.testing(
-            home: URL(filePath: "/nonexistent"), sampler: sampler, signaling: FakeCleanerSignaling(), purgeMemory: { purged += 1 })
-        await controller.refresh()
-        await controller.freeMemory()
-        #expect(purged == 1)
-        #expect(controller.result == "Freed inactive memory.")
-    }
-
-    @Test func cancellingThePasswordPromptChangesNothing() async {
-        let controller = CleanerController.testing(
-            home: URL(filePath: "/nonexistent"), sampler: FakeUsageSampler([]), signaling: FakeCleanerSignaling(),
-            purgeMemory: { throw CancellationError() })
-        await controller.freeMemory()
-        #expect(controller.error == nil)
-        #expect(controller.result == nil)
-        #expect(!controller.isFreeingMemory)
-    }
-
     @Test func aCancelledQuitCanBeTriedAgain() async {
         // The app stays running, as when its save prompt is cancelled.
         let sampler = FakeUsageSampler([Self.sample(ticks: CPUTicks(busy: 0, total: 0))])
@@ -1376,7 +1352,6 @@ extension CleanerController {
         home: URL = URL(filePath: "/nonexistent"),
         sampler: any UsageSampling = FakeUsageSampler([]),
         signaling: any ProcessSignaling = FakeCleanerSignaling(),
-        purgeMemory: @escaping () async throws -> Void = {},
         docker: @escaping @autoclosure () -> DockerCLI? = nil,
         npm: @escaping @autoclosure () -> NpmCLI? = nil,
         quitTimeout: Duration = .seconds(5),
@@ -1388,7 +1363,7 @@ extension CleanerController {
         fullDiskAccess: @escaping () -> Bool = { true }
     ) -> CleanerController {
         CleanerController(
-            defaults: defaults, home: home, sampler: sampler, signaling: signaling, purgeMemory: purgeMemory, readActivity: { activity },
+            defaults: defaults, home: home, sampler: sampler, signaling: signaling, readActivity: { activity },
             quitTimeout: quitTimeout,
             cleanupLog: nil, docker: docker(), npm: npm(), scanTimeout: scanTimeout, cleanTimeout: cleanTimeout,
             startTime: startTime, installedApps: installedApps, fullDiskAccess: fullDiskAccess)

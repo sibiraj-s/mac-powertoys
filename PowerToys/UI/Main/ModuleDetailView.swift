@@ -67,7 +67,7 @@ struct ModuleDetailView: View {
         case .batchRename: BatchRenameSettingsView()
         case .fileLocksmith: FileLocksmithSettingsView()
         case .finderExtras: FinderExtrasSettingsView()
-        default: EmptyView()
+        case .screenRuler: ScreenRulerSettingsView()
         }
     }
 }

@@ -82,12 +82,7 @@ struct CleanerSettingsView: View {
                         title: "Memory", fraction: cleaner.memory?.fraction, history: cleaner.memoryHistory,
                         caption: cleaner.memory.map(memoryText) ?? "—"
                     ) {
-                        Button(cleaner.isFreeingMemory ? "Freeing…" : "Free memory") {
-                            Task { await cleaner.freeMemory() }
-                        }
-                        .controlSize(.mini)
-                        .disabled(cleaner.isFreeingMemory)
-                        .help("Drops the disk cache macOS keeps in memory. Asks for an administrator password.")
+                        EmptyView()
                     }
                 }
             }
