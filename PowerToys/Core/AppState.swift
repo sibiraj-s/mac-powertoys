@@ -25,6 +25,9 @@ final class AppState {
     let pinCrop: PinCropController
     let windowSwitcher: WindowSwitcherController
     let displaysAudio: DisplaysAudioController
+    let batchRename: BatchRenameController
+    let locksmith: LocksmithController
+    let finderExtras: FinderExtrasController
 
     private(set) var enabledModules: Set<ModuleID>
 
@@ -50,7 +53,9 @@ final class AppState {
         pinCrop: PinCropController? = nil,
         keyMapping: any KeyMappingStore = LiveKeyMappingStore(),
         windowSwitcher: WindowSwitcherController? = nil,
-        displaysAudio: DisplaysAudioController? = nil
+        displaysAudio: DisplaysAudioController? = nil,
+        finder: any FinderAccess = LiveFinder(),
+        locksmith: LocksmithController? = nil
     ) {
         self.defaults = defaults
         self.permissions = permissions ?? PermissionsService(defaults: defaults)
@@ -79,6 +84,9 @@ final class AppState {
             ?? PinCropController(access: ScreenAccess(for: .pinCrop, permissions: permissions))
         self.windowSwitcher = windowSwitcher ?? WindowSwitcherController(defaults: defaults, shortcuts: shortcuts)
         self.displaysAudio = displaysAudio ?? Self.makeDisplaysAudio(defaults: defaults, permissions: permissions)
+        batchRename = BatchRenameController(defaults: defaults, finder: finder)
+        self.locksmith = locksmith ?? LocksmithController(finder: finder)
+        finderExtras = FinderExtrasController(defaults: defaults, finder: finder, pasteboard: pasteboard)
         if let stored = defaults.stringArray(forKey: Self.enabledModulesKey) {
             enabledModules = Set(stored.compactMap(ModuleID.init(rawValue:)))
         } else {
@@ -93,7 +101,7 @@ final class AppState {
         updateModuleShortcuts()
     }
 
-    /// Awake, System Toggles, Color Picker, Text Extractor, Pin & Crop, Window Switcher and Displays & Audio register no shortcuts of their own, so their shortcuts
+    /// Awake, System Toggles, Color Picker, Text Extractor, Pin & Crop, Window Switcher, Displays & Audio and Finder Extras register no shortcuts of their own, so their shortcuts
     /// follow the module switch here.
     private func updateModuleShortcuts() {
         var simple: [(ModuleID, ShortcutDefinition, () -> Void)] = [
@@ -113,6 +121,9 @@ final class AppState {
                 { [weak self] in self?.displaysAudio.externalDisplays.step(.down) }
             ),
         ]
+        for action in FinderExtrasController.Action.allCases {
+            simple.append((.finderExtras, action.shortcut, { [weak self] in Task { await self?.finderExtras.perform(action) } }))
+        }
         for toggle in SystemToggle.allCases {
             simple.append((.systemToggles, toggle.shortcut, { [weak self] in Task { await self?.systemToggles.perform(toggle) } }))
         }
@@ -123,6 +134,12 @@ final class AppState {
                 shortcuts.deactivate(shortcut)
             }
         }
+    }
+
+    /// An action chosen in Finder's menu, run only while Finder Extras is on.
+    func handleFinderMenu(_ request: FinderMenuRequest) {
+        guard isEnabled(.finderExtras) else { return }
+        Task { await finderExtras.perform(request.action, on: FinderMenuSnapshot(request: request)) }
     }
 
     var enabledCount: Int { enabledModules.count }

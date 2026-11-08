@@ -41,7 +41,8 @@ struct ModuleCatalogTests {
         #expect(
             implemented == [
                 .zones, .clipboard, .awake, .systemToggles, .hostsEnv, .portsProcesses, .launchAgents, .colorPicker, .textExtractor,
-                .defaultsBrowser, .scrollMouse, .cleaner, .pinCrop, .keys, .windowSwitcher, .displaysAudio,
+                .defaultsBrowser, .scrollMouse, .cleaner, .pinCrop, .keys, .windowSwitcher, .displaysAudio, .batchRename,
+                .fileLocksmith, .finderExtras,
             ])
     }
 }

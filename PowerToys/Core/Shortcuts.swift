@@ -24,6 +24,7 @@ enum ShortcutCatalog {
             + [TextExtractorController.extractShortcut]
             + [PinCropController.pinShortcut]
             + [WindowSwitcherController.switchShortcut]
+            + FinderExtrasController.Action.allCases.map(\.shortcut)
             + [
                 DisplaysAudioController.muteShortcut, DisplaysAudioController.nextOutputShortcut,
                 DisplaysAudioController.brightnessUpShortcut, DisplaysAudioController.brightnessDownShortcut,

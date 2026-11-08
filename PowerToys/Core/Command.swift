@@ -107,13 +107,16 @@ nonisolated enum Command {
         return pid
     }
 
-    /// Runs a shell command as root, after macOS asks for an administrator password with `prompt`.
-    /// Throws `CancellationError` when the password prompt is cancelled.
-    static func runAsAdministrator(_ shellCommand: String, prompt: String) async throws {
+    /// Runs a shell command as root, after macOS asks for an administrator password with `prompt`,
+    /// and returns what it printed. Throws `CancellationError` when the password prompt is cancelled.
+    @discardableResult
+    static func runAsAdministrator(_ shellCommand: String, prompt: String) async throws -> String {
+        // Without "altering line endings", AppleScript turns the output's newlines into returns.
         let script =
-            "do shell script \(appleScriptString(shellCommand)) with prompt \(appleScriptString(prompt)) with administrator privileges"
+            "do shell script \(appleScriptString(shellCommand)) with prompt \(appleScriptString(prompt)) with administrator privileges without altering line endings"
         let output = try await run("/usr/bin/osascript", ["-e", script])
-        guard output.status != 0 else { return }
+        // osascript adds a newline after the result.
+        guard output.status != 0 else { return String(output.stdout.dropLast(output.stdout.hasSuffix("\n") ? 1 : 0)) }
         // -128: the user cancelled.
         if output.stderr.contains("(-128)") { throw CancellationError() }
         throw CommandError(errorDescription: output.stderr.trimmingCharacters(in: .whitespacesAndNewlines))

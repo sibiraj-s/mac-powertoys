@@ -102,19 +102,21 @@ enum ModuleCatalog {
             permissions: [.screenRecording], replaces: "No native option", isImplemented: true),
         .init(
             id: .batchRename, name: "Batch Rename",
-            summary: "Regex find and replace, case changes, numbering and EXIF dates, with preview and undo.",
+            summary:
+                "Rename many files at once with find and replace or regex, case changes, numbering and photo dates, with a preview and undo.",
             symbol: "character.cursor.ibeam", category: .tools, tier: .utilities,
-            permissions: [], replaces: "Finder Rename (literal only)"),
+            permissions: [.automation], replaces: "Finder Rename (literal only)", isImplemented: true),
         .init(
             id: .fileLocksmith, name: "File Locksmith",
-            summary: "Shows which process holds a file or blocks a disk eject, and lets you quit it.",
+            summary: "See which processes are using a file, folder or disk, such as one that won't eject, and quit them.",
             symbol: "lock.doc", category: .tools, tier: .utilities,
-            permissions: [.fullDiskAccess], replaces: "lsof in Terminal"),
+            permissions: [.automation], replaces: "lsof in Terminal", isImplemented: true),
         .init(
             id: .finderExtras, name: "Finder Extras",
-            summary: "New File here, Copy Path, Open in Terminal, toggle hidden files, image resize.",
+            summary:
+                "Make a new file in the folder Finder is showing, copy paths, open folders in a terminal and resize images, from shortcuts.",
             symbol: "folder.badge.gearshape", category: .tools, tier: .utilities,
-            permissions: [], replaces: "OpenInTerminal"),
+            permissions: [.automation], replaces: "OpenInTerminal", isImplemented: true),
         .init(
             id: .displaysAudio, name: "Displays & Audio",
             summary:

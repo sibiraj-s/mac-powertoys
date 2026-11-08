@@ -179,7 +179,7 @@ nonisolated struct ProcessDetails: Hashable, Sendable {
         return details
     }
 
-    private static func executablePath(_ pid: pid_t) -> String? {
+    static func executablePath(_ pid: pid_t) -> String? {
         var buffer = [UInt8](repeating: 0, count: Int(MAXPATHLEN) * 4)
         let length = proc_pidpath(pid, &buffer, UInt32(buffer.count))
         guard length > 0 else { return nil }

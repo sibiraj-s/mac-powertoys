@@ -31,7 +31,8 @@ extension AppState {
                 loginShell: nil, sources: [.apps], probe: FakeProbe(), pathSources: { [:] }, exists: { _ in true }),
             defaultsStore: FakeDefaultsStore(), defaultsBackups: nil, pinCrop: pinCrop,
             keyMapping: FakeKeyMappingStore(),
-            displaysAudio: displaysAudio ?? .testing(defaults: defaults)
+            displaysAudio: displaysAudio ?? .testing(defaults: defaults),
+            finder: FakeFinder()
         )
     }
 }

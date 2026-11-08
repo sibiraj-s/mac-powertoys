@@ -298,42 +298,6 @@ private struct StorageCard<Action: View>: View {
     }
 }
 
-/// The last result or problem, with a close button when it's one that can be dismissed.
-private struct MessageBanner: View {
-    let message: String
-    let isError: Bool
-    var details: (() -> Void)?
-    let dismiss: (() -> Void)?
-
-    var body: some View {
-        let tint = isError ? Color.orange : Palette.on
-        HStack(spacing: 8) {
-            Image(systemName: isError ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
-                .foregroundStyle(tint)
-            Text(message)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .fixedSize(horizontal: false, vertical: true)
-            if let details {
-                Button("Details", action: details)
-                    .buttonStyle(.link)
-            }
-            if let dismiss {
-                Button(action: dismiss) {
-                    Image(systemName: "xmark").font(.system(size: 10, weight: .semibold))
-                }
-                .buttonStyle(.borderless)
-                .foregroundStyle(Palette.secondaryText)
-                .help("Dismiss")
-                .accessibilityLabel("Dismiss")
-            }
-        }
-        .font(.system(size: 12))
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(RoundedRectangle(cornerRadius: 8).fill(tint.opacity(0.12)))
-    }
-}
-
 /// Shown while a clean runs: how much it has freed and what it's on. Clicking it shows the details.
 private struct CleaningStrip: View {
     let showDetails: () -> Void

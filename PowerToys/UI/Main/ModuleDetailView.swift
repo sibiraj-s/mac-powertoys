@@ -64,6 +64,9 @@ struct ModuleDetailView: View {
         case .pinCrop: PinCropSettingsView()
         case .windowSwitcher: WindowSwitcherSettingsView()
         case .displaysAudio: DisplaysAudioSettingsView()
+        case .batchRename: BatchRenameSettingsView()
+        case .fileLocksmith: FileLocksmithSettingsView()
+        case .finderExtras: FinderExtrasSettingsView()
         default: EmptyView()
         }
     }
