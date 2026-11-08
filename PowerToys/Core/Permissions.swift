@@ -1,11 +1,10 @@
 import AppKit
 import ApplicationServices
 import CoreGraphics
-import IOKit.hid
 import Observation
 
 enum Permission: String, CaseIterable, Identifiable, Sendable {
-    case accessibility, screenRecording, inputMonitoring, automation, fullDiskAccess, audioCapture, admin
+    case accessibility, screenRecording, automation, fullDiskAccess, audioCapture, admin
 
     var id: Self { self }
 
@@ -13,7 +12,6 @@ enum Permission: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .accessibility: "Accessibility"
         case .screenRecording: "Screen Recording"
-        case .inputMonitoring: "Input Monitoring"
         case .automation: "Automation"
         case .fullDiskAccess: "Full Disk Access"
         case .audioCapture: "System Audio Recording"
@@ -25,7 +23,6 @@ enum Permission: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .accessibility: "accessibility"
         case .screenRecording: "rectangle.dashed.badge.record"
-        case .inputMonitoring: "keyboard.badge.eye"
         case .automation: "gearshape.arrow.triangle.2.circlepath"
         case .fullDiskAccess: "internaldrive"
         case .audioCapture: "waveform"
@@ -37,7 +34,6 @@ enum Permission: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .accessibility: "Move and resize windows, paste, and change what keys, scrolling and mouse buttons do."
         case .screenRecording: "Show window previews and pins, read text from the screen and measure it."
-        case .inputMonitoring: "Listen for global shortcuts and remap keys."
         case .automation: "Ask System Events and Finder to switch settings such as dark mode, empty the Trash and read Finder's selection."
         case .fullDiskAccess: "Clear data that uninstalled apps left in protected folders."
         case .audioCapture: "Change the volume of each app by playing its sound through at the volume you set."
@@ -48,7 +44,7 @@ enum Permission: String, CaseIterable, Identifiable, Sendable {
     /// Whether macOS has a prompt of its own for it, shown once per app.
     var hasSystemPrompt: Bool {
         switch self {
-        case .accessibility, .screenRecording, .inputMonitoring, .audioCapture: true
+        case .accessibility, .screenRecording, .audioCapture: true
         case .automation, .fullDiskAccess, .admin: false
         }
     }
@@ -59,7 +55,6 @@ enum Permission: String, CaseIterable, Identifiable, Sendable {
             switch self {
             case .accessibility: "Privacy_Accessibility"
             case .screenRecording: "Privacy_ScreenCapture"
-            case .inputMonitoring: "Privacy_ListenEvent"
             case .automation: "Privacy_Automation"
             case .fullDiskAccess: "Privacy_AllFiles"
             // System Audio Recording Only is listed in the Screen & System Audio Recording pane.
@@ -160,8 +155,6 @@ final class PermissionsService {
             _ = AXIsProcessTrustedWithOptions(options)
         case .screenRecording:
             _ = CGRequestScreenCaptureAccess()
-        case .inputMonitoring:
-            _ = IOHIDRequestAccess(kIOHIDRequestTypeListenEvent)
         case .audioCapture:
             AudioCaptureAccess.request(answered: answered)
         case .automation, .fullDiskAccess, .admin:
@@ -175,8 +168,6 @@ final class PermissionsService {
             AXIsProcessTrusted() ? .granted : .denied
         case .screenRecording:
             CGPreflightScreenCaptureAccess() ? .granted : .denied
-        case .inputMonitoring:
-            IOHIDCheckAccess(kIOHIDRequestTypeListenEvent) == kIOHIDAccessTypeGranted ? .granted : .denied
         case .fullDiskAccess:
             FullDiskAccess.isGranted() ? .granted : .denied
         case .audioCapture:

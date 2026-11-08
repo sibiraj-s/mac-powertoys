@@ -32,7 +32,7 @@ struct PermissionTests {
 
     @Test func checkablePermissionsReportAConcreteStatus() {
         let service = PermissionsService()
-        for permission in [Permission.accessibility, .screenRecording, .inputMonitoring, .fullDiskAccess] {
+        for permission in [Permission.accessibility, .screenRecording, .fullDiskAccess] {
             #expect(service.status(permission) != .unknown)
         }
     }
@@ -54,7 +54,7 @@ struct PermissionRequestTests {
         )
     }
 
-    @Test(arguments: [Permission.accessibility, .screenRecording, .inputMonitoring])
+    @Test(arguments: [Permission.accessibility, .screenRecording])
     func promptsOnceThenOpensSettings(permission: Permission) {
         let recorder = Recorder()
         makeService(recorder).request(permission)
