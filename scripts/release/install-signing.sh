@@ -6,7 +6,7 @@ set -euo pipefail
 
 # Releases are always Developer ID signed: fail rather than ship an ad hoc build.
 missing=()
-for var in APPLE_TEAM_ID NOTARY_KEY_ID NOTARY_ISSUER_ID CERTIFICATE_P12 CERTIFICATE_PASSWORD NOTARY_KEY; do
+for var in APPLE_TEAM_ID SPARKLE_PUBLIC_KEY NOTARY_KEY_ID NOTARY_ISSUER_ID CERTIFICATE_P12 CERTIFICATE_PASSWORD NOTARY_KEY SPARKLE_PRIVATE_KEY; do
     [[ -n "${!var:-}" ]] || missing+=("$var")
 done
 if (( ${#missing[@]} )); then

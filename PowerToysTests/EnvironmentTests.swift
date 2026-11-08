@@ -188,9 +188,10 @@ struct CommandTests {
     @Test func killsCommandsThatTakeTooLong() async {
         let started = Date.now
         await #expect(throws: Command.TimedOut.self) {
-            try await Command.run("/bin/sleep", ["10"], timeout: .milliseconds(200))
+            try await Command.run("/bin/sleep", ["120"], timeout: .milliseconds(200))
         }
-        #expect(Date.now.timeIntervalSince(started) < 5)
+        // Far less than the sleep, with room for a busy CI runner.
+        #expect(Date.now.timeIntervalSince(started) < 60)
     }
 
     @Test func timeoutsKillWhatTheCommandStarted() async throws {
@@ -206,17 +207,17 @@ struct CommandTests {
 
     @Test func cancellingStopsTheCommand() async {
         let started = Date.now
-        let task = Task { try await Command.run("/bin/sleep", ["10"]) }
+        let task = Task { try await Command.run("/bin/sleep", ["120"]) }
         try? await Task.sleep(for: .milliseconds(100))
         task.cancel()
         await #expect(throws: CancellationError.self) { try await task.value }
-        #expect(Date.now.timeIntervalSince(started) < 5)
+        #expect(Date.now.timeIntervalSince(started) < 60)
     }
 
     @Test func leftoverBackgroundProcessesDontBlock() async throws {
         let started = Date.now
-        let output = try await Command.run("/bin/sh", ["-c", "(sleep 5 &) ; echo done"])
+        let output = try await Command.run("/bin/sh", ["-c", "(sleep 60 &) ; echo done"])
         #expect(output.stdout == "done\n")
-        #expect(Date.now.timeIntervalSince(started) < 4)
+        #expect(Date.now.timeIntervalSince(started) < 30)
     }
 }

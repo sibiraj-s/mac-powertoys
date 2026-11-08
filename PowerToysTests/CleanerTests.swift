@@ -893,11 +893,13 @@ struct CleanerControllerTests {
 
     @Test func aStuckCleanStopsAndSaysSo() async throws {
         // Docker lists fine, then hangs on pruning, not noticing it was cancelled.
+        let gate = Gate()
+        defer { gate.open() }
         let stuck = DockerCLI(path: "/usr/local/bin/docker") { arguments, _ in
             switch arguments.first {
             case "context": return Command.Output(status: 0, stdout: "unix:///var/run/docker.sock\n", stderr: "")
             case "image", "builder":
-                await stall(seconds: 3)
+                await gate.wait()
                 return Command.Output(status: 0, stdout: "", stderr: "")
             default:
                 let images = #"[{"Containers":"0","Repository":"<none>","Size":"1GB","UniqueSize":"1GB"}]"#
@@ -907,9 +909,8 @@ struct CleanerControllerTests {
         let controller = CleanerController.testing(docker: stuck, cleanTimeout: .milliseconds(200))
         await controller.scan()
         controller.selected = [.docker]
-        let started = ContinuousClock.now
+        // Returning while Docker is still stuck shows the clean didn't wait for it.
         await controller.clean()
-        #expect(ContinuousClock.now - started < .seconds(2))
         // Still deleting unseen, so it's neither done nor counted as a failure.
         #expect(controller.cleanEvents.contains { $0.kind == .timedOut })
         #expect(controller.cleanProgress(of: .docker) == .stillDeleting)
@@ -1005,11 +1006,13 @@ struct CleanerControllerTests {
 
     @Test func aTimedOutCleanIsntRescannedStraightAway() async throws {
         let scans = Mutex(0)
+        let gate = Gate()
+        defer { gate.open() }
         let stuck = DockerCLI(path: "/usr/local/bin/docker") { arguments, _ in
             switch arguments.first {
             case "context": return Command.Output(status: 0, stdout: "unix:///var/run/docker.sock\n", stderr: "")
             case "image", "builder":
-                await stall(seconds: 1)
+                await gate.wait()
                 return Command.Output(status: 0, stdout: "", stderr: "")
             default:
                 if arguments.contains("-v") { scans.withLock { $0 += 1 } }
@@ -1027,9 +1030,8 @@ struct CleanerControllerTests {
         // Nor is it scanned, even when asked, while it may be half deleted.
         await controller.scan([.docker])
         #expect(scans.withLock { $0 } == 1)
-        for _ in 0..<100 where controller.stillDeleting.contains(.docker) {
-            try await Task.sleep(for: .milliseconds(20))
-        }
+        gate.open()
+        await waitUntil { !controller.stillDeleting.contains(.docker) }
         #expect(controller.nextReview.targets.contains(.docker))
     }
 
@@ -1068,17 +1070,18 @@ struct CleanerControllerTests {
     }
 
     @Test func leavingThePageStopsTheFirstScan() async throws {
+        let gate = Gate()
+        defer { gate.open() }
         let stuck = DockerCLI(path: "/usr/local/bin/docker") { _, _ in
-            await stall(seconds: 3)
+            await gate.wait()
             return Command.Output(status: 0, stdout: "", stderr: "")
         }
         let controller = CleanerController.testing(docker: stuck)
-        let started = ContinuousClock.now
         let watching = Task { await controller.watchAndScan() }
         try await Task.sleep(for: .milliseconds(200))
         watching.cancel()
+        // Returning while Docker is still stuck shows leaving didn't wait for it.
         await watching.value
-        #expect(ContinuousClock.now - started < .seconds(2))
         #expect(!controller.isScanning)
         #expect(controller.scans[.docker] == nil)
     }
@@ -1093,17 +1096,17 @@ struct CleanerControllerTests {
         await controller.scan()
         #expect(controller.scans[.docker]?.unavailable == "Not installed")
         let visit = Task { await controller.watchAndScan() }
-        for _ in 0..<50 where lookups.withLock({ $0 }) < 2 {
-            try await Task.sleep(for: .milliseconds(20))
-        }
+        await waitUntil { lookups.withLock { $0 } >= 2 }
         visit.cancel()
         await visit.value
         #expect(lookups.withLock { $0 } >= 2)
     }
 
     @Test func comingBackFinishesAPartScanAndFindsDockerAgain() async throws {
+        let gate = Gate()
+        defer { gate.open() }
         let stuck = DockerCLI(path: "/usr/local/bin/docker") { _, _ in
-            await stall(seconds: 3)
+            await gate.wait()
             return Command.Output(status: 0, stdout: "", stderr: "")
         }
         // Docker is looked for at each scan: stuck the first time, then uninstalled.
@@ -1120,9 +1123,7 @@ struct CleanerControllerTests {
         #expect(controller.scans[.docker] == nil)
 
         let second = Task { await controller.watchAndScan() }
-        for _ in 0..<50 where controller.scans[.docker] == nil {
-            try await Task.sleep(for: .milliseconds(20))
-        }
+        await waitUntil { controller.scans[.docker] != nil }
         second.cancel()
         await second.value
         #expect(controller.scans[.docker]?.unavailable == "Not installed")
@@ -1195,8 +1196,10 @@ struct CleanerControllerTests {
     }
 
     @Test func aScanThatTakesTooLongKeepsTheOldListAndTriesAgain() async throws {
+        let gate = Gate()
+        defer { gate.open() }
         let stuck = DockerCLI(path: "/usr/local/bin/docker") { _, _ in
-            await stall(seconds: 1)
+            await gate.wait()
             return Command.Output(status: 0, stdout: "", stderr: "")
         }
         // Not installed, then stuck, then not installed again.
@@ -1211,9 +1214,7 @@ struct CleanerControllerTests {
         #expect(controller.scans[.docker]?.unavailable == "Not installed")
         // Every target has a list, but the slow one is scanned again on the next visit.
         let visit = Task { await controller.watchAndScan() }
-        for _ in 0..<50 where lookups.withLock({ $0 }) < 3 {
-            try await Task.sleep(for: .milliseconds(20))
-        }
+        await waitUntil { lookups.withLock { $0 } >= 3 }
         visit.cancel()
         await visit.value
         #expect(lookups.withLock { $0 } >= 3)
@@ -1281,14 +1282,15 @@ struct CleanerControllerTests {
 
     @Test func aStuckScanDoesntHoldUpTheRest() async throws {
         // A Docker that blocks without noticing it's been cancelled, like a stalled disk.
+        let gate = Gate()
+        defer { gate.open() }
         let stuck = DockerCLI(path: "/usr/local/bin/docker") { _, _ in
-            await stall(seconds: 3)
+            await gate.wait()
             return Command.Output(status: 0, stdout: "", stderr: "")
         }
         let controller = CleanerController.testing(docker: stuck, scanTimeout: .milliseconds(200))
-        let started = ContinuousClock.now
+        // Returning while Docker is still stuck shows the scan didn't wait for it.
         await controller.scan()
-        #expect(ContinuousClock.now - started < .seconds(2))
         #expect(controller.scans[.docker]?.unavailable == CleanerController.tookTooLong)
         #expect(controller.scans[.caches] != nil)
     }

@@ -37,7 +37,7 @@ jobs:
 
       # With pending changesets: opens or updates the "Release powertoys@<version>" pull request.
       - id: changesets
-        uses: changesets/action@v2.1.2
+        uses: changesets/action@v2
         with:
           pr-title: Release powertoys@${{ steps.next.outputs.version }}
           commit-message: Release powertoys@${{ steps.next.outputs.version }}
@@ -60,13 +60,12 @@ jobs:
     if: needs.version.outputs.release == 'true'
     runs-on: xcode-27
     timeout-minutes: 60
-    permissions:
-      contents: write
     env:
       VERSION: ${{ needs.version.outputs.version }}
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
       NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
       NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
+      SPARKLE_PUBLIC_KEY: ${{ vars.SPARKLE_PUBLIC_KEY }}
     steps:
       - uses: actions/checkout@v7
 
@@ -87,22 +86,25 @@ jobs:
           CERTIFICATE_P12: ${{ secrets.DEVELOPER_ID_CERTIFICATE_P12 }}
           CERTIFICATE_PASSWORD: ${{ secrets.DEVELOPER_ID_CERTIFICATE_PASSWORD }}
           NOTARY_KEY: ${{ secrets.NOTARY_KEY }}
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
 
       - name: Build, sign and notarize
         run: scripts/build.sh "$VERSION"
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
 
       - name: Remove signing certificate and notary key
         if: always()
         run: scripts/release/remove-signing.sh
 
       - name: Tag and release
-        uses: changesets/action@v2.1.2
+        uses: changesets/action@v2
         with:
           publish-script: npx changeset publish
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload DMG
+      - name: Upload DMG and publish the appcast
         run: scripts/release/publish.sh "$VERSION"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

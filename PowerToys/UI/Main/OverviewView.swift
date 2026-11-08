@@ -28,6 +28,8 @@ struct OverviewView: View {
                 }
             }
 
+            UpdatesSection()
+
             ForEach(ModuleCategory.allCases) { category in
                 CardSection(category.rawValue) {
                     ForEach(ModuleCatalog.modules(in: category)) { module in
@@ -56,6 +58,27 @@ struct OverviewView: View {
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+private struct UpdatesSection: View {
+    @Bindable private var updater = Updater.shared
+
+    var body: some View {
+        CardSection("Updates") {
+            if updater.isEnabled {
+                CardRow("Check for updates automatically", hint: "Looks once a day and asks before installing a new version.") {
+                    RowSwitch(label: "Check for updates automatically", isOn: $updater.automaticallyChecks)
+                }
+            }
+            CardRow(
+                "Version \(updater.currentVersion)",
+                hint: updater.isEnabled ? nil : "This build doesn't update itself; Check Now opens the releases page."
+            ) {
+                Button("Check Now") { updater.checkNow() }
+                    .disabled(!updater.canCheckNow)
             }
         }
     }

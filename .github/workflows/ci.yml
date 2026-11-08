@@ -20,7 +20,7 @@ jobs:
       # Stop xcodebuild from buffering its output when piped, so the log streams live.
       NSUnbufferedIO: 'YES'
       # No certificates on the runner: sign ad hoc ("Sign to Run Locally").
-      XCODEBUILD: xcodebuild -project PowerToys.xcodeproj -scheme PowerToys -destination platform=macOS CODE_SIGN_IDENTITY=-
+      XCODEBUILD: xcodebuild -project PowerToys.xcodeproj -scheme PowerToys -destination platform=macOS CODE_SIGN_IDENTITY=- -onlyUsePackageVersionsFromResolvedFile
 
     steps:
       - uses: actions/checkout@v7

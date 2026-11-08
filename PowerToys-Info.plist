@@ -2,6 +2,15 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- Sparkle: the appcast attached to the latest release by scripts/release/publish.sh. -->
+	<key>SUFeedURL</key>
+	<string>https://github.com/sibiraj-s/mac-powertoys/releases/latest/download/appcast.xml</string>
+	<!-- Empty in builds without a key; Updater then links to the releases page instead. -->
+	<key>SUPublicEDKey</key>
+	<string>$(SPARKLE_PUBLIC_KEY)</string>
+	<!-- Checks daily from the first launch, without Sparkle asking first; Overview can turn it off. -->
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
 	<!-- Merged with the generated Info.plist. Finder's menu extension sends its actions here. -->
 	<key>CFBundleURLTypes</key>
 	<array>

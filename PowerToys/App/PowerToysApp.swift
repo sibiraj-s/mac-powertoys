@@ -14,6 +14,9 @@ struct PowerToysApp: App {
         .defaultSize(width: 980, height: 700)
         .windowResizability(.contentMinSize)
         .commands {
+            CommandGroup(after: .appInfo) {
+                CheckForUpdatesButton()
+            }
             // The main window is where everything is configured, so ⌘, opens it.
             CommandGroup(replacing: .appSettings) {
                 OpenMainWindowButton(title: "Settings…")
@@ -49,6 +52,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         installURLHandler()
+        Updater.shared.start()
     }
 
     /// Replaces SwiftUI's handler, which would open a window for every URL.
