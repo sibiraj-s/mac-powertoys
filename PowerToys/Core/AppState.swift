@@ -23,6 +23,7 @@ final class AppState {
     let keys: KeysController
     let cleaner: CleanerController
     let pinCrop: PinCropController
+    let windowSwitcher: WindowSwitcherController
 
     private(set) var enabledModules: Set<ModuleID>
 
@@ -46,7 +47,8 @@ final class AppState {
         defaultsBackups: URL? = DefaultsBrowserController.defaultBackupDirectory,
         cleaner: CleanerController? = nil,
         pinCrop: PinCropController? = nil,
-        keyMapping: any KeyMappingStore = LiveKeyMappingStore()
+        keyMapping: any KeyMappingStore = LiveKeyMappingStore(),
+        windowSwitcher: WindowSwitcherController? = nil
     ) {
         self.defaults = defaults
         self.permissions = permissions ?? PermissionsService(defaults: defaults)
@@ -73,6 +75,7 @@ final class AppState {
         self.pinCrop =
             pinCrop
             ?? PinCropController(access: ScreenAccess(for: .pinCrop, permissions: permissions))
+        self.windowSwitcher = windowSwitcher ?? WindowSwitcherController(defaults: defaults, shortcuts: shortcuts)
         if let stored = defaults.stringArray(forKey: Self.enabledModulesKey) {
             enabledModules = Set(stored.compactMap(ModuleID.init(rawValue:)))
         } else {
@@ -86,7 +89,7 @@ final class AppState {
         updateModuleShortcuts()
     }
 
-    /// Awake, System Toggles, Color Picker, Text Extractor and Pin & Crop have no controller lifecycle of their own, so their shortcuts
+    /// Awake, System Toggles, Color Picker, Text Extractor, Pin & Crop and Window Switcher have no controller lifecycle of their own, so their shortcuts
     /// follow the module switch here.
     private func updateModuleShortcuts() {
         var simple: [(ModuleID, ShortcutDefinition, () -> Void)] = [
@@ -94,6 +97,7 @@ final class AppState {
             (.colorPicker, ColorPickerController.pickShortcut, { [weak self] in Task { await self?.colorPicker.pick() } }),
             (.textExtractor, TextExtractorController.extractShortcut, { [weak self] in Task { await self?.textExtractor.extract() } }),
             (.pinCrop, PinCropController.pinShortcut, { [weak self] in Task { await self?.pinCrop.pick() } }),
+            (.windowSwitcher, WindowSwitcherController.switchShortcut, { [weak self] in self?.windowSwitcher.trigger() }),
         ]
         for toggle in SystemToggle.allCases {
             simple.append((.systemToggles, toggle.shortcut, { [weak self] in Task { await self?.systemToggles.perform(toggle) } }))
@@ -127,6 +131,7 @@ final class AppState {
         switch id {
         case .awake where !enabled: awake.stop()
         case .pinCrop where !enabled: pinCrop.stop()
+        case .windowSwitcher where !enabled: windowSwitcher.cancel()
         case .zones: enabled ? zones.start() : zones.stop()
         case .clipboard: enabled ? clipboard.start() : clipboard.stop()
         case .scrollMouse: enabled ? scrollMouse.start() : scrollMouse.stop()

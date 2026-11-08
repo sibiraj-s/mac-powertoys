@@ -18,10 +18,11 @@ It's a regular app with a Dock icon and a main window where each module has its 
 - **Cleaner** – CPU, memory and disk use at a glance, quit the busiest processes, free inactive memory, and delete caches, logs, Xcode and package build data, and unused Docker images and build cache, with a list to untick anything you want to keep. Data left by apps you uninstalled can be moved to the Trash, item by item.
 - **Scroll & Mouse** – Reverse scrolling for the mouse wheel and trackpad separately, smooth wheel scrolling, and Back, Forward or any keys on the middle and side buttons.
 - **Pin & Crop** – Keep a live copy of any window floating above the others, or drag over part of one to crop it into a live thumbnail. Pins follow you across Spaces; double-click one to bring its window forward, right-click for opacity.
+- **Window Switcher** – Switch between windows rather than apps, with previews, including minimized windows and those of hidden apps. Hold your shortcut's modifiers and tap its key to step through; let go to switch. Shows as a grid or a stack of cards, dims the screen around the selected window, and closes, minimizes, hides or quits from the keyboard.
 - **Keys** – Remap keys and shortcuts everywhere or in one app, or turn them off, and make Caps Lock Escape, Control or Hyper (⌃⌥⇧⌘), optionally Escape when tapped on its own.
 - **Defaults Browser** – Browse, edit and back up preference domains, copy keys as `defaults` commands, and flip well-known hidden settings for the Dock, Finder and more.
 
-9 more modules are listed in the app but not built yet.
+8 more modules are listed in the app but not built yet.
 
 ## Requirements
 

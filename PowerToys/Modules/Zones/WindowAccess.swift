@@ -31,9 +31,33 @@ struct AXWindow {
     /// The app's window at `frame`, as the window list reports it. The list and Accessibility
     /// share coordinates, and Accessibility has no public call from a window number to its window.
     static func window(of pid: pid_t, at frame: CGRect) -> AXWindow? {
+        windows(of: pid).first { $0.frame?.integral == frame.integral }
+    }
+
+    /// The app's windows, minimized ones included. With a `timeout`, an app that's hung stops
+    /// holding things up after that many seconds rather than the default six, both for the list
+    /// and for anything asked of the windows later; `useDefaultTimeout()` undoes it.
+    static func windows(of pid: pid_t, timeout: Float? = nil) -> [AXWindow] {
         let app = AXUIElementCreateApplication(pid)
+        if let timeout { AXUIElementSetMessagingTimeout(app, timeout) }
         let windows: [AXUIElement] = app.value(of: kAXWindowsAttribute) ?? []
-        return windows.lazy.map { AXWindow(element: $0, pid: pid) }.first { $0.frame?.integral == frame.integral }
+        return windows.map { window in
+            if let timeout { AXUIElementSetMessagingTimeout(window, timeout) }
+            return AXWindow(element: window, pid: pid)
+        }
+    }
+
+    /// Waits as long as Accessibility normally does, for changes a busy app may be slow to make.
+    func useDefaultTimeout() {
+        AXUIElementSetMessagingTimeout(element, 0)
+    }
+
+    var title: String { element.value(of: kAXTitleAttribute) ?? "" }
+    var isMinimized: Bool { element.value(of: kAXMinimizedAttribute) ?? false }
+    /// Ordinary windows and dialogs, not palettes, inspectors or other floating panels.
+    var isStandard: Bool {
+        let subrole: String? = element.value(of: kAXSubroleAttribute)
+        return subrole == kAXStandardWindowSubrole || subrole == kAXDialogSubrole
     }
 
     var frame: CGRect? {
@@ -67,6 +91,16 @@ struct AXWindow {
         AXUIElementPerformAction(element, kAXRaiseAction as CFString)
         AXUIElementSetAttributeValue(element, kAXMainAttribute as CFString, kCFBooleanTrue)
         AXUIElementSetAttributeValue(AXUIElementCreateApplication(pid), kAXFrontmostAttribute as CFString, kCFBooleanTrue)
+    }
+
+    /// Presses its close button, as clicking it would; an app may ask to save first.
+    func close() {
+        guard let button: AXUIElement = element.value(of: kAXCloseButtonAttribute) else { return }
+        AXUIElementPerformAction(button, kAXPressAction as CFString)
+    }
+
+    func minimize() {
+        AXUIElementSetAttributeValue(element, kAXMinimizedAttribute as CFString, kCFBooleanTrue)
     }
 
     func setSize(_ size: CGSize) {

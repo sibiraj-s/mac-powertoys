@@ -50,9 +50,11 @@ enum ModuleCatalog {
             permissions: [.accessibility], replaces: "Rectangle, Magnet", isImplemented: true),
         .init(
             id: .windowSwitcher, name: "Window Switcher",
-            summary: "⌘⇥ that switches windows rather than apps, with live previews and minimized windows.",
+            summary:
+                "Switch between windows rather than apps, with previews, including minimized windows and those of hidden apps.",
             symbol: "macwindow.on.rectangle", category: .windowsInput, tier: .mvp,
-            permissions: [.accessibility, .screenRecording], replaces: "AltTab"),
+            // Screen Recording only adds previews, so turning the module on doesn't ask for it.
+            permissions: [.accessibility], replaces: "AltTab", isImplemented: true),
         .init(
             id: .keys, name: "Keys",
             summary: "Remap keys and shortcuts everywhere or in one app, and turn Caps Lock into Hyper, Escape or Control.",

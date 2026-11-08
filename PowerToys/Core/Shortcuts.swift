@@ -23,6 +23,7 @@ enum ShortcutCatalog {
             + [ColorPickerController.pickShortcut]
             + [TextExtractorController.extractShortcut]
             + [PinCropController.pinShortcut]
+            + [WindowSwitcherController.switchShortcut]
     }
 }
 
