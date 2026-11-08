@@ -55,9 +55,9 @@ enum ModuleCatalog {
             permissions: [.accessibility, .screenRecording], replaces: "AltTab"),
         .init(
             id: .keys, name: "Keys",
-            summary: "Remap keys and shortcuts globally or per app. Caps Lock → Hyper, Fn-row tweaks, key chords.",
+            summary: "Remap keys and shortcuts everywhere or in one app, and turn Caps Lock into Hyper, Escape or Control.",
             symbol: "keyboard", category: .windowsInput, tier: .mvp,
-            permissions: [.inputMonitoring], replaces: "Karabiner-Elements"),
+            permissions: [.accessibility], replaces: "Karabiner-Elements", isImplemented: true),
         .init(
             id: .menuBarManager, name: "Menu Bar",
             summary: "Hide, reorder and overflow menu bar icons that disappear behind the notch.",

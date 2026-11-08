@@ -28,7 +28,8 @@ extension AppState {
             hostsStore: FakeHostsStore(), hostsBackup: nil,
             environment: EnvironmentController(
                 loginShell: nil, sources: [.apps], probe: FakeProbe(), pathSources: { [:] }, exists: { _ in true }),
-            defaultsStore: FakeDefaultsStore(), defaultsBackups: nil, pinCrop: pinCrop
+            defaultsStore: FakeDefaultsStore(), defaultsBackups: nil, pinCrop: pinCrop,
+            keyMapping: FakeKeyMappingStore()
         )
     }
 }

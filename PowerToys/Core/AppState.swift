@@ -20,6 +20,7 @@ final class AppState {
     let textExtractor: TextExtractorController
     let defaultsBrowser: DefaultsBrowserController
     let scrollMouse: ScrollMouseController
+    let keys: KeysController
     let cleaner: CleanerController
     let pinCrop: PinCropController
 
@@ -44,7 +45,8 @@ final class AppState {
         defaultsStore: any DefaultsStoring = LiveDefaultsStore(),
         defaultsBackups: URL? = DefaultsBrowserController.defaultBackupDirectory,
         cleaner: CleanerController? = nil,
-        pinCrop: PinCropController? = nil
+        pinCrop: PinCropController? = nil,
+        keyMapping: any KeyMappingStore = LiveKeyMappingStore()
     ) {
         self.defaults = defaults
         self.permissions = permissions ?? PermissionsService(defaults: defaults)
@@ -65,6 +67,8 @@ final class AppState {
         )
         defaultsBrowser = DefaultsBrowserController(store: defaultsStore, backupDirectory: defaultsBackups)
         scrollMouse = ScrollMouseController(defaults: defaults, isTrusted: { permissions.currentStatus(.accessibility) == .granted })
+        keys = KeysController(
+            defaults: defaults, mappingStore: keyMapping, isTrusted: { permissions.currentStatus(.accessibility) == .granted })
         self.cleaner = cleaner ?? CleanerController(defaults: defaults)
         self.pinCrop =
             pinCrop
@@ -78,6 +82,7 @@ final class AppState {
         if enabledModules.contains(.zones) { zones.start() }
         if enabledModules.contains(.clipboard) { clipboard.start() }
         if enabledModules.contains(.scrollMouse) { scrollMouse.start() }
+        if enabledModules.contains(.keys) { keys.start() }
         updateModuleShortcuts()
     }
 
@@ -125,6 +130,7 @@ final class AppState {
         case .zones: enabled ? zones.start() : zones.stop()
         case .clipboard: enabled ? clipboard.start() : clipboard.stop()
         case .scrollMouse: enabled ? scrollMouse.start() : scrollMouse.stop()
+        case .keys: enabled ? keys.start() : keys.stop()
         default: break
         }
         updateModuleShortcuts()

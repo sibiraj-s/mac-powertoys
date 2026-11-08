@@ -59,6 +59,7 @@ struct ModuleDetailView: View {
         case .textExtractor: TextExtractorSettingsView()
         case .defaultsBrowser: DefaultsBrowserSettingsView()
         case .scrollMouse: ScrollMouseSettingsView()
+        case .keys: KeysSettingsView()
         case .cleaner: CleanerSettingsView()
         case .pinCrop: PinCropSettingsView()
         default: EmptyView()

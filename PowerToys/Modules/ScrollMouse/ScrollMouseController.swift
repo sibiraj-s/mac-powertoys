@@ -196,24 +196,12 @@ final class ScrollMouseController {
         case .otherMouseDown:
             guard let button = MouseButton(rawValue: Int(number)), let hotKey = action(for: button).hotKey else { return true }
             remappedButtons.insert(number)
-            Self.press(hotKey)
+            hotKey.press(marker: Self.syntheticMarker)
             return false
         case .otherMouseUp:
             return remappedButtons.remove(number) == nil
         default:
             return !remappedButtons.contains(number)
-        }
-    }
-
-    private static func press(_ hotKey: HotKey) {
-        let source = CGEventSource(stateID: .hidSystemState)
-        for isDown in [true, false] {
-            guard let event = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(hotKey.keyCode), keyDown: isDown) else {
-                continue
-            }
-            event.flags = hotKey.eventFlags
-            event.setIntegerValueField(.eventSourceUserData, value: syntheticMarker)
-            event.post(tap: .cghidEventTap)
         }
     }
 

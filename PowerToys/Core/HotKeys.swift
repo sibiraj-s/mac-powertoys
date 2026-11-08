@@ -97,6 +97,41 @@ struct HotKey: Hashable, Codable {
     }
 }
 
+extension HotKey {
+    /// The flags a synthesized key press needs. Arrow and navigation keys also carry the Fn and
+    /// keypad flags a real keyboard sends, or shortcuts such as ⌃↑ for Mission Control don't match.
+    var eventFlags: CGEventFlags {
+        var flags: CGEventFlags = []
+        if modifiers.contains(.control) { flags.insert(.maskControl) }
+        if modifiers.contains(.option) { flags.insert(.maskAlternate) }
+        if modifiers.contains(.shift) { flags.insert(.maskShift) }
+        if modifiers.contains(.command) { flags.insert(.maskCommand) }
+        if Self.arrowKeys.contains(keyCode) { flags.formUnion([.maskSecondaryFn, .maskNumericPad]) }
+        if isFunctionKey || Self.navigationKeys.contains(keyCode) { flags.insert(.maskSecondaryFn) }
+        return flags
+    }
+
+    /// Posts one press or release of these keys, tagged with `marker` so the poster's own event tap
+    /// can tell them apart from real ones.
+    func post(isDown: Bool, marker: Int64, autorepeat: Bool = false) {
+        let source = CGEventSource(stateID: .hidSystemState)
+        guard let event = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(keyCode), keyDown: isDown) else { return }
+        event.flags = eventFlags
+        event.setIntegerValueField(.eventSourceUserData, value: marker)
+        if autorepeat { event.setIntegerValueField(.keyboardEventAutorepeat, value: 1) }
+        event.post(tap: .cghidEventTap)
+    }
+
+    /// Presses and releases these keys.
+    func press(marker: Int64) {
+        post(isDown: true, marker: marker)
+        post(isDown: false, marker: marker)
+    }
+
+    private static let arrowKeys = [kVK_LeftArrow, kVK_RightArrow, kVK_UpArrow, kVK_DownArrow]
+    private static let navigationKeys = [kVK_Home, kVK_End, kVK_PageUp, kVK_PageDown, kVK_ForwardDelete, kVK_Help]
+}
+
 /// Registers global shortcuts; a protocol so tests don't take real system-wide shortcuts.
 protocol HotKeyRegistering: AnyObject {
     /// Returns nil when another app already owns the shortcut.

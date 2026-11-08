@@ -81,21 +81,3 @@ enum ButtonAction: Hashable, Codable {
         }
     }
 }
-
-extension HotKey {
-    /// The flags a synthesized key press needs. Arrow and navigation keys also carry the Fn and
-    /// keypad flags a real keyboard sends, or shortcuts such as ⌃↑ for Mission Control don't match.
-    var eventFlags: CGEventFlags {
-        var flags: CGEventFlags = []
-        if modifiers.contains(.control) { flags.insert(.maskControl) }
-        if modifiers.contains(.option) { flags.insert(.maskAlternate) }
-        if modifiers.contains(.shift) { flags.insert(.maskShift) }
-        if modifiers.contains(.command) { flags.insert(.maskCommand) }
-        if Self.arrowKeys.contains(keyCode) { flags.formUnion([.maskSecondaryFn, .maskNumericPad]) }
-        if isFunctionKey || Self.navigationKeys.contains(keyCode) { flags.insert(.maskSecondaryFn) }
-        return flags
-    }
-
-    private static let arrowKeys = [kVK_LeftArrow, kVK_RightArrow, kVK_UpArrow, kVK_DownArrow]
-    private static let navigationKeys = [kVK_Home, kVK_End, kVK_PageUp, kVK_PageDown, kVK_ForwardDelete, kVK_Help]
-}
