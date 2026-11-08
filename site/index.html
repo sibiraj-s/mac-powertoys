@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PowerToys, twenty Mac tools in one app</title>
+    <meta
+      name="description"
+      content="PowerToys is a free, open-source Mac app with twenty tools, from window zones and a window switcher to a clipboard history and a cleaner, each turned on only when you want it."
+    />
+    <meta name="color-scheme" content="dark" />
+    <meta property="og:title" content="PowerToys, twenty Mac tools in one app" />
+    <meta
+      property="og:description"
+      content="A free, open-source Mac app with twenty tools, each turned on only when you want it."
+    />
+    <meta property="og:type" content="website" />
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Outfit:wght@500&family=Onest:wght@400&display=swap"
+      rel="stylesheet"
+    />
+    <!-- Hides the text in #root before the first paint when JavaScript runs, so it doesn't flash
+         before the app replaces it; readers without JavaScript still get it. -->
+    <script>
+      document.documentElement.classList.add('js');
+    </script>
+    <style>
+      .js .no-js-only {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- What the page says, for readers that don't run JavaScript (search engines, link
+         checkers); the app replaces it when it loads. -->
+    <div id="root">
+      <main class="no-js-only container">
+        <h1>twenty mac tools in one app</h1>
+        <p class="lead">Turn on the tools you need; each asks for access only then.</p>
+        <p>
+          <a href="https://github.com/sibiraj-s/mac-powertoys/releases/latest"
+            >Download PowerToys</a
+          >
+          or read the <a href="https://github.com/sibiraj-s/mac-powertoys">source code</a>. Requires
+          macOS 15 or later on Apple silicon.
+        </p>
+        <h2>The modules</h2>
+        <ul>
+          <li>
+            Windows and input: Zones, Window Switcher, Keys, Scroll &amp; Mouse, Pin &amp; Crop
+          </li>
+          <li>System: Awake, System Toggles, Displays &amp; Audio, Cleaner</li>
+          <li>
+            Tools: Clipboard, Color Picker, Text Extractor, Batch Rename, File Locksmith, Finder
+            Extras
+          </li>
+          <li>
+            Developer: Ports &amp; Processes, Hosts &amp; Env, Launch Agents, Defaults Browser,
+            Screen Ruler
+          </li>
+        </ul>
+      </main>
+    </div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
