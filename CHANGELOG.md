@@ -1,5 +1,11 @@
 # powertoys
 
+## 1.1.0
+
+### Minor Changes
+
+- 65b7e23: Keep in menu bar when closed: Closing the window can hide the Dock icon while modules keep running in the menu bar, and right-clicking the menu bar icon shows a menu to quit
+
 ## 1.0.0
 
 ### Major Changes
