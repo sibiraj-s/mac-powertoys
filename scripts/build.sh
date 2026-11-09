@@ -106,14 +106,17 @@ echo "==> Building PowerToys $version ($build_number)${team:+, signed for team $
 rm -rf "$stage" "$dmg" "$appcast" "$archive" "$export_dir" "$out/ExportOptions.plist"
 if [[ -n "$team" ]]; then
     # Exporting re-signs Sparkle's helpers and XPC services for notarization.
+    echo "==> Archiving (takes a few minutes)"
     "${xcodebuild[@]}" -archivePath "$archive" "${settings[@]}" archive 2>&1 | beautify
     /usr/libexec/PlistBuddy -c "Add :method string developer-id" -c "Add :teamID string $team" \
         -c "Add :signingStyle string manual" -c "Add :signingCertificate string $identity" \
         "$out/ExportOptions.plist" >/dev/null
+    echo "==> Exporting"
     xcodebuild -exportArchive -archivePath "$archive" -exportPath "$export_dir" \
         -exportOptionsPlist "$out/ExportOptions.plist" -quiet 2>&1 | beautify
     rm "$out/ExportOptions.plist"
 else
+    echo "==> Compiling (takes a few minutes)"
     "${xcodebuild[@]}" "${settings[@]}" build 2>&1 | beautify
 fi
 
