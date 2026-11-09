@@ -43,6 +43,7 @@ struct MenuBarView: View {
                 }
                 if state.isEnabled(.clipboard) {
                     QuickToggle(title: "Clipboard", subtitle: historyKeys ?? "History", symbol: "doc.on.clipboard", isOn: false) {
+                        window?.close()
                         state.clipboard.showHistory()
                     }
                 }
@@ -211,6 +212,7 @@ struct MenuBarView: View {
     }
 
     private func openMainWindow() {
+        window?.close()
         openWindow(id: MainWindow.id)
         // Clicking the menu bar icon doesn't activate the app; bring the window forward.
         NSApp.activate()
