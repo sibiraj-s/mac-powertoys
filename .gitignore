@@ -339,3 +339,6 @@ Local.xcconfig
 # cert
 *.p12
 *.p8
+
+### Hallmark ###
+.hallmark/
