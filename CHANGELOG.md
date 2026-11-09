@@ -1,5 +1,15 @@
 # powertoys
 
+## 1.2.0
+
+### Minor Changes
+
+- 0bce5ef: Ports & Processes: Listeners are labelled with the project they serve, the git repository they run in (worktrees by their repository), or else their working folder, in the menu bar and Settings, and can be searched by it
+
+### Patch Changes
+
+- 034f2f6: Menu bar: Opening Settings or clipboard history from the menu bar popup now closes the popup
+
 ## 1.1.0
 
 ### Minor Changes
