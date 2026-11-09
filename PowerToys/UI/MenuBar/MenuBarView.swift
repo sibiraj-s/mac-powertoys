@@ -308,6 +308,15 @@ private struct MenuPorts: View {
                     ProcessIcon(pid: listener.pid, size: 16)
                     Text(":\(String(listener.port))")
                         .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                    if let project = listener.project {
+                        Text(project)
+                            .font(.system(size: 12))
+                            .lineLimit(1)
+                            .layoutPriority(1)
+                        Text("·")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                    }
                     Text(listener.name)
                         .font(.system(size: 12))
                         .lineLimit(1)

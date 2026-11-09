@@ -34,6 +34,13 @@ nonisolated struct Listener: Identifiable, Hashable, Sendable {
         process?.path.map { URL(filePath: $0).lastPathComponent } ?? command
     }
 
+    /// The project it serves, such as the git repository it runs in, unless that's just its
+    /// name again, as for a server named after its repository.
+    var project: String? {
+        guard let project = process?.project, project.caseInsensitiveCompare(name) != .orderedSame else { return nil }
+        return project
+    }
+
     /// Something macOS runs, rather than something you started.
     var isSystem: Bool {
         process?.path.map(SystemPaths.contains) ?? false
@@ -44,6 +51,7 @@ nonisolated struct Listener: Identifiable, Hashable, Sendable {
         guard !query.isEmpty else { return true }
         return String(port).hasPrefix(query) || allPIDs.contains { String($0) == query }
             || name.localizedCaseInsensitiveContains(query)
+            || (project?.localizedCaseInsensitiveContains(query) ?? false)
             || (process?.commandLine.localizedCaseInsensitiveContains(query) ?? false)
     }
 
@@ -125,6 +133,8 @@ nonisolated struct ProcessDetails: Hashable, Sendable {
     /// Its working folder, usually the project a dev server serves.
     var directory: String?
     var started: Date?
+    /// The project it serves; see `project(directory:executable:arguments:home:)`.
+    var project: String?
 
     /// The arguments, with the program by name rather than full path and the home folder as ~.
     var commandLine: String {
@@ -155,10 +165,70 @@ nonisolated struct ProcessDetails: Hashable, Sendable {
     }
 
     static func read(_ pid: pid_t, started: Date?) -> ProcessDetails {
-        ProcessDetails(
-            path: executablePath(pid), arguments: arguments(pid) ?? [],
-            directory: workingDirectory(pid), started: started
+        let path = executablePath(pid)
+        let arguments = arguments(pid) ?? []
+        let directory = workingDirectory(pid)
+        return ProcessDetails(
+            path: path, arguments: arguments, directory: directory, started: started,
+            project: project(directory: directory, executable: path, arguments: arguments)
         )
+    }
+
+    /// What a process serves: the git repository its working folder is in, or else the one its
+    /// program or a script it runs is in, as when started as `node ~/app/server.js` from
+    /// elsewhere, or else its working folder. Only folders inside the home folder count, so
+    /// Homebrew's checkout and system folders such as /private/var/db don't name anything.
+    static func project(
+        directory: String?, executable: String? = nil, arguments: [String], home: String = NSHomeDirectory()
+    ) -> String? {
+        let home = URL(filePath: home, directoryHint: .isDirectory).resolvingSymlinksInPath().path(percentEncoded: false)
+        let directory = directory.map { URL(filePath: $0, directoryHint: .isDirectory).standardizedFileURL }
+            .flatMap { isInside($0, home: home) ? $0 : nil }
+        if let directory, let repository = repositoryName(containing: directory, home: home) { return repository }
+        let files = ([executable].compactMap { $0 } + arguments.dropFirst()).lazy
+            .filter { $0.hasPrefix("/") }
+            .map { URL(filePath: $0).standardizedFileURL }
+            .filter { isInside($0, home: home) && FileManager.default.fileExists(atPath: $0.path(percentEncoded: false)) }
+            .compactMap { repositoryName(containing: $0.deletingLastPathComponent(), home: home) }
+        return files.first ?? directory?.lastPathComponent
+    }
+
+    /// The name of the git repository a folder is in, for a worktree the repository it belongs
+    /// to. Looks no higher than inside the home folder, which may itself track dotfiles.
+    static func repositoryName(containing folder: URL, home: String) -> String? {
+        var folder = folder
+        while isInside(folder, home: home) {
+            let git = folder.appending(path: ".git")
+            var isDirectory: ObjCBool = false
+            if FileManager.default.fileExists(atPath: git.path(percentEncoded: false), isDirectory: &isDirectory) {
+                return isDirectory.boolValue ? folder.lastPathComponent : worktreeRepository(git, in: folder) ?? folder.lastPathComponent
+            }
+            folder = folder.deletingLastPathComponent()
+        }
+        return nil
+    }
+
+    /// A worktree's `.git` is a file saying `gitdir: <repository>/.git/worktrees/<name>`, or
+    /// for a bare repository `<repository>.git/worktrees/<name>`. A submodule's points into the
+    /// parent's `.git/modules`, and stays named after its folder.
+    private static func worktreeRepository(_ gitFile: URL, in folder: URL) -> String? {
+        guard let contents = try? String(contentsOf: gitFile, encoding: .utf8),
+            let line = contents.split(separator: "\n").first, line.hasPrefix("gitdir:")
+        else { return nil }
+        let path = line.dropFirst("gitdir:".count).trimmingCharacters(in: .whitespaces)
+        let gitDirectory = URL(filePath: path, directoryHint: .isDirectory, relativeTo: folder).standardizedFileURL
+        let components = gitDirectory.pathComponents
+        guard let index = components.lastIndex(of: "worktrees"), index >= 1 else { return nil }
+        let repository = components[index - 1]
+        if repository == ".git" { return index >= 2 ? components[index - 2] : nil }
+        return repository.hasSuffix(".git") ? String(repository.dropLast(4)) : nil
+    }
+
+    /// Strictly inside the home folder, not the home folder itself.
+    private static func isInside(_ url: URL, home: String) -> Bool {
+        let base = home.hasSuffix("/") ? home : home + "/"
+        let path = url.path(percentEncoded: false)
+        return path.hasPrefix(base) && path.count > base.count
     }
 
     /// Details for each process, reusing cached ones whose start time still matches. A process's

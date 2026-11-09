@@ -78,8 +78,16 @@ private struct PortRow: View {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Text(":\(String(listener.port))")
                             .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                        if let project = listener.project {
+                            Text(project)
+                                .font(.system(size: 13, weight: .medium))
+                            Text("·")
+                                .font(.system(size: 13))
+                                .foregroundStyle(Palette.secondaryText)
+                        }
                         Text(listener.name)
                             .font(.system(size: 13))
+                            .foregroundStyle(listener.project == nil ? Color.primary : Palette.secondaryText)
                         ReachTag(isLocalOnly: listener.isLocalOnly)
                     }
                     Text(details)

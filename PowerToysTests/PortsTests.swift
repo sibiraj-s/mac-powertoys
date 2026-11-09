@@ -155,6 +155,121 @@ struct ListenerTests {
         #expect(ProcessDetails.abbreviatingHome("\(home)other") == "\(home)other")
     }
 
+    @Test func namesProjectsAfterTheirRepository() throws {
+        let home = try ProjectFolders()
+        defer { home.remove() }
+        let repository = try home.folder("code/shop")
+        try home.folder("code/shop/.git")
+        let nested = try home.folder("code/shop/packages/web")
+        let plain = try home.folder("scratch")
+        let script = try home.file("code/shop/server.js")
+        let project = { ProcessDetails.project(directory: $0, arguments: $1, home: home.path) }
+
+        #expect(project(repository, []) == "shop")
+        #expect(project(nested, []) == "shop")
+        #expect(project(plain, []) == "scratch")
+        // Started from elsewhere, found by the script it runs.
+        #expect(project(home.path, ["node", script]) == "shop")
+        #expect(project("/", ["node", "--port", "3000"]) == nil)
+        #expect(project(home.path, ["node", "/no/such/file.js"]) == nil)
+        #expect(project(nil, []) == nil)
+        // A repository wins over a plain working folder.
+        #expect(project(plain, ["node", script]) == "shop")
+
+        var listener = Listener(pid: 1, port: 3000, addresses: ["*"], command: "node")
+        listener.process = ProcessDetails(path: nil, arguments: [], project: "shop")
+        #expect(listener.project == "shop")
+        #expect(listener.matches("SHO"))
+    }
+
+    @Test func namesWorktreesAfterTheirRepository() throws {
+        let home = try ProjectFolders()
+        defer { home.remove() }
+        try home.folder("code/shop/.git/worktrees/fix")
+        let worktree = try home.folder("code/shop/.claude/worktrees/fix")
+        try home.file("code/shop/.claude/worktrees/fix/.git", contents: "gitdir: \(home.path)/code/shop/.git/worktrees/fix\n")
+        let relative = try home.folder("elsewhere/fix")
+        try home.file("elsewhere/fix/.git", contents: "gitdir: ../../code/shop/.git/worktrees/fix\n")
+        let submodule = try home.folder("code/shop/vendor/lib")
+        try home.file("code/shop/vendor/lib/.git", contents: "gitdir: ../../.git/modules/lib\n")
+
+        #expect(ProcessDetails.project(directory: worktree, arguments: [], home: home.path) == "shop")
+        #expect(ProcessDetails.project(directory: relative, arguments: [], home: home.path) == "shop")
+        #expect(ProcessDetails.project(directory: submodule, arguments: [], home: home.path) == "lib")
+    }
+
+    @Test func doesNotLookAboveTheHomeFolder() throws {
+        let home = try ProjectFolders()
+        defer { home.remove() }
+        // Dotfiles tracked in the home folder don't make everything in it one project.
+        try home.folder(".git")
+        let folder = try home.folder("scratch")
+        #expect(ProcessDetails.project(directory: folder, arguments: [], home: home.path) == "scratch")
+        #expect(ProcessDetails.project(directory: home.path, arguments: [], home: home.path) == nil)
+    }
+
+    @Test func onlyLooksInsideTheHomeFolder() throws {
+        let root = try ProjectFolders()
+        defer { root.remove() }
+        let home = try root.folder("home")
+        // Homebrew's prefix is a git checkout, and its services run in it.
+        try root.folder("opt/homebrew/.git")
+        let data = try root.folder("opt/homebrew/var/postgresql")
+        let system = try root.folder("private/var/db")
+        let project = { ProcessDetails.project(directory: $0, arguments: $1, home: home) }
+
+        #expect(project(data, ["postgres", "-D", data]) == nil)
+        #expect(project(system, []) == nil)
+        #expect(project("/", ["/opt/homebrew/bin/redis-server"]) == nil)
+    }
+
+    @Test func findsTheProjectOfAScriptAfterOthers() throws {
+        let home = try ProjectFolders()
+        defer { home.remove() }
+        try home.folder("code/shop/.git")
+        try home.folder("lib")
+        let library = try home.file("lib/dotenv.js")
+        let script = try home.file("code/shop/server.js")
+        #expect(ProcessDetails.project(directory: "/", arguments: ["node", "--require", library, script], home: home.path) == "shop")
+    }
+
+    @Test func findsTheProjectOfTheProgram() throws {
+        let home = try ProjectFolders()
+        defer { home.remove() }
+        try home.folder("code/api/.git")
+        try home.folder("code/api/target/debug")
+        let program = try home.file("code/api/target/debug/api")
+        #expect(ProcessDetails.project(directory: "/", executable: program, arguments: [program], home: home.path) == "api")
+    }
+
+    @Test func namesWorktreesOfBareRepositories() throws {
+        let home = try ProjectFolders()
+        defer { home.remove() }
+        try home.folder("code/shop.git/worktrees/fix")
+        let worktree = try home.folder("code/fix")
+        try home.file("code/fix/.git", contents: "gitdir: \(home.path)/code/shop.git/worktrees/fix\n")
+        #expect(ProcessDetails.project(directory: worktree, arguments: [], home: home.path) == "shop")
+    }
+
+    @Test func resolvesAHomeFolderReachedThroughALink() throws {
+        let root = try ProjectFolders()
+        defer { root.remove() }
+        let home = try root.folder("real-home")
+        try root.folder("real-home/.git")
+        let folder = try root.folder("real-home/scratch")
+        let link = "\(root.path)/home"
+        try FileManager.default.createSymbolicLink(atPath: link, withDestinationPath: home)
+        #expect(ProcessDetails.project(directory: folder, arguments: [], home: link) == "scratch")
+        #expect(ProcessDetails.project(directory: home, arguments: [], home: link) == nil)
+    }
+
+    @Test func hidesAProjectNamedLikeItsProcess() {
+        var listener = Listener(pid: 1, port: 8080, addresses: ["*"], command: "api")
+        listener.process = ProcessDetails(path: "/Users/me/code/api/api", arguments: [], project: "API")
+        #expect(listener.project == nil)
+        #expect(listener.matches("api"))
+    }
+
     @Test func parsesProcessArguments() {
         var bytes: [UInt8] = []
         withUnsafeBytes(of: Int32(3)) { bytes += $0 }
@@ -427,5 +542,36 @@ struct PortsControllerTests {
         #expect(mine.pid == getpid())
         #expect(mine.isLocalOnly)
         #expect(mine.process?.path != nil)
+    }
+}
+
+/// A throwaway folder standing in for the home folder.
+private struct ProjectFolders {
+    let path: String
+
+    init() throws {
+        let url = FileManager.default.temporaryDirectory.appending(path: "projects-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        // Resolved, as a process's working folder is: /var is a link to /private/var.
+        let resolved = url.resolvingSymlinksInPath().path(percentEncoded: false)
+        path = resolved.hasSuffix("/") ? String(resolved.dropLast()) : resolved
+    }
+
+    @discardableResult
+    func folder(_ relative: String) throws -> String {
+        let path = "\(self.path)/\(relative)"
+        try FileManager.default.createDirectory(atPath: path, withIntermediateDirectories: true)
+        return path
+    }
+
+    @discardableResult
+    func file(_ relative: String, contents: String = "") throws -> String {
+        let path = "\(self.path)/\(relative)"
+        try contents.write(toFile: path, atomically: true, encoding: .utf8)
+        return path
+    }
+
+    func remove() {
+        try? FileManager.default.removeItem(atPath: path)
     }
 }
