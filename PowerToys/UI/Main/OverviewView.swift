@@ -4,7 +4,8 @@ struct OverviewView: View {
     @Binding var selection: Pane
 
     @Environment(AppState.self) private var state
-    @AppStorage("showsMenuBarIcon") private var showsMenuBarIcon = true
+    @AppStorage(DockIcon.showsMenuBarIconKey) private var showsMenuBarIcon = DockIcon.showsMenuBarIconDefault
+    @AppStorage(DockIcon.hidesOnCloseKey) private var hidesDockIconOnClose = false
 
     var body: some View {
         @Bindable var state = state
@@ -25,6 +26,16 @@ struct OverviewView: View {
                 }
                 CardRow("Show in menu bar", hint: "Quick toggles for running modules.") {
                     RowSwitch(label: "Show in menu bar", isOn: $showsMenuBarIcon)
+                }
+                CardRow(
+                    "Keep in menu bar when closed", hint: "Closing the window hides the Dock icon. Right-click the menu bar icon to quit."
+                ) {
+                    // Shown off while it has no effect, keeping the choice for when the icon returns.
+                    RowSwitch(
+                        label: "Keep in menu bar when closed",
+                        isOn: Binding(get: { showsMenuBarIcon && hidesDockIconOnClose }, set: { hidesDockIconOnClose = $0 })
+                    )
+                    .disabled(!showsMenuBarIcon)
                 }
             }
 

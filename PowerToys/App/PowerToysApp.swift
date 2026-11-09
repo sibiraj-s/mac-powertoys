@@ -3,7 +3,7 @@ import SwiftUI
 @main
 struct PowerToysApp: App {
     @NSApplicationDelegateAdaptor private var appDelegate: AppDelegate
-    @AppStorage("showsMenuBarIcon") private var showsMenuBarIcon = true
+    @AppStorage(DockIcon.showsMenuBarIconKey) private var showsMenuBarIcon = DockIcon.showsMenuBarIconDefault
 
     var body: some Scene {
         Window(AppInfo.name, id: MainWindow.id) {
@@ -52,7 +52,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         installURLHandler()
+        installStatusItemMenu()
+        DockIcon.start()
         Updater.shared.start()
+    }
+
+    /// MenuBarExtra opens its window on any click and offers no other menu, so a right-click
+    /// (or Control-click) on the menu bar icon is caught here and shows Quit instead.
+    private func installStatusItemMenu() {
+        // Lives as long as the app, so the token isn't kept for removal.
+        _ = NSEvent.addLocalMonitorForEvents(matching: [.rightMouseDown, .leftMouseDown]) { event in
+            guard event.type == .rightMouseDown || event.modifierFlags.contains(.control),
+                let window = event.window, window.className.contains("StatusBarWindow"),
+                let view = window.contentView
+            else { return event }
+            let menu = NSMenu()
+            let quit = menu.addItem(
+                withTitle: "Quit \(AppInfo.name)", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+            quit.target = NSApp
+            menu.popUp(positioning: nil, at: NSPoint(x: 0, y: view.isFlipped ? view.bounds.maxY : 0), in: view)
+            return nil
+        }
     }
 
     /// Replaces SwiftUI's handler, which would open a window for every URL.
@@ -84,6 +104,53 @@ enum AppInfo {
 
 enum MainWindow {
     static let id = "main"
+}
+
+/// With the option on, the app keeps running in the menu bar alone while none of its windows
+/// are open, with no Dock icon or app switcher entry.
+@MainActor enum DockIcon {
+    static let hidesOnCloseKey = "hidesDockIconOnClose"
+    static let showsMenuBarIconKey = "showsMenuBarIcon"
+    static let showsMenuBarIconDefault = true
+
+    /// Hidden only while the menu bar icon is there to bring the window back.
+    nonisolated static func isShown(windowOpen: Bool, hidesOnClose: Bool, menuBarIconShown: Bool) -> Bool {
+        windowOpen || !hidesOnClose || !menuBarIconShown
+    }
+
+    /// Follows the app's windows opening, closing and minimizing, and both settings changing.
+    static func start() {
+        let names = [
+            NSWindow.didBecomeMainNotification, NSWindow.willCloseNotification, NSWindow.didMiniaturizeNotification,
+            NSWindow.didDeminiaturizeNotification, UserDefaults.didChangeNotification,
+        ]
+        for name in names {
+            NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { note in
+                // Still visible while it closes, so it's left out by hand.
+                let closing = note.name == NSWindow.willCloseNotification ? note.object as? NSWindow : nil
+                MainActor.assumeIsolated { update(closing: closing) }
+            }
+        }
+        // After SwiftUI has had a turn to open any window it restores at launch.
+        DispatchQueue.main.async { update(closing: nil) }
+    }
+
+    private static func update(closing: NSWindow?) {
+        let defaults = UserDefaults.standard
+        let shown = isShown(
+            windowOpen: NSApp.windows.contains { $0 !== closing && isAppWindow($0) },
+            hidesOnClose: defaults.bool(forKey: hidesOnCloseKey),
+            menuBarIconShown: defaults.object(forKey: showsMenuBarIconKey) as? Bool ?? showsMenuBarIconDefault)
+        let policy: NSApplication.ActivationPolicy = shown ? .regular : .accessory
+        guard NSApp.activationPolicy() != policy else { return }
+        NSApp.setActivationPolicy(policy)
+    }
+
+    /// The main window, the update window and the like, minimized ones included; not the
+    /// menu bar panel, pins or overlays, which float above normal windows.
+    private static func isAppWindow(_ window: NSWindow) -> Bool {
+        window.level == .normal && window.canBecomeMain && (window.isVisible || window.isMiniaturized)
+    }
 }
 
 struct OpenMainWindowButton: View {
