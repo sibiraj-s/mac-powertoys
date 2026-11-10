@@ -4,7 +4,7 @@ enum ModuleID: String, CaseIterable, Identifiable, Codable, Sendable {
     // Tier 1 — MVP
     case zones, windowSwitcher, keys, clipboard, awake, systemToggles, scrollMouse
     // Tier 2 — power utilities
-    case colorPicker, textExtractor, pinCrop, batchRename, fileLocksmith, finderExtras, displaysAudio, cleaner
+    case colorPicker, textExtractor, pinCrop, batchRename, fileLocksmith, finderExtras, displaysAudio, cleaner, apps
     // Tier 3 — developer
     case portsProcesses, hostsEnv, launchAgents, defaultsBrowser, screenRuler
 
@@ -133,6 +133,12 @@ enum ModuleCatalog {
                 "See CPU, memory and disk use, quit the busiest processes, and free space by deleting caches, logs, build data and what uninstalled apps left behind.",
             symbol: "gauge.with.dots.needle.50percent", category: .system, tier: .utilities,
             permissions: [.admin], replaces: "Mole, CleanMyMac, iStat Menus", isImplemented: true),
+        .init(
+            id: .apps, name: "Apps",
+            summary:
+                "Uninstall apps with their settings, caches and data, and see which have updates in the App Store, their own update feeds or Homebrew.",
+            symbol: "square.grid.2x2", category: .system, tier: .utilities,
+            permissions: [], replaces: "AppCleaner, MacUpdater", isImplemented: true),
 
         // MARK: Tier 3 — developer
         .init(

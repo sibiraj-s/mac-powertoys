@@ -22,6 +22,7 @@ final class AppState {
     let scrollMouse: ScrollMouseController
     let keys: KeysController
     let cleaner: CleanerController
+    let apps: AppsController
     let pinCrop: PinCropController
     let windowSwitcher: WindowSwitcherController
     let displaysAudio: DisplaysAudioController
@@ -51,6 +52,7 @@ final class AppState {
         defaultsStore: any DefaultsStoring = LiveDefaultsStore(),
         defaultsBackups: URL? = DefaultsBrowserController.defaultBackupDirectory,
         cleaner: CleanerController? = nil,
+        apps: AppsController? = nil,
         pinCrop: PinCropController? = nil,
         keyMapping: any KeyMappingStore = LiveKeyMappingStore(),
         windowSwitcher: WindowSwitcherController? = nil,
@@ -81,6 +83,7 @@ final class AppState {
         keys = KeysController(
             defaults: defaults, mappingStore: keyMapping, isTrusted: { permissions.currentStatus(.accessibility) == .granted })
         self.cleaner = cleaner ?? CleanerController(defaults: defaults)
+        self.apps = apps ?? AppsController()
         self.pinCrop =
             pinCrop
             ?? PinCropController(access: ScreenAccess(for: .pinCrop, permissions: permissions))

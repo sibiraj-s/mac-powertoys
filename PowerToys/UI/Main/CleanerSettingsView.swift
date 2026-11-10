@@ -69,10 +69,6 @@ struct CleanerSettingsView: View {
                 }
             }
 
-            CardSection("Apps") {
-                UninstallAppsRow()
-            }
-
             VStack(alignment: .leading, spacing: 8) {
                 SectionTitle("Usage")
                 HStack(spacing: 12) {

@@ -318,18 +318,18 @@ struct AppUninstallTests {
         try makeApp("Applications/Bar.app", id: "com.example.Bar", in: root)
         try makeFile("Library/Preferences/com.example.Foo.plist", in: root)
         let fake = FakeRemoval(trashFolder: root.appending(path: "Trash"))
+        let list = InstalledAppList(folders: [root.appending(path: "Applications")], readsDetails: false)
         let uninstaller = AppUninstaller(
-            home: root, appFolders: [root.appending(path: "Applications")], readActivity: { .idle() },
-            fullDiskAccess: { true }, remover: fake.remover, readsDetails: false)
+            list: list, home: root, readActivity: { .idle() }, fullDiskAccess: { true }, remover: fake.remover)
 
         try makeFile("Library/Application Support/Foo/x", in: root, bytes: 10)
-        await uninstaller.load()
+        await uninstaller.list.load()
         #expect(uninstaller.apps.map(\.name) == ["Bar", "Foo"])
         // Listed once; a new app shows only after a refresh.
         try makeApp("Applications/Baz.app", id: "com.example.Baz", in: root)
-        await uninstaller.load()
+        await uninstaller.list.load()
         #expect(uninstaller.apps.count == 2)
-        await uninstaller.load(refresh: true)
+        await uninstaller.list.load(refresh: true)
         #expect(uninstaller.apps.map(\.name) == ["Bar", "Baz", "Foo"])
         let foo = try #require(uninstaller.apps.last)
         await uninstaller.inspect(foo)

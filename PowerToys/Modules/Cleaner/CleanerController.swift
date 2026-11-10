@@ -83,9 +83,6 @@ final class CleanerController {
     /// Readings kept for the graphs: two minutes at `refreshInterval`.
     static let historyLength = 60
 
-    /// Uninstalls apps with their data.
-    @ObservationIgnored let uninstaller: AppUninstaller
-
     private let defaults: UserDefaults
     @ObservationIgnored private let home: URL
     @ObservationIgnored private let sampler: any UsageSampling
@@ -127,11 +124,8 @@ final class CleanerController {
         cleanTimeout: Duration = CleanerController.cleanTimeout,
         startTime: @escaping (pid_t) -> Date? = { ProcessStart.read($0) },
         installedApps: @escaping @Sendable () async -> InstalledApps? = { await InstalledApps.read() },
-        fullDiskAccess: @escaping () -> Bool = { FullDiskAccess.isGranted() },
-        uninstaller: AppUninstaller? = nil
+        fullDiskAccess: @escaping () -> Bool = { FullDiskAccess.isGranted() }
     ) {
-        self.uninstaller =
-            uninstaller ?? AppUninstaller(home: home, readActivity: readActivity, fullDiskAccess: fullDiskAccess)
         self.fullDiskAccess = fullDiskAccess
         self.installedApps = installedApps
         self.startTime = startTime

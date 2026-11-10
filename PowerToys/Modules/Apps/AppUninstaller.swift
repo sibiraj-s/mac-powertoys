@@ -5,9 +5,9 @@ import Observation
 /// moving everything to the Trash.
 @Observable
 final class AppUninstaller {
-    private(set) var apps: [InstalledApp] = []
-    private(set) var isLoading = false
-    private(set) var hasLoaded = false
+    /// The apps to pick from, shared with update checks.
+    let list: InstalledAppList
+    var apps: [InstalledApp] { list.apps }
 
     /// The app being looked at, what it has and what's unticked.
     private(set) var inspected: InstalledApp?
@@ -24,40 +24,22 @@ final class AppUninstaller {
     private(set) var resultIsError = false
 
     @ObservationIgnored private let home: URL
-    @ObservationIgnored private let appFolders: [URL]
     @ObservationIgnored private let readActivity: @Sendable () async -> ActivitySnapshot
     @ObservationIgnored private let fullDiskAccess: () -> Bool
     @ObservationIgnored private let remover: AppUninstall.Remover
-    @ObservationIgnored private let readsDetails: Bool
 
     init(
+        list: InstalledAppList,
         home: URL = FileManager.default.homeDirectoryForCurrentUser,
-        appFolders: [URL]? = nil,
         readActivity: @escaping @Sendable () async -> ActivitySnapshot = { await ActivitySnapshot.read() },
         fullDiskAccess: @escaping () -> Bool = { FullDiskAccess.isGranted() },
-        remover: AppUninstall.Remover = AppUninstall.Remover(),
-        readsDetails: Bool = true
+        remover: AppUninstall.Remover = AppUninstall.Remover()
     ) {
+        self.list = list
         self.home = home
-        self.appFolders = appFolders ?? AppUninstall.appFolders(home: home)
         self.readActivity = readActivity
         self.fullDiskAccess = fullDiskAccess
         self.remover = remover
-        self.readsDetails = readsDetails
-    }
-
-    /// Lists the apps once; `refresh` lists them again, as Spotlight sizes and measuring take a while.
-    func load(refresh: Bool = false) async {
-        guard !isLoading, refresh || !hasLoaded else { return }
-        isLoading = true
-        defer { isLoading = false }
-        apps = await Self.list(appFolders, readsDetails: readsDetails)
-        hasLoaded = true
-    }
-
-    @concurrent
-    private nonisolated static func list(_ folders: [URL], readsDetails: Bool) async -> [InstalledApp] {
-        AppUninstall.list(in: folders, excluding: Bundle.main.bundleIdentifier, withDetails: readsDetails)
     }
 
     // MARK: One app
@@ -73,8 +55,10 @@ final class AppUninstaller {
     }
 
     /// Back to the list; not while removing or quitting, which act on the app shown.
+    /// Back to the list, leaving behind what a removal said, which was about this app.
     func close() {
         guard !isRemoving, !isQuitting else { return }
+        result = nil
         inspected = nil
         footprint = []
         unticked = []
@@ -191,7 +175,7 @@ final class AppUninstaller {
             context: context, remover: remover)
         result = Self.summary(removal, app: app)
         resultIsError = !removal.failures.isEmpty
-        if removal.removedApp { apps.removeAll { $0.id == app.id } }
+        if removal.removedApp { list.remove(app) }
         // Going back and opening another app is blocked while removing, but checked anyway.
         guard inspected == app else { return }
         if removal.removedApp {

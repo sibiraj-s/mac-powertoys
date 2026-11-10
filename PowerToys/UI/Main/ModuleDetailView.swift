@@ -61,6 +61,7 @@ struct ModuleDetailView: View {
         case .scrollMouse: ScrollMouseSettingsView()
         case .keys: KeysSettingsView()
         case .cleaner: CleanerSettingsView()
+        case .apps: AppsSettingsView()
         case .pinCrop: PinCropSettingsView()
         case .windowSwitcher: WindowSwitcherSettingsView()
         case .displaysAudio: DisplaysAudioSettingsView()
