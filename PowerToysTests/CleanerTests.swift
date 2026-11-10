@@ -1407,7 +1407,7 @@ struct InUseTests {
 
     @Test func cantSayAnythingIsIdleWithoutTheProcessList() {
         let unknown = ActivitySnapshot(commandLines: nil, bundleIDs: [], openFiles: [])
-        // Short names too, which used to count as not running.
+        // Short names too: without the process list, nothing can be ruled out as not running.
         #expect(unknown.ownerIsRunning("Firefox") == nil)
         #expect(unknown.ownerIsRunning("foo.app") == nil)
     }
