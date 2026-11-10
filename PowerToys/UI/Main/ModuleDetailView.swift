@@ -107,6 +107,14 @@ private struct AwakeSettingsView: View {
             CardRow("Keep the display on", hint: "Otherwise the display can sleep while the Mac stays awake.") {
                 RowSwitch(label: "Keep the display on", isOn: $awake.keepsDisplayOn)
             }
+            if awake.isLaptop {
+                CardRow(
+                    "While a display is connected",
+                    hint: "Stays awake whenever an external display is plugged in. Turn this off to stop it."
+                ) {
+                    RowSwitch(label: "While a display is connected", isOn: $awake.whileDisplayConnected)
+                }
+            }
         }
 
         CardSection("Shortcuts") {
@@ -116,7 +124,7 @@ private struct AwakeSettingsView: View {
 
     private var statusText: String {
         let awake = state.awake
-        guard awake.isActive else { return "Off" }
+        guard awake.isActive else { return awake.isHeldByDisplay ? "Awake while a display is connected" : "Off" }
         guard let endsAt = awake.endsAt else { return "Awake until you stop it" }
         let style: Date.FormatStyle =
             endsAt.timeIntervalSinceNow > 12 * 60 * 60

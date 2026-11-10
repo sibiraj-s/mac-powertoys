@@ -28,7 +28,9 @@ struct PowerToysApp: App {
             MenuBarView()
                 .environment(appDelegate.state)
         } label: {
-            Image(systemName: appDelegate.state.awake.isActive ? "cup.and.saucer.fill" : "wrench.and.screwdriver")
+            Image(
+                systemName: appDelegate.state.awake.isActive || appDelegate.state.awake.isHeldByDisplay
+                    ? "cup.and.saucer.fill" : "wrench.and.screwdriver")
         }
         .menuBarExtraStyle(.window)
     }

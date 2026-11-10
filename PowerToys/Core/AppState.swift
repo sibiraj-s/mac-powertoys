@@ -102,6 +102,7 @@ final class AppState {
             // First launch: only modules that need no permission are on, so nothing prompts unasked.
             enabledModules = Set(ModuleCatalog.all.filter { $0.isImplemented && $0.permissions.isEmpty }.map(\.id))
         }
+        if enabledModules.contains(.awake) { awake.startWatchingDisplays() }
         if enabledModules.contains(.zones) { zones.start() }
         if enabledModules.contains(.clipboard) { clipboard.start() }
         if enabledModules.contains(.scrollMouse) { scrollMouse.start() }
@@ -170,7 +171,13 @@ final class AppState {
             enabledModules.remove(id)
         }
         switch id {
-        case .awake where !enabled: awake.stop()
+        case .awake:
+            if enabled {
+                awake.startWatchingDisplays()
+            } else {
+                awake.stop()
+                awake.stopWatchingDisplays()
+            }
         case .pinCrop where !enabled: pinCrop.stop()
         case .screenRuler where !enabled: screenRuler.cancel()
         case .windowSwitcher where !enabled: windowSwitcher.cancel()

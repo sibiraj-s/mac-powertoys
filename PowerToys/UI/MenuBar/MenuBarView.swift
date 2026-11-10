@@ -212,7 +212,7 @@ struct MenuBarView: View {
     }
 
     private var awakeSubtitle: String {
-        guard state.awake.isActive else { return "Off" }
+        guard state.awake.isActive else { return state.awake.isHeldByDisplay ? "Held by display" : "Off" }
         guard let endsAt = state.awake.endsAt else { return "On" }
         return "Until \(endsAt.formatted(date: .omitted, time: .shortened))"
     }

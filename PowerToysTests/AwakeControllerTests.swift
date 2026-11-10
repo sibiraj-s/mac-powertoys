@@ -1,4 +1,4 @@
-import Foundation
+import AppKit
 import Testing
 
 @testable import PowerToys
@@ -70,6 +70,91 @@ struct AwakeControllerTests {
         let awake = AwakeController(defaults: store.defaults)
         awake.keepsDisplayOn = true
         #expect(AwakeController(defaults: store.defaults).keepsDisplayOn)
+    }
+}
+
+struct AwakeDisplayConnectedTests {
+    private let store = TestDefaults()
+
+    @Test func holdsOnlyWhileExternalDisplayConnected() {
+        var connected = false
+        let awake = AwakeController(defaults: store.defaults, hasExternalDisplay: { connected }, isLaptop: true)
+        defer { awake.stopWatchingDisplays() }
+        awake.whileDisplayConnected = true
+        awake.startWatchingDisplays()
+        #expect(!awake.isHeldByDisplay)
+
+        connected = true
+        awake.updateDisplayHold()
+        #expect(awake.isHeldByDisplay)
+
+        connected = false
+        awake.updateDisplayHold()
+        #expect(!awake.isHeldByDisplay)
+    }
+
+    @Test func wakeRechecksDisplays() {
+        var connected = true
+        let awake = AwakeController(defaults: store.defaults, hasExternalDisplay: { connected }, isLaptop: true)
+        defer { awake.stopWatchingDisplays() }
+        awake.whileDisplayConnected = true
+        awake.startWatchingDisplays()
+        #expect(awake.isHeldByDisplay)
+
+        // Unplugged while asleep: no screen change arrives, only the wake.
+        connected = false
+        NSWorkspace.shared.notificationCenter.post(name: NSWorkspace.didWakeNotification, object: nil)
+        #expect(!awake.isHeldByDisplay)
+    }
+
+    @Test func settingOffReleasesHold() {
+        let awake = AwakeController(defaults: store.defaults, hasExternalDisplay: { true }, isLaptop: true)
+        defer { awake.stopWatchingDisplays() }
+        awake.startWatchingDisplays()
+        #expect(!awake.isHeldByDisplay)
+
+        awake.whileDisplayConnected = true
+        #expect(awake.isHeldByDisplay)
+        awake.whileDisplayConnected = false
+        #expect(!awake.isHeldByDisplay)
+    }
+
+    @Test func noHoldWhileNotWatching() {
+        let awake = AwakeController(defaults: store.defaults, hasExternalDisplay: { true }, isLaptop: true)
+        awake.whileDisplayConnected = true
+        #expect(!awake.isHeldByDisplay)
+
+        awake.startWatchingDisplays()
+        #expect(awake.isHeldByDisplay)
+        awake.stopWatchingDisplays()
+        #expect(!awake.isHeldByDisplay)
+    }
+
+    @Test func holdSurvivesManualStopAndDisplaySetting() {
+        let awake = AwakeController(defaults: store.defaults, hasExternalDisplay: { true }, isLaptop: true)
+        defer { awake.stopWatchingDisplays() }
+        awake.whileDisplayConnected = true
+        awake.startWatchingDisplays()
+
+        awake.start(.hour1)
+        awake.stop()
+        awake.keepsDisplayOn = true
+        #expect(awake.isHeldByDisplay)
+        #expect(!awake.isActive)
+    }
+
+    @Test func desktopNeverHolds() {
+        let awake = AwakeController(defaults: store.defaults, hasExternalDisplay: { true }, isLaptop: false)
+        defer { awake.stopWatchingDisplays() }
+        awake.whileDisplayConnected = true
+        awake.startWatchingDisplays()
+        #expect(!awake.isHeldByDisplay)
+    }
+
+    @Test func settingPersists() {
+        let awake = AwakeController(defaults: store.defaults, hasExternalDisplay: { false })
+        awake.whileDisplayConnected = true
+        #expect(AwakeController(defaults: store.defaults, hasExternalDisplay: { false }).whileDisplayConnected)
     }
 }
 
