@@ -1,5 +1,16 @@
 # powertoys
 
+## 1.3.0
+
+### Minor Changes
+
+- 9a6a975: Displays & Audio: Play together turns on several outputs at once, such as two pairs of Bluetooth headphones, as one PowerToys Multi-Output device, with a volume slider for each and one for them all in the menu bar, volume keys that change them all with Use volume keys on, and app volume working through it too
+- a401786: Apps: a new module for the apps in your Applications folders. Uninstall one with its containers, settings, caches, logs, shared containers and launch agents, each with a checkbox, sorted by name, size or when it was last opened; untick the app to remove only its data and start it afresh. Everything goes to the Trash. Check for updates looks up newer versions in the App Store, apps' own Sparkle update feeds and Homebrew, without installing anything
+
+### Patch Changes
+
+- 89c25d9: Sidebar and Overview: modules are sorted by name within each group, and the groups now run System, Windows & input, Tools, Developer. Screen Ruler moves from Developer to Tools
+
 ## 1.2.0
 
 ### Minor Changes
