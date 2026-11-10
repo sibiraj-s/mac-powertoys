@@ -69,6 +69,10 @@ struct CleanerSettingsView: View {
                 }
             }
 
+            CardSection("Apps") {
+                UninstallAppsRow()
+            }
+
             VStack(alignment: .leading, spacing: 8) {
                 SectionTitle("Usage")
                 HStack(spacing: 12) {
@@ -171,7 +175,7 @@ private struct FillBar: View {
 }
 
 /// A small grey label, such as why something is left alone.
-private struct Tag: View {
+struct Tag: View {
     let text: String
 
     var body: some View {
@@ -185,7 +189,7 @@ private struct Tag: View {
 }
 
 /// A rounded square holding a target's symbol.
-private struct SymbolTile: View {
+struct SymbolTile: View {
     let symbol: String
     var size: CGFloat = 26
 
