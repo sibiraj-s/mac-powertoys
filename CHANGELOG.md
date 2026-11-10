@@ -1,5 +1,12 @@
 # powertoys
 
+## 1.4.1
+
+### Patch Changes
+
+- 2b3d59f: App volume now works: macOS refused System Audio Recording even after it was allowed, because the app was missing the description macOS requires for it. If it still shows as needed after updating, turn PowerToys off and on again under System Audio Recording Only in System Settings
+- fddbc45: Defaults Browser saves a new copy of a domain if its saved copy was deleted, instead of offering to restore a copy that's gone
+
 ## 1.4.0
 
 ### Minor Changes
