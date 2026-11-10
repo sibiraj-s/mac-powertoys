@@ -36,6 +36,12 @@ struct PermissionTests {
             #expect(service.status(permission) != .unknown)
         }
     }
+
+    /// Without it macOS refuses System Audio Recording even when it's allowed in System Settings.
+    @Test func appDescribesWhyItRecordsSystemAudio() {
+        let description = Bundle.main.object(forInfoDictionaryKey: "NSAudioCaptureUsageDescription") as? String
+        #expect(description?.isEmpty == false)
+    }
 }
 
 @MainActor

@@ -11,6 +11,10 @@
 	<!-- Checks daily from the first launch, without Sparkle asking first; Overview can turn it off. -->
 	<key>SUEnableAutomaticChecks</key>
 	<true/>
+	<!-- Here, not as an INFOPLIST_KEY_ build setting: Xcode drops keys it doesn't know, and without
+	     it macOS refuses System Audio Recording, which per-app volume needs. -->
+	<key>NSAudioCaptureUsageDescription</key>
+	<string>PowerToys plays each app's sound through at the volume you set for it.</string>
 	<!-- Merged with the generated Info.plist. Finder's menu extension sends its actions here. -->
 	<key>CFBundleURLTypes</key>
 	<array>
