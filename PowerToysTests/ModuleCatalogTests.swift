@@ -22,6 +22,15 @@ struct ModuleCatalogTests {
         }
     }
 
+    @Test func modulesInCategoryAreSortedByName() {
+        for category in ModuleCategory.allCases {
+            let names = ModuleCatalog.modules(in: category).map(\.name)
+            #expect(names == names.sorted { $0.localizedStandardCompare($1) == .orderedAscending })
+        }
+        #expect(
+            ModuleCatalog.modules(in: .windowsInput).map(\.name) == ["Keys", "Pin & Crop", "Scroll & Mouse", "Window Switcher", "Zones"])
+    }
+
     @Test func descriptorsHaveCopyAndSymbols() {
         for module in ModuleCatalog.all {
             #expect(!module.name.isEmpty)

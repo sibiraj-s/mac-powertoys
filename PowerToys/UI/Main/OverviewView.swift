@@ -6,6 +6,7 @@ struct OverviewView: View {
     @Environment(AppState.self) private var state
     @AppStorage(DockIcon.showsMenuBarIconKey) private var showsMenuBarIcon = DockIcon.showsMenuBarIconDefault
     @AppStorage(DockIcon.hidesOnCloseKey) private var hidesDockIconOnClose = false
+    @AppStorage(Pane.reopensLastKey) private var reopensLastPane = Pane.reopensLastDefault
 
     var body: some View {
         @Bindable var state = state
@@ -36,6 +37,9 @@ struct OverviewView: View {
                         isOn: Binding(get: { showsMenuBarIcon && hidesDockIconOnClose }, set: { hidesDockIconOnClose = $0 })
                     )
                     .disabled(!showsMenuBarIcon)
+                }
+                CardRow("Reopen last page", hint: "Otherwise the window always opens on Overview.") {
+                    RowSwitch(label: "Reopen last page", isOn: $reopensLastPane)
                 }
             }
 

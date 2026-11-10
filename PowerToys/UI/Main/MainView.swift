@@ -4,11 +4,45 @@ enum Pane: Hashable {
     case overview
     case permissions
     case module(ModuleID)
+
+    static let reopensLastKey = "reopensLastPane"
+    static let lastKey = "lastPane"
+    static let reopensLastDefault = true
+    private static let modulePrefix = "module."
+
+    /// How the pane is saved between launches.
+    var storageValue: String {
+        switch self {
+        case .overview: "overview"
+        case .permissions: "permissions"
+        case .module(let id): Pane.modulePrefix + id.rawValue
+        }
+    }
+
+    init?(storageValue: String) {
+        switch storageValue {
+        case "overview": self = .overview
+        case "permissions": self = .permissions
+        default:
+            guard storageValue.hasPrefix(Pane.modulePrefix),
+                let id = ModuleID(rawValue: String(storageValue.dropFirst(Pane.modulePrefix.count)))
+            else { return nil }
+            self = .module(id)
+        }
+    }
+
+    /// The last pane when the window reopens, unless the user turned that off or it no longer exists.
+    static func initial(defaults: UserDefaults) -> Pane {
+        guard defaults.object(forKey: reopensLastKey) as? Bool ?? reopensLastDefault,
+            let saved = defaults.string(forKey: lastKey), let pane = Pane(storageValue: saved)
+        else { return .overview }
+        return pane
+    }
 }
 
 struct MainView: View {
     @Environment(AppState.self) private var state
-    @State private var selection: Pane = .overview
+    @State private var selection = Pane.initial(defaults: .standard)
     @State private var search = ""
 
     var body: some View {
@@ -26,6 +60,9 @@ struct MainView: View {
         .ignoresSafeArea()
         .controlSize(.small)
         .frame(minWidth: 760, minHeight: 520)
+        .onChange(of: selection) { _, pane in
+            UserDefaults.standard.set(pane.storageValue, forKey: Pane.lastKey)
+        }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             // Grants happen in System Settings; pick them up when the user comes back.
             state.permissions.refresh()
@@ -39,32 +76,40 @@ struct MainView: View {
             SearchField(text: $search)
                 .padding(.horizontal, 12)
                 .padding(.bottom, 14)
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    if search.isEmpty {
-                        SidebarGroup(label: "General") {
-                            SidebarRow(title: "Overview", symbol: "slider.horizontal.3", isOn: nil, pane: .overview, selection: $selection)
-                            SidebarRow(title: "Permissions", symbol: "lock", isOn: nil, pane: .permissions, selection: $selection)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        if search.isEmpty {
+                            SidebarGroup(label: "General") {
+                                SidebarRow(
+                                    title: "Overview", symbol: "slider.horizontal.3", isOn: nil, pane: .overview, selection: $selection)
+                                SidebarRow(title: "Permissions", symbol: "lock", isOn: nil, pane: .permissions, selection: $selection)
+                            }
                         }
-                    }
-                    ForEach(ModuleCategory.allCases) { category in
-                        let modules = filteredModules(in: category)
-                        if !modules.isEmpty {
-                            SidebarGroup(label: category.rawValue) {
-                                ForEach(modules) { module in
-                                    SidebarRow(
-                                        title: module.name, symbol: module.symbol, isOn: state.isEnabled(module.id),
-                                        pane: .module(module.id), selection: $selection
-                                    )
+                        ForEach(ModuleCategory.allCases) { category in
+                            let modules = filteredModules(in: category)
+                            if !modules.isEmpty {
+                                SidebarGroup(label: category.rawValue) {
+                                    ForEach(modules) { module in
+                                        SidebarRow(
+                                            title: module.name, symbol: module.symbol, isOn: state.isEnabled(module.id),
+                                            pane: .module(module.id), selection: $selection
+                                        )
+                                    }
                                 }
                             }
                         }
                     }
+                    .padding(.horizontal, 10)
+                    .padding(.bottom, 16)
                 }
-                .padding(.horizontal, 10)
-                .padding(.bottom, 16)
+                .scrollIndicators(.never)
+                // Keeps the selected row in view when the window reopens on it or Overview opens it.
+                .onAppear { proxy.scrollTo(selection) }
+                .onChange(of: selection) { _, pane in
+                    withAnimation { proxy.scrollTo(pane) }
+                }
             }
-            .scrollIndicators(.never)
         }
     }
 
@@ -157,5 +202,6 @@ private struct SidebarRow: View {
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .id(pane)
     }
 }

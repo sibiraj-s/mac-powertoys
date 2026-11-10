@@ -12,8 +12,9 @@ enum ModuleID: String, CaseIterable, Identifiable, Codable, Sendable {
 }
 
 enum ModuleCategory: String, CaseIterable, Identifiable {
-    case windowsInput = "Windows & input"
+    // Declaration order is the sidebar and overview order.
     case system = "System"
+    case windowsInput = "Windows & input"
     case tools = "Tools"
     case developer = "Developer"
 
@@ -168,7 +169,7 @@ enum ModuleCatalog {
         .init(
             id: .screenRuler, name: "Screen Ruler",
             summary: "Measure the space between edges on screen, or drag over an area, and copy its size in points or pixels.",
-            symbol: "ruler", category: .developer, tier: .pro,
+            symbol: "ruler", category: .tools, tier: .pro,
             permissions: [.screenRecording], replaces: "xScope", isImplemented: true),
     ]
 
@@ -178,5 +179,6 @@ enum ModuleCatalog {
 
     static func modules(in category: ModuleCategory) -> [ModuleDescriptor] {
         all.filter { $0.category == category }
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
 }
