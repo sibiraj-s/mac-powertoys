@@ -1,5 +1,16 @@
 # powertoys
 
+## 1.4.0
+
+### Minor Changes
+
+- 8c93e85: Awake: a new "While a display is connected" switch keeps a laptop (not a desktop, whose screens are all external) awake whenever an external display is plugged in, separate from timed sessions, and lets it sleep again once the display is unplugged, even if that happened while the Mac was asleep. While it's holding the Mac awake, the menu bar icon shows the cup and Awake reads "Held by display"
+
+### Patch Changes
+
+- c4a8bea: Defaults Browser starts off on a fresh install
+- 8d77e05: App updates: Chrome, Brave and VS Code are checked with their own update services, and apps with no other source are checked against Homebrew's public cask list, marked with an info symbol explaining where the version came from
+
 ## 1.3.0
 
 ### Minor Changes
