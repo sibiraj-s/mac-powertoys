@@ -100,7 +100,8 @@ final class AppState {
             enabledModules = Set(stored.compactMap(ModuleID.init(rawValue:)))
         } else {
             // First launch: only modules that need no permission are on, so nothing prompts unasked.
-            enabledModules = Set(ModuleCatalog.all.filter { $0.isImplemented && $0.permissions.isEmpty }.map(\.id))
+            enabledModules = Set(
+                ModuleCatalog.all.filter { $0.isImplemented && $0.permissions.isEmpty && !$0.offByDefault }.map(\.id))
         }
         if enabledModules.contains(.awake) { awake.startWatchingDisplays() }
         if enabledModules.contains(.zones) { zones.start() }

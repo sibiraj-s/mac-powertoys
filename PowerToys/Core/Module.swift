@@ -39,6 +39,8 @@ struct ModuleDescriptor: Identifiable {
     /// What people use for this today; shown on modules that aren't built yet.
     let replaces: String
     var isImplemented = false
+    /// Stays off on first launch even though it needs no permission.
+    var offByDefault = false
 }
 
 enum ModuleCatalog {
@@ -165,7 +167,7 @@ enum ModuleCatalog {
             summary:
                 "Browse and change the settings apps keep, hidden ones included, with a copy saved before the first change. Copy any key as a defaults command.",
             symbol: "list.bullet.rectangle", category: .developer, tier: .pro,
-            permissions: [], replaces: "defaults CLI", isImplemented: true),
+            permissions: [], replaces: "defaults CLI", isImplemented: true, offByDefault: true),
         .init(
             id: .screenRuler, name: "Screen Ruler",
             summary: "Measure the space between edges on screen, or drag over an area, and copy its size in points or pixels.",

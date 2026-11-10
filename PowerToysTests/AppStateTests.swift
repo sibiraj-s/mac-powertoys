@@ -7,7 +7,7 @@ struct AppStateTests {
 
     @Test func firstLaunchEnablesOnlyModulesThatNeedNoPermission() {
         let state = AppState.testing(defaults: store.defaults, hotKeys: FakeHotKeys(), system: FakeSystemSettings())
-        #expect(state.enabledModules == [.awake, .portsProcesses, .colorPicker, .defaultsBrowser, .displaysAudio, .apps])
+        #expect(state.enabledModules == [.awake, .portsProcesses, .colorPicker, .displaysAudio, .apps])
     }
 
     @Test func enabledModulesPersistAcrossLaunches() {
@@ -16,7 +16,6 @@ struct AppStateTests {
         state.setEnabled(.awake, false)
         state.setEnabled(.portsProcesses, false)
         state.setEnabled(.colorPicker, false)
-        state.setEnabled(.defaultsBrowser, false)
         state.setEnabled(.displaysAudio, false)
         state.setEnabled(.apps, false)
 
@@ -47,6 +46,6 @@ struct AppStateTests {
 
         binding.wrappedValue = true
         #expect(state.isEnabled(.batchRename))
-        #expect(state.enabledCount == 7)
+        #expect(state.enabledCount == 6)
     }
 }
