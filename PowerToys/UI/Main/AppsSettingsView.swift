@@ -53,7 +53,9 @@ struct AppsSettingsView: View {
                 .foregroundStyle(Palette.secondaryText)
 
             if let result = uninstaller.result, uninstaller.inspected == nil {
-                MessageBanner(message: result, isError: uninstaller.resultIsError, dismiss: { uninstaller.dismissResult() })
+                MessageBanner(
+                    message: result, isError: uninstaller.resultIsError, action: appManagementAction(uninstaller),
+                    dismiss: { uninstaller.dismissResult() })
             }
             if let copied {
                 MessageBanner(message: copied, isError: false, dismiss: { self.copied = nil })
@@ -124,13 +126,13 @@ struct AppsSettingsView: View {
         }
     }
 
-    /// Where to get the update: the App Store page, the app itself, which installs from its feed,
-    /// or Homebrew's command, copied.
+    /// Where to get the update: the App Store page, the app itself, which installs from its feed
+    /// or update service, or Homebrew's command, copied.
     private func update(_ app: InstalledApp, _ found: AppUpdates.Found) {
         switch found.source {
         case .appStore(let page):
             NSWorkspace.shared.open(page)
-        case .feed:
+        case .feed, .googleUpdate, .vsCodeUpdate, .homebrewCatalog:
             NSWorkspace.shared.open(app.url)
         case .homebrew(let cask):
             let command = "brew upgrade --cask \(cask)"
@@ -149,6 +151,12 @@ private enum AppSort: String, CaseIterable, Identifiable {
     var id: Self { self }
 }
 
+/// Opens App Management when it stopped the last removal.
+private func appManagementAction(_ uninstaller: AppUninstaller) -> (title: String, perform: () -> Void)? {
+    guard uninstaller.needsAppManagement else { return nil }
+    return ("Open App Management", { NSWorkspace.shared.open(AppUninstall.appManagementSettings) })
+}
+
 private enum AppFilter: Hashable {
     case all, updates
 }
@@ -161,6 +169,7 @@ private struct AppRow: View {
     let isBusy: Bool
     let uninstall: () -> Void
     let onUpdate: (AppUpdates.Found) -> Void
+    @State private var showsSourceDetails = false
 
     var body: some View {
         HStack(spacing: 10) {
@@ -181,6 +190,23 @@ private struct AppRow: View {
             .help(app.url.path)
             Spacer(minLength: 8)
             if let update {
+                if !update.source.isExact {
+                    Button {
+                        showsSourceDetails.toggle()
+                    } label: {
+                        Image(systemName: "info.circle").foregroundStyle(Palette.secondaryText)
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Where this version came from")
+                    .accessibilityLabel("Where this version came from")
+                    .popover(isPresented: $showsSourceDetails, arrowEdge: .bottom) {
+                        Text(sourceDetails(update))
+                            .font(.system(size: 12))
+                            .frame(width: 240, alignment: .leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(12)
+                    }
+                }
                 Button(update.latest.isEmpty || update.latest == update.installed ? "Update" : "Update to \(update.latest)") {
                     onUpdate(update)
                 }
@@ -209,11 +235,20 @@ private struct AppRow: View {
         return [version, opened].compactMap(\.self).joined(separator: " · ")
     }
 
+    /// Why an update found in Homebrew's list may not be one the app offers.
+    private func sourceDetails(_ found: AppUpdates.Found) -> String {
+        "Found in Homebrew’s list of apps, which has \(app.name) \(found.latest). \(app.name) itself wasn’t asked, "
+            + "so it may offer a different version, or not have this one yet."
+    }
+
     private func updateHelp(_ found: AppUpdates.Found) -> String {
         switch found.source {
         case .appStore: "Open \(app.name) in the App Store"
         case .feed: "Open \(app.name), then use its Check for Updates"
+        case .googleUpdate: "Open \(app.name), then its About window to update"
+        case .vsCodeUpdate: "Open \(app.name), then use its Check for Updates"
         case .homebrew(let cask): "Copy brew upgrade --cask \(cask)"
+        case .homebrewCatalog: "Open \(app.name) to update it"
         }
     }
 }
@@ -347,9 +382,12 @@ private struct UninstallSheet: View {
     @ViewBuilder
     private func resultBanner(_ uninstaller: AppUninstaller) -> some View {
         if let result = uninstaller.result {
-            MessageBanner(message: result, isError: uninstaller.resultIsError, dismiss: { uninstaller.dismissResult() })
-                .padding(.horizontal, 16)
-                .padding(.bottom, 12)
+            MessageBanner(
+                message: result, isError: uninstaller.resultIsError, action: appManagementAction(uninstaller),
+                dismiss: { uninstaller.dismissResult() }
+            )
+            .padding(.horizontal, 16)
+            .padding(.bottom, 12)
         }
     }
 

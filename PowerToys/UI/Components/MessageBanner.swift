@@ -4,7 +4,8 @@ import SwiftUI
 struct MessageBanner: View {
     let message: String
     let isError: Bool
-    var details: (() -> Void)?
+    /// A link button after the message, such as Details.
+    var action: (title: String, perform: () -> Void)?
     let dismiss: (() -> Void)?
 
     var body: some View {
@@ -15,8 +16,8 @@ struct MessageBanner: View {
             Text(message)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .fixedSize(horizontal: false, vertical: true)
-            if let details {
-                Button("Details", action: details)
+            if let action {
+                Button(action.title, action: action.perform)
                     .buttonStyle(.link)
             }
             if let dismiss {

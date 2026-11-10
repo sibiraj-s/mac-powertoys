@@ -94,7 +94,7 @@ final class AppUpdateChecker {
 
     @concurrent
     private nonisolated static func catalog(
-        for apps: [InstalledApp], fetch: AppUpdates.Fetch, brew: String?,
+        for apps: [InstalledApp], fetch: @escaping AppUpdates.Fetch, brew: String?,
         storeUpdates: @Sendable () -> [String: AppUpdates.StoreUpdate]?, storeLastCheck: @Sendable () -> Date?
     ) async -> AppUpdates.Catalog {
         // Listing casks runs beside the feed checks, which don't need it, and is waited for only
@@ -107,7 +107,10 @@ final class AppUpdateChecker {
         let pending = storeUpdates()
         let storeIDs = pending == nil ? apps.filter(\.isAppStore).map(\.bundleID) : []
         let store = storeIDs.isEmpty ? [:] : await AppUpdates.appStoreVersions(storeIDs, fetch: fetch)
-        var catalog = AppUpdates.Catalog(storeUpdates: pending, appStore: store, casks: { await casks.value })
+        // Started only when an app needs it, then shared.
+        let caskCatalog = Shared { await AppUpdates.caskCatalog(fetch: fetch) }
+        var catalog = AppUpdates.Catalog(
+            storeUpdates: pending, appStore: store, casks: { await casks.value }, caskCatalog: { await caskCatalog.value() })
         // The App Store fills its list only when it checks, which it can't while signed out.
         catalog.storeListIsStale = pending != nil && !AppUpdates.isRecent(storeLastCheck())
         return catalog
@@ -121,13 +124,35 @@ final class AppUpdateChecker {
         await AppUpdates.status(of: app, info: readInfo(app.url), catalog: catalog, fetch: fetch)
     }
 
-    /// Reads a feed or lookup, failing on anything but a 200.
+    /// Reads a feed or lookup, failing on anything but a 200; a 204 fails as `.zeroByteResource`,
+    /// which a service that answers no update with nothing can tell apart.
     @Sendable
-    nonisolated static func download(_ url: URL) async throws -> Data {
-        var request = URLRequest(url: url, timeoutInterval: 15)
+    nonisolated static func download(_ request: URLRequest) async throws -> Data {
+        var request = request
+        request.timeoutInterval = 15
         request.cachePolicy = .reloadIgnoringLocalCacheData
         let (data, response) = try await URLSession.shared.data(for: request)
-        guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
-        return data
+        switch (response as? HTTPURLResponse)?.statusCode {
+        case 200: return data
+        case 204: throw URLError(.zeroByteResource)
+        default: throw URLError(.badServerResponse)
+        }
+    }
+}
+
+/// A value worked out once, the first time it's asked for, and shared by everyone who asks.
+private actor Shared<Value: Sendable> {
+    private let make: @Sendable () async -> Value
+    private var task: Task<Value, Never>?
+
+    init(_ make: @escaping @Sendable () async -> Value) {
+        self.make = make
+    }
+
+    func value() async -> Value {
+        if let task { return await task.value }
+        let task = Task { await make() }
+        self.task = task
+        return await task.value
     }
 }

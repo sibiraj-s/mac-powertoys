@@ -22,6 +22,8 @@ final class AppUninstaller {
     /// What the last removal did, and whether anything stayed.
     private(set) var result: String?
     private(set) var resultIsError = false
+    /// The last removal was stopped by App Management, which only the user can turn on.
+    private(set) var needsAppManagement = false
 
     @ObservationIgnored private let home: URL
     @ObservationIgnored private let readActivity: @Sendable () async -> ActivitySnapshot
@@ -49,6 +51,7 @@ final class AppUninstaller {
         guard !isRemoving, !isQuitting else { return }
         inspected = app
         result = nil
+        needsAppManagement = false
         footprint = []
         unticked = []
         await refreshFootprint()
@@ -59,6 +62,7 @@ final class AppUninstaller {
     func close() {
         guard !isRemoving, !isQuitting else { return }
         result = nil
+        needsAppManagement = false
         inspected = nil
         footprint = []
         unticked = []
@@ -175,6 +179,7 @@ final class AppUninstaller {
             context: context, remover: remover)
         result = Self.summary(removal, app: app)
         resultIsError = !removal.failures.isEmpty
+        needsAppManagement = removal.blockedByAppManagement
         if removal.removedApp { list.remove(app) }
         // Going back and opening another app is blocked while removing, but checked anyway.
         guard inspected == app else { return }
@@ -189,6 +194,7 @@ final class AppUninstaller {
 
     func dismissResult() {
         result = nil
+        needsAppManagement = false
     }
 
     static func summary(_ removal: AppUninstall.Removal, app: InstalledApp) -> String {
@@ -206,6 +212,9 @@ final class AppUninstaller {
         if !removal.failures.isEmpty {
             if parts.isEmpty { parts.append("Nothing was removed.") }
             parts.append("Couldn't remove \(removal.failures.joined(separator: "; ")).")
+        }
+        if removal.blockedByAppManagement {
+            parts.append("Turn on PowerToys in App Management to let it remove apps, then try again.")
         }
         return parts.joined(separator: " ")
     }

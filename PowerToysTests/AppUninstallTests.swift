@@ -149,19 +149,21 @@ struct AppUninstallTests {
     private final class FakeRemoval: Sendable {
         let trashFolder: URL
         let failing: Set<String>
+        let error: Error
         let finderCalls = Mutex<[String]>([])
         let unloaded = Mutex<[String]>([])
         let reloaded = Mutex<[String]>([])
 
-        init(trashFolder: URL, failing: Set<String> = []) {
+        init(trashFolder: URL, failing: Set<String> = [], error: Error = CocoaError(.fileWriteNoPermission)) {
             self.trashFolder = trashFolder
             self.failing = failing
+            self.error = error
         }
 
         var remover: AppUninstall.Remover {
             AppUninstall.Remover(
                 trash: { [self] url in
-                    if failing.contains(url.lastPathComponent) { throw CocoaError(.fileWriteNoPermission) }
+                    if failing.contains(url.lastPathComponent) { throw error }
                     try FileManager.default.createDirectory(at: trashFolder, withIntermediateDirectories: true)
                     try FileManager.default.moveItem(at: url, to: trashFolder.appending(path: UUID().uuidString))
                 },
@@ -218,6 +220,22 @@ struct AppUninstallTests {
         #expect(removal.removedItems == 0)
         #expect(removal.failures == ["App · Foo.app: Cancelled"])
         #expect(FileManager.default.fileExists(atPath: prefs.path))
+        #expect(!removal.blockedByAppManagement)
+    }
+
+    @Test func saysWhenAppManagementStopsTheApp() async throws {
+        let root = try makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let url = try makeApp("Applications/Foo.app", id: "com.example.Foo", in: root)
+        let fake = FakeRemoval(trashFolder: root.appending(path: "Trash"), failing: ["Foo.app"], error: POSIXError(.EPERM))
+        let foo = app(url, id: "com.example.Foo")
+
+        let removal = await AppUninstall.remove(
+            foo, reviewed: [url.path], sizes: [:], context: AppUninstall.Context(home: root, activity: .idle()),
+            remover: fake.remover)
+        #expect(removal.blockedByAppManagement)
+        #expect(AppUninstaller.summary(removal, app: foo).contains("App Management"))
+        #expect(AppUninstall.appManagementSettings.absoluteString.hasSuffix("Privacy_AppBundles"))
     }
 
     @Test func removesOnlyTheDataWhenTheAppIsUnticked() async throws {

@@ -312,7 +312,15 @@ nonisolated enum AppUninstall {
         var removedItems = 0
         /// Names of what stayed, with why.
         var failures: [String] = []
+        /// The app stayed because macOS refused to let PowerToys change other apps, which it allows
+        /// once PowerToys is turned on in App Management.
+        var blockedByAppManagement = false
     }
+
+    /// The App Management list in Privacy & Security. macOS has no prompt for it: it lists an app
+    /// there the first time it stops it from changing another, and the user turns it on.
+    static let appManagementSettings = URL(
+        string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AppBundles")!
 
     /// How items go: to the Trash, through Finder when the app is the system's, and launch agents
     /// stopped first. Tests swap these so they don't touch the real Trash, Finder or launchd.
@@ -350,10 +358,16 @@ nonisolated enum AppUninstall {
             }
             let wasRunning = item.name.hasPrefix(launchAgentKind) ? await remover.unloadAgent(url) : false
             var failure: Error?
+            // "Operation not permitted" on an app bundle is App Management's refusal.
+            var blocked = false
             do {
                 try remover.trash(url)
             } catch {
                 failure = error
+                // A locked bundle is refused the same way, and App Management wouldn't change that.
+                blocked =
+                    isApp && Cleanup.isNotPermitted(error)
+                    && (try? FileManager.default.attributesOfItem(atPath: url.path))?[.immutable] as? Bool != true
                 // App Store apps and others installed by the system need a password to move.
                 if isApp, isDenied(error) {
                     do {
@@ -371,7 +385,10 @@ nonisolated enum AppUninstall {
                 let reason =
                     (failure as? CommandError)?.errorDescription ?? Cleanup.failureReason(failure, trashing: true)
                 removal.failures.append("\(item.name): \(reason)")
-                if isApp { return removal }
+                if isApp {
+                    removal.blockedByAppManagement = blocked
+                    return removal
+                }
                 continue
             }
             removal.trashed += sizes[item.id] ?? item.size

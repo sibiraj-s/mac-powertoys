@@ -105,8 +105,8 @@ struct AppUpdatesTests {
 
     @Test func asksTheAppStoreFiftyAppsAtATime() async {
         let asked = AskedURLs()
-        _ = await AppUpdates.appStoreVersions((0..<120).map { "com.example.\($0)" }, region: "IN") { url in
-            await asked.add(url)
+        _ = await AppUpdates.appStoreVersions((0..<120).map { "com.example.\($0)" }, region: "IN") { request in
+            await asked.add(request.url!)
             return Data(#"{"results": []}"#.utf8)
         }
         let urls = await asked.urls
@@ -129,6 +129,28 @@ struct AppUpdatesTests {
         #expect(casks["firefox.app"] == .init(token: "firefox", version: "133.0", installed: "132.0"))
         #expect(casks["new.app"]?.token == "renamed")
         #expect(casks["new.app"]?.version == "2.1")
+    }
+
+    @Test func parsesHomebrewsPublicListPreferringTheMainCask() {
+        let data = Data(
+            """
+            [
+              {"token": "ghostty@tip", "version": "18758,7117", "artifacts": [{"app": ["Ghostty.app"]}]},
+              {"token": "ghostty", "version": "1.4.0", "artifacts": [{"app": ["Ghostty.app"]}]},
+              {"token": "thunderbird", "version": "159.0", "artifacts": [{"app": ["Thunderbird.app"]}]},
+              {"token": "thunderbird@esr", "version": "153.6.0esr", "artifacts": [{"app": ["Thunderbird.app"]}]},
+              {"token": "zoom-for-it-admins", "version": "6.3.0", "artifacts": [{"app": ["zoom.us.app"]}]},
+              {"token": "zoom", "version": "6.2.11", "artifacts": [{"app": ["zoom.us.app"]}]},
+              {"token": "gone", "version": "1.0", "disabled": true, "artifacts": [{"app": ["Gone.app"]}]}
+            ]
+            """.utf8)
+        let casks = AppUpdates.parseCasks(data, skippingDisabled: true)
+        #expect(casks["ghostty.app"] == .init(token: "ghostty", version: "1.4.0"))
+        #expect(casks["thunderbird.app"] == .init(token: "thunderbird", version: "159.0"))
+        #expect(casks["zoom.us.app"]?.token == "zoom")
+        #expect(casks["gone.app"] == nil)
+        // A disabled cask Homebrew installed is still what Homebrew has.
+        #expect(AppUpdates.parseCasks(data)["gone.app"]?.token == "gone")
     }
 
     // MARK: Status
@@ -234,6 +256,181 @@ struct AppUpdatesTests {
             of: app("Other", id: "com.example.Other"), info: .init(shortVersion: "1", build: "1", feed: nil),
             catalog: catalog, fetch: { _ in Data() })
         #expect(none == .unknown(AppUpdates.noSource))
+    }
+
+    // MARK: Google Update
+
+    private let chrome = AppUpdates.GoogleUpdate(
+        product: "com.google.Chrome", server: URL(string: "https://tools.google.com/service/update2")!, channel: "universal")
+
+    private func googleAnswer(_ check: String) -> Data {
+        Data(
+            """
+            )]}'
+            {"response":{"protocol":"3.1","app":[{"appid":"com.google.Chrome","status":"ok","updatecheck":\(check)}]}}
+            """.utf8)
+    }
+
+    @Test func parsesGoogleUpdateAnswers() {
+        func parse(_ data: Data) -> String? { AppUpdates.parseGoogleUpdate(data, installed: "157") }
+        #expect(parse(googleAnswer(#"{"status":"ok","manifest":{"version":"158.0.1.2"}}"#)) == "158.0.1.2")
+        #expect(parse(googleAnswer(#"{"status":"noupdate"}"#)) == "157")
+        #expect(parse(googleAnswer(#"{"status":"error-unknownApplication"}"#)) == nil)
+        #expect(parse(Data("<html>".utf8)) == nil)
+    }
+
+    @Test func readsGoogleUpdateKeysFromInfoPlist() throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: "AppUpdatesTests-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        func info(_ plist: [String: String]) throws -> AppUpdates.AppInfo {
+            let app = root.appending(path: "\(UUID().uuidString).app")
+            let contents = app.appending(path: "Contents")
+            try FileManager.default.createDirectory(at: contents, withIntermediateDirectories: true)
+            try (plist as NSDictionary).write(to: contents.appending(path: "Info.plist"))
+            return AppUpdates.AppInfo(app)
+        }
+        let chrome = try info([
+            "KSProductID": "com.google.Chrome", "KSUpdateURL": " https://tools.google.com/service/update2 ", "KSChannelID": "universal",
+        ])
+        // The channel and cohort can come from this Mac's own updater, so only the rest is compared.
+        #expect(chrome.googleUpdate?.product == self.chrome.product)
+        #expect(chrome.googleUpdate?.server == self.chrome.server)
+        let noChannel = try info(["KSProductID": "com.brave.Browser", "KSUpdateURL": "https://updates.bravesoftware.com/json"])
+        #expect(noChannel.googleUpdate?.channel == nil)
+        #expect(try info(["KSProductID": "com.example", "KSUpdateURL": "http://example.com/update2"]).googleUpdate == nil)
+        #expect(try info(["KSProductID": "com.example"]).googleUpdate == nil)
+        #expect(try info(["KSUpdateURL": "https://example.com/update2"]).googleUpdate == nil)
+    }
+
+    @Test func asksGoogleUpdateForTheInstalledVersionOnItsChannel() throws {
+        let request = AppUpdates.googleUpdateRequest(
+            chrome, version: "157.0.8103.39", system: .init(majorVersion: 27, minorVersion: 2, patchVersion: 0))
+        #expect(request.httpMethod == "POST")
+        #expect(request.url?.absoluteString == "https://tools.google.com/service/update2/json")
+        let body = try #require(try JSONSerialization.jsonObject(with: request.httpBody ?? Data()) as? [String: Any])
+        let inner = try #require(body["request"] as? [String: Any])
+        #expect(inner["acceptformat"] as? String != nil)
+        let app = try #require((inner["app"] as? [[String: Any]])?.first)
+        #expect(app["appid"] as? String == "com.google.Chrome")
+        #expect(app["version"] as? String == "157.0.8103.39")
+        #expect(app["ap"] as? String == "universal")
+        #expect(app["cohort"] == nil)
+        var grouped = chrome
+        grouped.cohort = "1:1y5/23r:"
+        grouped.brand = "GGRO"
+        let groupedApp = try #require(
+            ((try JSONSerialization.jsonObject(with: AppUpdates.googleUpdateRequest(grouped, version: "1").httpBody!) as? [String: Any])?[
+                "request"] as? [String: Any])?["app"] as? [[String: Any]])
+        #expect(groupedApp.first?["cohort"] as? String == "1:1y5/23r:")
+        #expect(groupedApp.first?["brand"] as? String == "GGRO")
+        let brave = AppUpdates.GoogleUpdate(
+            product: "com.brave.Browser", server: URL(string: "https://updates.bravesoftware.com/prod/service/update2/json")!,
+            channel: nil)
+        let braveRequest = AppUpdates.googleUpdateRequest(brave, version: "1")
+        #expect(braveRequest.url?.absoluteString == "https://updates.bravesoftware.com/prod/service/update2/json")
+    }
+
+    @Test func readsTheCohortGooglesUpdaterKeeps() throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: "AppUpdatesTests-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let prefs = folder.appending(path: "prefs.json")
+        try Data(#"{"updateclientdata": {"apps": {"com.google.chrome": {"ap": "beta-arm64", "cohort": "1:1y5/23r:", "bc": "GGRO"}}}}"#.utf8)
+            .write(to: prefs)
+        let missing = folder.appending(path: "none.json")
+        let stored = AppUpdates.GoogleUpdate.stored(product: "com.google.Chrome", prefs: [missing, prefs])
+        #expect(stored.cohort == "1:1y5/23r:")
+        #expect(stored.brand == "GGRO")
+        #expect(stored.channel == "beta-arm64")
+        #expect(AppUpdates.GoogleUpdate.stored(product: "com.brave.Browser", prefs: [prefs]).cohort == nil)
+    }
+
+    @Test func googleUpdateAppsAreCheckedWithTheService() async {
+        let info = AppUpdates.AppInfo(shortVersion: "157.0.8103.39", build: "8103.39", feed: nil, googleUpdate: chrome)
+        let browser = app("Google Chrome", id: "com.google.Chrome")
+        let offered = googleAnswer(#"{"status":"ok","manifest":{"version":"157.0.8103.51"}}"#)
+        let behind = await AppUpdates.status(of: browser, info: info, catalog: .init(), fetch: { _ in offered })
+        #expect(behind == .available(.init(source: .googleUpdate, latest: "157.0.8103.51", installed: "157.0.8103.39")))
+        let none = googleAnswer(#"{"status":"noupdate"}"#)
+        let current = await AppUpdates.status(of: browser, info: info, catalog: .init(), fetch: { _ in none })
+        #expect(current == .upToDate(.init(source: .googleUpdate, latest: "157.0.8103.39", installed: "157.0.8103.39")))
+        // Unreachable, it falls back to Homebrew like a feed does.
+        var catalog = AppUpdates.Catalog()
+        catalog.casks = { ["google chrome.app": .init(token: "google-chrome", version: "158.0")] }
+        let offline = await AppUpdates.status(
+            of: browser, info: info, catalog: catalog, fetch: { _ in throw URLError(.notConnectedToInternet) })
+        #expect(offline == .available(.init(source: .homebrew(cask: "google-chrome"), latest: "158.0", installed: "157.0.8103.39")))
+        // A feed that fails still leaves the service to ask.
+        let both = AppUpdates.AppInfo(shortVersion: "157.0.8103.39", build: "1", feed: feedURL, googleUpdate: chrome)
+        let fallback = await AppUpdates.status(of: browser, info: both, catalog: .init()) { request in
+            guard request.httpMethod == "POST" else { throw URLError(.badServerResponse) }
+            return offered
+        }
+        #expect(fallback == .available(.init(source: .googleUpdate, latest: "157.0.8103.51", installed: "157.0.8103.39")))
+    }
+
+    // MARK: VS Code
+
+    private let vsCode = AppUpdates.VSCodeUpdate(
+        server: URL(string: "https://update.code.visualstudio.com")!, quality: "stable", commit: "c4453f8")
+
+    @Test func readsVSCodesProductJSON() throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: "AppUpdatesTests-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        func update(_ product: [String: String]) throws -> AppUpdates.VSCodeUpdate? {
+            let app = root.appending(path: "\(UUID().uuidString).app")
+            let resources = app.appending(path: "Contents/Resources/app")
+            try FileManager.default.createDirectory(at: resources, withIntermediateDirectories: true)
+            try JSONSerialization.data(withJSONObject: product).write(to: resources.appending(path: "product.json"))
+            return AppUpdates.AppInfo(app).vsCodeUpdate
+        }
+        #expect(try update(["updateUrl": "https://update.code.visualstudio.com", "quality": "stable", "commit": "c4453f8"]) == vsCode)
+        #expect(try update(["updateUrl": "http://example.com", "quality": "stable", "commit": "1"]) == nil)
+        #expect(try update(["quality": "stable", "commit": "1"]) == nil)
+        #expect(AppUpdates.AppInfo(root.appending(path: "None.app")).vsCodeUpdate == nil)
+    }
+
+    @Test func vsCodeIsCheckedWithItsService() async {
+        let url = AppUpdates.vsCodeUpdateURL(vsCode).absoluteString
+        #expect(url.hasPrefix("https://update.code.visualstudio.com/api/update/darwin"))
+        #expect(url.hasSuffix("/stable/c4453f8"))
+        let info = AppUpdates.AppInfo(shortVersion: "1.145.2", build: "1.145.2", feed: nil, vsCodeUpdate: vsCode)
+        let code = app("Visual Studio Code", id: "com.microsoft.VSCode")
+        let offered = Data(#"{"name":"1.146.0","productVersion":"1.146.0","version":"abc"}"#.utf8)
+        let behind = await AppUpdates.status(of: code, info: info, catalog: .init(), fetch: { _ in offered })
+        #expect(behind == .available(.init(source: .vsCodeUpdate, latest: "1.146.0", installed: "1.145.2")))
+        // The service answers 204, with nothing, when there's no update.
+        let current = await AppUpdates.status(
+            of: code, info: info, catalog: .init(), fetch: { _ in throw URLError(.zeroByteResource) })
+        #expect(current == .upToDate(.init(source: .vsCodeUpdate, latest: "1.145.2", installed: "1.145.2")))
+        let broken = await AppUpdates.status(of: code, info: info, catalog: .init(), fetch: { _ in Data("<html>".utf8) })
+        #expect(broken == .unknown("Couldn't read its update service"))
+    }
+
+    // MARK: Homebrew
+
+    @Test func homebrewsPublicListIsAnEstimateUsedLast() async {
+        var catalog = AppUpdates.Catalog()
+        catalog.caskCatalog = { ["rancher desktop.app": .init(token: "rancher", version: "1.25.0")] }
+        let rancher = app("Rancher Desktop", id: "io.rancherdesktop.app")
+        let info = AppUpdates.AppInfo(shortVersion: "1.24.0", build: "1", feed: nil)
+        let estimate = await AppUpdates.status(of: rancher, info: info, catalog: catalog, fetch: { _ in Data() })
+        #expect(estimate == .available(.init(source: .homebrewCatalog(cask: "rancher"), latest: "1.25.0", installed: "1.24.0")))
+        #expect(!AppUpdates.Source.homebrewCatalog(cask: "rancher").isExact)
+        #expect(AppUpdates.Source.homebrew(cask: "rancher").isExact)
+        // What Homebrew installed decides first.
+        catalog.casks = { ["rancher desktop.app": .init(token: "rancher", version: "1.24.0", installed: "1.24.0")] }
+        let installed = await AppUpdates.status(of: rancher, info: info, catalog: catalog, fetch: { _ in Data() })
+        #expect(installed == .upToDate(.init(source: .homebrew(cask: "rancher"), latest: "1.24.0", installed: "1.24.0")))
+        // As does the app's own updater.
+        catalog.casks = { [:] }
+        let vsInfo = AppUpdates.AppInfo(shortVersion: "1.24.0", build: "1", feed: nil, vsCodeUpdate: vsCode)
+        let own = await AppUpdates.status(of: rancher, info: vsInfo, catalog: catalog, fetch: { _ in Data() })
+        #expect(own == .upToDate(.init(source: .vsCodeUpdate, latest: "1.24.0", installed: "1.24.0")))
+        // When the app's own source fails, that's said, not replaced by the list's version.
+        let failed = await AppUpdates.status(
+            of: rancher, info: vsInfo, catalog: catalog, fetch: { _ in throw URLError(.notConnectedToInternet) })
+        #expect(failed == .unknown("Couldn't read its update service"))
     }
 
     @Test func homebrewVersionsIgnoreTrailingZerosAndBackFeedsWithoutBuilds() async {
@@ -352,6 +549,38 @@ struct AppUpdatesTests {
         #expect(checker.update(for: plain) == nil)
         #expect(checker.statuses[plain.id] == .unknown(AppUpdates.noSource))
         #expect(checker.checkedAt != nil)
+    }
+
+    @MainActor
+    @Test func homebrewsPublicListIsDownloadedOnceAndOnlyWhenNeeded() async throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: "AppUpdatesTests-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        for name in ["One", "Two", "Three"] {
+            let contents = root.appending(path: "\(name).app/Contents")
+            try FileManager.default.createDirectory(at: contents, withIntermediateDirectories: true)
+            try (["CFBundleIdentifier": "com.example.\(name)"] as NSDictionary).write(to: contents.appending(path: "Info.plist"))
+        }
+        let list = Data(#"[{"token": "one", "version": "2", "artifacts": [{"app": ["One.app"]}]}]"#.utf8)
+        let feed = feedURL
+        let appcast = appcast("<item><sparkle:version>1</sparkle:version></item>")
+        func checker(feeds: Bool, asked: AskedURLs) -> AppUpdateChecker {
+            AppUpdateChecker(
+                list: InstalledAppList(folders: [root], readsDetails: false),
+                fetch: { request in
+                    await asked.add(request.url!)
+                    return request.url == AppUpdates.caskCatalogURL ? list : appcast
+                },
+                findBrew: { nil }, readInfo: { _ in .init(shortVersion: "1", build: "1", feed: feeds ? feed : nil) },
+                readStoreUpdates: { [:] }, readStoreLastCheck: { .now })
+        }
+        let asked = AskedURLs()
+        let estimating = checker(feeds: false, asked: asked)
+        await estimating.check()
+        #expect(await asked.urls.filter { $0 == AppUpdates.caskCatalogURL }.count == 1)
+        #expect(estimating.available.map(\.name) == ["One"])
+        let answered = AskedURLs()
+        await checker(feeds: true, asked: answered).check()
+        #expect(await answered.urls.contains(AppUpdates.caskCatalogURL) == false)
     }
 }
 

@@ -39,7 +39,7 @@ struct CleanerSettingsView: View {
                     MessageBanner(
                         // A clean that left items behind is a warning, not a success.
                         message: message, isError: cleaner.error != nil || cleaner.cleanFailed > 0,
-                        details: hasDetails ? { showingProgress = true } : nil,
+                        action: hasDetails ? ("Details", { showingProgress = true }) : nil,
                         dismiss: canDismiss ? { cleaner.dismissMessage() } : nil)
                 }
             }

@@ -2,21 +2,37 @@ import Foundation
 import SQLite3
 
 /// Finds out whether installed apps have newer versions, from the App Store, the update feeds
-/// Sparkle apps name in their Info.plist, or Homebrew's casks. It only reads: nothing is
-/// downloaded or installed.
+/// Sparkle apps name in their Info.plist, the update services Chrome and VS Code use, or Homebrew's
+/// casks. It only reads: nothing is downloaded or installed.
 nonisolated enum AppUpdates {
     enum Source: Hashable, Sendable {
         case appStore(page: URL)
         /// A Sparkle appcast, which the app itself installs from.
         case feed
+        /// Google's update service, or one built like it as Brave's is, which apps such as Chrome
+        /// install from themselves.
+        case googleUpdate
+        /// The update service VS Code and apps built from it name in their product.json.
+        case vsCodeUpdate
+        /// A cask Homebrew installed, which `brew upgrade` updates.
         case homebrew(cask: String)
+        /// Homebrew's public list of casks, for an app it didn't install: matched by the app's name,
+        /// and the cask's version can be ahead of or behind what the app offers itself.
+        case homebrewCatalog(cask: String)
 
         var name: String {
             switch self {
             case .appStore: "App Store"
             case .feed: "Update feed"
+            case .googleUpdate, .vsCodeUpdate: "Update service"
             case .homebrew: "Homebrew"
+            case .homebrewCatalog: "Homebrew’s list"
             }
+        }
+
+        /// Whether the version comes from where the app itself updates from, rather than an estimate.
+        var isExact: Bool {
+            if case .homebrewCatalog = self { false } else { true }
         }
     }
 
@@ -37,7 +53,7 @@ nonisolated enum AppUpdates {
 
     static let noSource = "No update feed to check"
 
-    typealias Fetch = @Sendable (URL) async throws -> Data
+    typealias Fetch = @Sendable (URLRequest) async throws -> Data
 
     /// What's needed from an app's Info.plist, read when checking, as the app may have updated
     /// itself since it was listed.
@@ -47,13 +63,20 @@ nonisolated enum AppUpdates {
         /// The build, which is what Sparkle feeds compare.
         let build: String?
         let feed: URL?
+        let googleUpdate: GoogleUpdate?
+        let vsCodeUpdate: VSCodeUpdate?
         /// The App Store release installed, which an update the App Store lists may already be.
         let storeVersionID: Int64?
 
-        init(shortVersion: String?, build: String?, feed: URL?, storeVersionID: Int64? = nil) {
+        init(
+            shortVersion: String?, build: String?, feed: URL?, googleUpdate: GoogleUpdate? = nil,
+            vsCodeUpdate: VSCodeUpdate? = nil, storeVersionID: Int64? = nil
+        ) {
             self.shortVersion = shortVersion
             self.build = build
             self.feed = feed
+            self.googleUpdate = googleUpdate
+            self.vsCodeUpdate = vsCodeUpdate
             self.storeVersionID = storeVersionID
         }
 
@@ -63,6 +86,17 @@ nonisolated enum AppUpdates {
             build = info?["CFBundleVersion"] as? String
             feed = (info?["SUFeedURL"] as? String).flatMap { URL(string: $0.trimmingCharacters(in: .whitespaces)) }
                 .flatMap { ["https", "http"].contains($0.scheme?.lowercased()) ? $0 : nil }
+            googleUpdate = (info?["KSProductID"] as? String).flatMap { product in
+                (info?["KSUpdateURL"] as? String).flatMap { URL(string: $0.trimmingCharacters(in: .whitespaces)) }
+                    .flatMap { $0.scheme?.lowercased() == "https" ? $0 : nil }
+                    .map { server in
+                        let stored = GoogleUpdate.stored(product: product)
+                        return GoogleUpdate(
+                            product: product, server: server, channel: stored.channel ?? info?["KSChannelID"] as? String,
+                            cohort: stored.cohort, brand: stored.brand)
+                    }
+            }
+            vsCodeUpdate = VSCodeUpdate(product: app.appending(path: "Contents/Resources/app/product.json"))
             let item = MDItemCreateWithURL(nil, app as CFURL)
             let versionID = item.flatMap { MDItemCopyAttribute($0, "kMDItemAppStoreInstallerVersionID" as CFString) }
             storeVersionID = (versionID as? String).flatMap { Int64($0) } ?? (versionID as? NSNumber)?.int64Value
@@ -89,6 +123,9 @@ nonisolated enum AppUpdates {
         /// Casks by the app bundle name they install, such as "Firefox.app", lowercased. Asked
         /// for only when an app has no feed to answer, as listing them can take a while.
         var casks: @Sendable () async -> [String: Cask] = { [:] }
+        /// Homebrew's public list of casks, keyed the same way, for apps Homebrew didn't install.
+        /// Asked for only when nothing else answers, as it's a large download.
+        var caskCatalog: @Sendable () async -> [String: Cask] = { [:] }
     }
 
     /// A Homebrew cask: its version now, and the one Homebrew installed, written the same way.
@@ -124,7 +161,7 @@ nonisolated enum AppUpdates {
         var problem: String?
         if let feed = info.feed {
             do {
-                if let newest = newestItem(inAppcast: try await fetch(feed)) {
+                if let newest = newestItem(inAppcast: try await fetch(URLRequest(url: feed))) {
                     let found = Found(source: .feed, latest: newest.shortVersion ?? newest.version, installed: info.shortVersion)
                     if let build = info.build {
                         return compareVersions(newest.version, build) == .orderedDescending ? .available(found) : .upToDate(found)
@@ -137,7 +174,18 @@ nonisolated enum AppUpdates {
                 problem = "Couldn't read its update feed"
             }
         }
-        if let cask = await catalog.casks()[app.url.lastPathComponent.lowercased()] {
+        if let google = info.googleUpdate {
+            let status = await googleUpdateStatus(google, installed: info.shortVersion, fetch: fetch)
+            guard case .unknown(let why) = status else { return status }
+            problem = why
+        }
+        if let vsCode = info.vsCodeUpdate {
+            let status = await vsCodeUpdateStatus(vsCode, installed: info.shortVersion, fetch: fetch)
+            guard case .unknown(let why) = status else { return status }
+            problem = why
+        }
+        let bundleName = app.url.lastPathComponent.lowercased()
+        if let cask = await catalog.casks()[bundleName] {
             // Homebrew's own record of what it installed is written like the cask's version, so
             // it's compared first; the app's version only counts once the app has moved on, as
             // one that updates itself does.
@@ -146,6 +194,10 @@ nonisolated enum AppUpdates {
                 return .upToDate(found)
             }
             return compare(cask.version, with: info.shortVersion, source: .homebrew(cask: cask.token))
+        }
+        // Only for apps with no source of their own: when theirs fails, that's what's said.
+        if problem == nil, let cask = await catalog.caskCatalog()[bundleName] {
+            return compare(cask.version, with: info.shortVersion, source: .homebrewCatalog(cask: cask.token))
         }
         return .unknown(problem ?? noSource)
     }
@@ -255,7 +307,7 @@ nonisolated enum AppUpdates {
                 .init(name: "entity", value: "macSoftware"),
                 .init(name: "country", value: region.lowercased()),
             ]
-            guard let url = components.url, let data = try? await fetch(url) else { continue }
+            guard let url = components.url, let data = try? await fetch(URLRequest(url: url)) else { continue }
             found.merge(parseAppStore(data)) { first, _ in first }
         }
         return found
@@ -280,7 +332,158 @@ nonisolated enum AppUpdates {
         return found
     }
 
+    // MARK: Google Update
+
+    /// What an app that Google's updater keeps current names in its Info.plist.
+    struct GoogleUpdate: Equatable, Sendable {
+        /// Its app ID with the service, such as com.google.Chrome.
+        let product: String
+        let server: URL
+        /// Its channel and build, such as "universal" or "beta-arm64", which picks the releases offered.
+        let channel: String?
+        /// The rollout group the service put the app's own updater in. Without it the service picks
+        /// one at random on every ask, so a release rolling out could be offered here and not to the app.
+        var cohort: String?
+        var brand: String?
+
+        /// Where Google's updater keeps what it knows about each app, for the user and for the Mac.
+        static let updaterPrefs = [
+            FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library/Application Support/Google/GoogleUpdater/prefs.json"),
+            URL(filePath: "/Library/Application Support/Google/GoogleUpdater/prefs.json"),
+        ]
+
+        /// What Google's updater keeps for the app, from the first prefs that list it: its channel,
+        /// which wins over the bundle's as the updater may have moved it, cohort and brand.
+        static func stored(product: String, prefs: [URL] = updaterPrefs) -> (channel: String?, cohort: String?, brand: String?) {
+            for url in prefs {
+                guard let data = try? Data(contentsOf: url),
+                    let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                    let apps = (json["updateclientdata"] as? [String: Any])?["apps"] as? [String: Any],
+                    let app = apps[product.lowercased()] as? [String: Any]
+                else { continue }
+                return (app["ap"] as? String, app["cohort"] as? String, app["bc"] as? String)
+            }
+            return (nil, nil, nil)
+        }
+    }
+
+    /// Asks Google's update service, as its updater does, whether there's a release newer than the
+    /// one installed. The answer follows the service's staged rollouts, so it's what the app itself
+    /// would be offered now.
+    static func googleUpdateStatus(_ google: GoogleUpdate, installed: String?, fetch: Fetch) async -> Status {
+        guard let installed else { return .unknown("No version in the app") }
+        guard let data = try? await fetch(googleUpdateRequest(google, version: installed)),
+            let latest = parseGoogleUpdate(data, installed: installed)
+        else { return .unknown("Couldn't read its update service") }
+        return compare(latest, with: installed, source: .googleUpdate)
+    }
+
+    static func googleUpdateRequest(
+        _ google: GoogleUpdate, version: String,
+        system: OperatingSystemVersion = ProcessInfo.processInfo.operatingSystemVersion
+    ) -> URLRequest {
+        #if arch(arm64)
+            let arch = "arm64"
+        #else
+            let arch = "x64"
+        #endif
+        var app: [String: Any] = ["appid": google.product, "version": version, "updatecheck": [String: Any]()]
+        app["ap"] = google.channel
+        app["cohort"] = google.cohort
+        app["brand"] = google.brand
+        let body: [String: Any] = [
+            "request": [
+                "protocol": "3.1",
+                // Without the formats it can install, the service offers nothing.
+                "acceptformat": "crx3,download,puff,run",
+                "arch": arch,
+                "os": [
+                    "platform": "Mac OS X", "arch": arch,
+                    "version": "\(system.majorVersion).\(system.minorVersion).\(system.patchVersion)",
+                ],
+                "app": [app],
+            ]
+        ]
+        // Chrome names the service's root and Brave its JSON address.
+        let server = google.server.lastPathComponent == "json" ? google.server : google.server.appending(path: "json")
+        var request = URLRequest(url: server)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        return request
+    }
+
+    /// The newest version: the one offered, or the installed one when there's no update; nil when
+    /// the answer can't be read.
+    static func parseGoogleUpdate(_ data: Data, installed: String) -> String? {
+        // The JSON follows a line guarding against it being run as a script.
+        var body = data
+        if body.starts(with: Data(")]}'".utf8)) { body = body.drop { $0 != UInt8(ascii: "\n") } }
+        guard let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
+            let app = ((json["response"] as? [String: Any])?["app"] as? [[String: Any]])?.first,
+            let check = app["updatecheck"] as? [String: Any]
+        else { return nil }
+        switch check["status"] as? String {
+        case "noupdate": return installed
+        case "ok": return (check["manifest"] as? [String: Any])?["version"] as? String
+        default: return nil
+        }
+    }
+
+    // MARK: VS Code
+
+    /// What VS Code, and apps built from it, name in their product.json to update from.
+    struct VSCodeUpdate: Equatable, Sendable {
+        let server: URL
+        /// Its channel, such as "stable" or "insider".
+        let quality: String
+        /// The build installed, which the service compares.
+        let commit: String
+    }
+
+    /// Asks the service, as VS Code does, for a release newer than the build installed.
+    static func vsCodeUpdateStatus(_ vsCode: VSCodeUpdate, installed: String?, fetch: Fetch) async -> Status {
+        guard let installed else { return .unknown("No version in the app") }
+        let data: Data?
+        do {
+            data = try await fetch(URLRequest(url: vsCodeUpdateURL(vsCode)))
+        } catch URLError.zeroByteResource {
+            // The service answers 204, with nothing, when there's no update.
+            data = Data()
+        } catch {
+            data = nil
+        }
+        guard let data, let latest = parseVSCodeUpdate(data, installed: installed)
+        else { return .unknown("Couldn't read its update service") }
+        return compare(latest, with: installed, source: .vsCodeUpdate)
+    }
+
+    static func vsCodeUpdateURL(_ vsCode: VSCodeUpdate) -> URL {
+        #if arch(arm64)
+            let platform = "darwin-arm64"
+        #else
+            let platform = "darwin"
+        #endif
+        return vsCode.server.appending(path: "api/update/\(platform)/\(vsCode.quality)/\(vsCode.commit)")
+    }
+
+    /// The newest version: the one offered, or the installed one when the service answers with
+    /// nothing, as it does when there's no update; nil when the answer can't be read.
+    static func parseVSCodeUpdate(_ data: Data, installed: String) -> String? {
+        if data.isEmpty { return installed }
+        let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        return (json?["productVersion"] ?? json?["name"]) as? String
+    }
+
     // MARK: Homebrew
+
+    static let caskCatalogURL = URL(string: "https://formulae.brew.sh/api/cask.json")!
+
+    /// Homebrew's public list of casks; nothing when it can't be read.
+    static func caskCatalog(fetch: Fetch) async -> [String: Cask] {
+        guard let data = try? await fetch(URLRequest(url: caskCatalogURL)) else { return [:] }
+        return parseCasks(data, skippingDisabled: true)
+    }
 
     /// Where Homebrew puts `brew` on Apple silicon and Intel Macs.
     static func findBrew() -> String? {
@@ -300,14 +503,15 @@ nonisolated enum AppUpdates {
         return parseCasks(Data(output.stdout.utf8))
     }
 
-    /// Casks by the apps they install, from `brew info --json=v2`. A cask's version can carry a
-    /// build after a comma, which is left off; "latest" casks have no version to compare.
-    static func parseCasks(_ data: Data) -> [String: Cask] {
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-            let casks = json["casks"] as? [[String: Any]]
-        else { return [:] }
+    /// Casks by the apps they install, from `brew info --json=v2` or Homebrew's public list. A
+    /// cask's version can carry a build after a comma, which is left off; "latest" casks have no
+    /// version to compare, and disabled ones in the public list are no longer kept current. When several casks install
+    /// the same app, the main one wins (see isMain).
+    static func parseCasks(_ data: Data, skippingDisabled: Bool = false) -> [String: Cask] {
+        let json = try? JSONSerialization.jsonObject(with: data)
+        guard let casks = (json as? [String: Any])?["casks"] as? [[String: Any]] ?? json as? [[String: Any]] else { return [:] }
         var found: [String: Cask] = [:]
-        for cask in casks {
+        for cask in casks where !(skippingDisabled && cask["disabled"] as? Bool == true) {
             guard let token = cask["token"] as? String, let full = cask["version"] as? String, full != "latest",
                 let version = full.split(separator: ",").first.map(String.init)
             else { continue }
@@ -316,10 +520,18 @@ nonisolated enum AppUpdates {
                 // ["Foo.app"], or ["Foo.app", {"target": "Bar.app"}] when it's installed renamed.
                 guard let app = artifact["app"] as? [Any], let source = app.first as? String else { continue }
                 let target = app.dropFirst().compactMap { ($0 as? [String: Any])?["target"] as? String }.first ?? source
-                found[(target as NSString).lastPathComponent.lowercased()] = Cask(token: token, version: version, installed: installed)
+                let name = (target as NSString).lastPathComponent.lowercased()
+                if let other = found[name], isMain(other.token, over: token) { continue }
+                found[name] = Cask(token: token, version: version, installed: installed)
             }
         }
         return found
+    }
+
+    /// Whether one cask of an app is its main one over another: not a variant such as ghostty@tip,
+    /// then the shorter token, as zoom is over zoom-for-it-admins.
+    private static func isMain(_ token: String, over other: String) -> Bool {
+        (token.contains("@") ? 1 : 0, token.count, token) < (other.contains("@") ? 1 : 0, other.count, other)
     }
 
     // MARK: Sparkle feeds
@@ -470,5 +682,17 @@ nonisolated enum AppUpdates {
         }
         flush()
         return parts
+    }
+}
+
+nonisolated extension AppUpdates.VSCodeUpdate {
+    /// Read from an app's product.json; nil when it doesn't name an https update service.
+    init?(product: URL) {
+        guard let data = try? Data(contentsOf: product),
+            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let server = (json["updateUrl"] as? String).flatMap(URL.init(string:)), server.scheme?.lowercased() == "https",
+            let quality = json["quality"] as? String, let commit = json["commit"] as? String
+        else { return nil }
+        self.init(server: server, quality: quality, commit: commit)
     }
 }
