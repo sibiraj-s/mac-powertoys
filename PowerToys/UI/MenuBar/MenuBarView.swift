@@ -132,6 +132,12 @@ struct MenuBarView: View {
                 }
             }
 
+            // macOS's own slider is off for the multi-output device, which has no volume of its own.
+            if state.isEnabled(.displaysAudio), let volume = state.displaysAudio.groupVolume {
+                Divider()
+                MenuGroupVolume(volume: volume) { state.displaysAudio.setGroupVolume($0) }
+            }
+
             if state.isEnabled(.portsProcesses), state.ports.showsInMenuBar {
                 Divider()
                 MenuPorts()
@@ -342,5 +348,27 @@ private struct MenuPorts: View {
                     .padding(.horizontal, 8)
             }
         }
+    }
+}
+
+/// One slider for the outputs playing together, which keep their balance as it moves.
+private struct MenuGroupVolume: View {
+    let volume: Float
+    let set: (Float) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("\(AppInfo.name) Multi-Output")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            HStack(spacing: 8) {
+                Image(systemName: "speaker.fill").foregroundStyle(.secondary).frame(width: 16)
+                Slider(value: Binding(get: { Double(volume) }, set: { set(Float($0)) }), in: 0...1)
+                    .controlSize(.small)
+                    .accessibilityLabel("\(AppInfo.name) Multi-Output volume")
+                Image(systemName: "speaker.wave.3.fill").foregroundStyle(.secondary).frame(width: 16)
+            }
+        }
+        .padding(.horizontal, 4)
     }
 }

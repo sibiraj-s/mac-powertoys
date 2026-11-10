@@ -22,6 +22,8 @@ struct DisplaysAudioSettingsView: View {
         // Devices also change in Control Center and when headphones connect; read them again here.
         .onAppear { audio.refresh() }
 
+        MultiOutputSection()
+
         AppVolumeSection()
 
         DisplaysSection()
@@ -57,6 +59,47 @@ private struct DevicePickerRow: View {
             }
             .labelsHidden()
             .fixedSize()
+        }
+    }
+}
+
+/// Outputs playing the same sound at once, like a Multi-Output Device in Audio MIDI Setup.
+private struct MultiOutputSection: View {
+    @Environment(AppState.self) private var state
+
+    var body: some View {
+        let audio = state.displaysAudio
+        CardSection("Play together") {
+            CardRow(
+                "Play on several outputs at once",
+                hint: audio.multiOutputProblem
+                    ?? "Turn on two or more, such as two pairs of Bluetooth headphones. They play as one output, \(AppInfo.name) Multi-Output, which has no volume of its own, so each has its own here, and the volume keys change them all with Use volume keys under Displays. Wireless ones may lag a little behind wired ones."
+            ) { EmptyView() }
+            if audio.disconnectedMultiOutputMembers > 0 {
+                let count = audio.disconnectedMultiOutputMembers
+                CardRow(
+                    count == 1 ? "1 output isn't connected" : "\(count) outputs aren't connected",
+                    hint: "They play again once they're back. Changing the outputs here leaves them out."
+                ) { EmptyView() }
+            }
+            ForEach(audio.multiOutputCandidates) { device in
+                let isOn = audio.multiOutputMembers.contains(device.uid)
+                CardRow(device.name) {
+                    HStack(spacing: 8) {
+                        if isOn, let volume = audio.outputVolumes[device.id] {
+                            Slider(
+                                value: Binding(get: { Double(volume) }, set: { audio.setOutputVolume(Float($0), for: device) }), in: 0...1
+                            )
+                            .controlSize(.small)
+                            .frame(width: 160)
+                            .accessibilityLabel("\(device.name) volume")
+                        }
+                        RowSwitch(
+                            label: "Play through \(device.name)",
+                            isOn: Binding(get: { isOn }, set: { audio.setPlaysTogether($0, device) }))
+                    }
+                }
+            }
         }
     }
 }
@@ -142,7 +185,7 @@ private struct DisplaysSection: View {
                 title: "Use volume keys",
                 warning: displays.volumeKeysWarning,
                 hint:
-                    "While sound plays through a display's speakers, which macOS can't change the volume of, the volume and mute keys change the display's own volume. Elsewhere they work as usual. Needs Accessibility.",
+                    "While sound plays through a display's speakers or \(AppInfo.name) Multi-Output, which macOS can't change the volume of, the volume and mute keys change the display's own volume or each output's. Elsewhere they work as usual. Needs Accessibility.",
                 isOn: Binding(get: { displays.usesVolumeKeys }, set: { displays.usesVolumeKeys = $0 }))
             if displays.isLoaded, displays.displays.isEmpty {
                 CardRow(

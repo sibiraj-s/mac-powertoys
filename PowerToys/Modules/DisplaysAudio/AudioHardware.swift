@@ -53,6 +53,34 @@ nonisolated enum AudioProperty {
         return value.takeRetainedValue() as String
     }
 
+    static func dictionary(_ object: AudioObjectID, _ address: AudioObjectPropertyAddress) -> [String: Any] {
+        var address = address
+        guard AudioObjectHasProperty(object, &address) else { return [:] }
+        var size = UInt32(MemoryLayout<CFDictionary?>.size)
+        var value: Unmanaged<CFDictionary>?
+        guard AudioObjectGetPropertyData(object, &address, 0, nil, &size, &value) == noErr, let value else { return [:] }
+        return value.takeRetainedValue() as? [String: Any] ?? [:]
+    }
+
+    static func strings(_ object: AudioObjectID, _ address: AudioObjectPropertyAddress) -> [String] {
+        var address = address
+        guard AudioObjectHasProperty(object, &address) else { return [] }
+        var size = UInt32(MemoryLayout<CFArray?>.size)
+        var value: Unmanaged<CFArray>?
+        guard AudioObjectGetPropertyData(object, &address, 0, nil, &size, &value) == noErr, let value else { return [] }
+        return value.takeRetainedValue() as? [String] ?? []
+    }
+
+    /// Sets a Core Foundation value, such as a string or an array.
+    @discardableResult
+    static func set(_ object: AudioObjectID, _ address: AudioObjectPropertyAddress, value: CFTypeRef) -> Bool {
+        var address = address
+        var value = value
+        return withUnsafeMutablePointer(to: &value) {
+            AudioObjectSetPropertyData(object, &address, 0, nil, UInt32(MemoryLayout<CFTypeRef>.size), $0) == noErr
+        }
+    }
+
     @discardableResult
     static func set<T: BitwiseCopyable>(_ object: AudioObjectID, _ address: AudioObjectPropertyAddress, _ value: T) -> Bool {
         var address = address
@@ -81,8 +109,21 @@ struct AudioDevice: Identifiable, Hashable, Sendable {
     let hasInput: Bool
     let transport: UInt32
 
+    /// Several devices made into one, which can't be made part of another.
+    var isAggregate: Bool { transport == kAudioDeviceTransportTypeAggregate }
+
+    /// Connected by wire, so its clock is steady; not Bluetooth, AirPlay or a virtual device.
+    var isWired: Bool {
+        [
+            kAudioDeviceTransportTypeBuiltIn, kAudioDeviceTransportTypeUSB, kAudioDeviceTransportTypeHDMI,
+            kAudioDeviceTransportTypeDisplayPort, kAudioDeviceTransportTypePCI, kAudioDeviceTransportTypeFireWire,
+            kAudioDeviceTransportTypeThunderbolt,
+        ].contains(transport)
+    }
+
     var symbol: String {
         switch transport {
+        case kAudioDeviceTransportTypeAggregate: "hifispeaker.2"
         case kAudioDeviceTransportTypeBluetooth, kAudioDeviceTransportTypeBluetoothLE: "headphones"
         case kAudioDeviceTransportTypeAirPlay: "airplayaudio"
         case kAudioDeviceTransportTypeHDMI, kAudioDeviceTransportTypeDisplayPort: "tv"
@@ -99,6 +140,19 @@ protocol AudioDeviceAccess: AnyObject {
     @discardableResult func setDefaultDevice(_ id: AudioObjectID, for direction: AudioDirection) -> Bool
     func isInputMuted(_ id: AudioObjectID) -> Bool
     @discardableResult func setInputMuted(_ muted: Bool, _ id: AudioObjectID) -> Bool
+    /// The UIDs of the outputs the multi-output device plays through, or empty when there's none.
+    func multiOutputMembers() -> [String]
+    /// Makes the multi-output device play through `uids`, keeping time by `clock`, or changes the one
+    /// there is in place so it plays on. Nil if Core Audio refused, leaving any there was as it was.
+    func setMultiOutput(_ uids: [String], clock: String) -> AudioObjectID?
+    func removeMultiOutput()
+    /// An output's volume, 0–1, or nil when macOS can't change it.
+    func outputVolume(_ id: AudioObjectID) -> Float?
+    @discardableResult func setOutputVolume(_ volume: Float, _ id: AudioObjectID) -> Bool
+    /// Calls `onChange` when one of these outputs' volumes changes, in place of the ones
+    /// watched before. Headphones' own buttons count only while they play on their own: in a
+    /// multi-output device, macOS isn't told of those changes.
+    func watchOutputVolumes(_ ids: [AudioObjectID], onChange: @escaping @MainActor () -> Void)
     /// Calls `onChange` on the main thread whenever devices come and go or a default changes.
     func observe(_ onChange: @escaping @MainActor () -> Void)
     func stopObserving()
@@ -108,6 +162,9 @@ final class LiveAudioDevices: AudioDeviceAccess {
     /// Input volume before a mute that had to turn the volume down, by device UID, so it comes
     /// back after a relaunch too.
     static let savedVolumesKey = "displaysAudio.savedInputVolumes"
+    /// The multi-output device made here. It's public, so it can be the default output, and Core
+    /// Audio keeps it after the app quits; it's found again by this UID.
+    nonisolated static let multiOutputUID = "dev.sibiraj.powertoys.multioutput"
 
     private let defaults: UserDefaults
     private let listener = AudioListener(
@@ -115,19 +172,64 @@ final class LiveAudioDevices: AudioDeviceAccess {
             kAudioHardwarePropertyDevices, kAudioHardwarePropertyDefaultOutputDevice, kAudioHardwarePropertyDefaultInputDevice,
         ])
     private var inputListener: AudioListener?
+    /// The volumes of the outputs with sliders, by device.
+    private var volumeListeners: [AudioObjectID: AudioListener] = [:]
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
     }
 
     func devices() -> [AudioDevice] {
-        let system = AudioObjectID(kAudioObjectSystemObject)
-        return AudioProperty.array(system, AudioProperty.address(kAudioHardwarePropertyDevices), of: AudioObjectID.self)
-            .compactMap(Self.device)
+        Self.allDeviceIDs().compactMap(Self.device)
+    }
+
+    private nonisolated static func allDeviceIDs() -> [AudioObjectID] {
+        AudioProperty.array(
+            AudioObjectID(kAudioObjectSystemObject), AudioProperty.address(kAudioHardwarePropertyDevices), of: AudioObjectID.self)
+    }
+
+    nonisolated static func uid(of id: AudioObjectID) -> String? {
+        AudioProperty.string(id, AudioProperty.address(kAudioDevicePropertyDeviceUID))
+    }
+
+    /// Any device, hidden or not, by UID.
+    nonisolated static func deviceID(uid: String) -> AudioObjectID? {
+        var address = AudioProperty.address(kAudioHardwarePropertyTranslateUIDToDevice)
+        var uid = uid as CFString
+        var id = AudioObjectID(kAudioObjectUnknown)
+        var size = UInt32(MemoryLayout<AudioObjectID>.size)
+        let status = withUnsafeMutablePointer(to: &uid) {
+            AudioObjectGetPropertyData(
+                AudioObjectID(kAudioObjectSystemObject), &address, UInt32(MemoryLayout<CFString>.size), $0, &size, &id)
+        }
+        return status == noErr && id != kAudioObjectUnknown ? id : nil
+    }
+
+    /// The connected outputs a multi-output device plays the same sound through, the one keeping
+    /// time first, or nil when `uid` isn't one. That's this app's or one made in Audio MIDI Setup:
+    /// both are stacked aggregates. Other aggregates spread channels across their devices instead,
+    /// so they're played through as they are. Microphones in one are left out.
+    nonisolated static func connectedSubDevices(ofDeviceWithUID uid: String) -> [String]? {
+        guard let id = deviceID(uid: uid),
+            AudioProperty.dictionary(id, AudioProperty.address(kAudioAggregateDevicePropertyComposition))[
+                kAudioAggregateDeviceIsStackedKey] as? Int == 1
+        else { return nil }
+        let members = AudioProperty.strings(id, AudioProperty.address(kAudioAggregateDevicePropertyFullSubDeviceList))
+        guard !members.isEmpty else { return nil }
+        let outputs = members.filter { member in
+            deviceID(uid: member).map {
+                !AudioProperty.array(
+                    $0, AudioProperty.address(kAudioDevicePropertyStreams, scope: kAudioObjectPropertyScopeOutput), of: AudioStreamID.self
+                )
+                .isEmpty
+            } ?? false
+        }
+        let clock = AudioProperty.string(id, AudioProperty.address(kAudioAggregateDevicePropertyMainSubDevice))
+        return outputs.filter { $0 == clock } + outputs.filter { $0 != clock }
     }
 
     private static func device(_ id: AudioObjectID) -> AudioDevice? {
-        guard let uid = AudioProperty.string(id, AudioProperty.address(kAudioDevicePropertyDeviceUID)),
+        guard let uid = uid(of: id),
             let name = AudioProperty.string(id, AudioProperty.address(kAudioObjectPropertyName))
         else { return nil }
         // Aggregates the system and this app make for themselves aren't for picking.
@@ -163,10 +265,93 @@ final class LiveAudioDevices: AudioDeviceAccess {
             let transport = AudioProperty.get(id, AudioProperty.address(kAudioDevicePropertyTransportType), as: UInt32.self),
             [kAudioDeviceTransportTypeDisplayPort, kAudioDeviceTransportTypeHDMI].contains(transport)
         else { return false }
-        let elements = [kAudioObjectPropertyElementMain] + (1...2).map { AudioObjectPropertyElement($0) }
-        return !elements.contains {
-            AudioProperty.isSettable(
-                id, AudioProperty.address(kAudioDevicePropertyVolumeScalar, scope: kAudioObjectPropertyScopeOutput, element: $0))
+        return Self.outputVolumeAddresses(id).isEmpty
+    }
+
+    // MARK: Multi-output
+
+    func multiOutputMembers() -> [String] {
+        guard let id = Self.deviceID(uid: Self.multiOutputUID) else { return [] }
+        return AudioProperty.strings(id, AudioProperty.address(kAudioAggregateDevicePropertyFullSubDeviceList))
+    }
+
+    func setMultiOutput(_ uids: [String], clock: String) -> AudioObjectID? {
+        guard let id = Self.deviceID(uid: Self.multiOutputUID) else { return makeMultiOutput(uids, clock: clock) }
+        // Changed in place: destroying it while it plays would send the sound elsewhere for a moment.
+        let list = AudioProperty.address(kAudioAggregateDevicePropertyFullSubDeviceList)
+        let previous = AudioProperty.strings(id, list)
+        guard AudioProperty.set(id, list, value: uids as CFArray) else { return nil }
+        guard AudioProperty.set(id, AudioProperty.address(kAudioAggregateDevicePropertyMainSubDevice), value: clock as CFString) else {
+            // Put back as it was, so a refusal leaves it playing as before.
+            AudioProperty.set(id, list, value: previous as CFArray)
+            return nil
+        }
+        // Sub-devices other than the clock follow it, correcting their drift.
+        for sub in AudioProperty.array(id, AudioProperty.address(kAudioObjectPropertyOwnedObjects), of: AudioObjectID.self)
+        where AudioProperty.get(sub, AudioProperty.address(kAudioObjectPropertyClass), as: AudioClassID.self) == kAudioSubDeviceClassID {
+            let follows = Self.uid(of: sub) != clock
+            AudioProperty.set(sub, AudioProperty.address(kAudioSubDevicePropertyDriftCompensation), UInt32(follows ? 1 : 0))
+        }
+        return id
+    }
+
+    private func makeMultiOutput(_ uids: [String], clock: String) -> AudioObjectID? {
+        let settings: [String: Any] = [
+            kAudioAggregateDeviceNameKey: "\(AppInfo.name) Multi-Output",
+            kAudioAggregateDeviceUIDKey: Self.multiOutputUID,
+            kAudioAggregateDeviceIsStackedKey: true,
+            kAudioAggregateDeviceMainSubDeviceKey: clock,
+            kAudioAggregateDeviceSubDeviceListKey: uids.map {
+                [kAudioSubDeviceUIDKey: $0, kAudioSubDeviceDriftCompensationKey: $0 != clock] as [String: Any]
+            },
+        ]
+        var id = AudioObjectID(kAudioObjectUnknown)
+        guard AudioHardwareCreateAggregateDevice(settings as CFDictionary, &id) == noErr, id != kAudioObjectUnknown else { return nil }
+        return id
+    }
+
+    func removeMultiOutput() {
+        if let id = Self.deviceID(uid: Self.multiOutputUID) { AudioHardwareDestroyAggregateDevice(id) }
+    }
+
+    // MARK: Output volume
+
+    /// The main volume, or else each of the first two channels'.
+    private static func outputVolumeAddresses(_ id: AudioObjectID) -> [AudioObjectPropertyAddress] {
+        let addresses = ([kAudioObjectPropertyElementMain] + (1...2).map { AudioObjectPropertyElement($0) }).map {
+            AudioProperty.address(kAudioDevicePropertyVolumeScalar, scope: kAudioObjectPropertyScopeOutput, element: $0)
+        }
+        let settable = addresses.filter { AudioProperty.isSettable(id, $0) }
+        return settable.first?.mElement == kAudioObjectPropertyElementMain ? [settable[0]] : settable
+    }
+
+    func outputVolume(_ id: AudioObjectID) -> Float? {
+        let volumes = Self.outputVolumeAddresses(id).compactMap { AudioProperty.get(id, $0, as: Float32.self) }
+        return volumes.isEmpty ? nil : volumes.max()
+    }
+
+    /// With a volume per channel, the loudest is set to `volume` and the rest keep their share of it,
+    /// so a balance set in System Settings stays.
+    func setOutputVolume(_ volume: Float, _ id: AudioObjectID) -> Bool {
+        let addresses = Self.outputVolumeAddresses(id)
+        let current = addresses.compactMap { AudioProperty.get(id, $0, as: Float32.self) }
+        let loudest = current.max() ?? 0
+        // A channel that couldn't be read leaves no balance to keep, rather than counting as silent.
+        let volumes =
+            current.count == addresses.count && loudest > 0 ? current.map { volume * $0 / loudest } : addresses.map { _ in volume }
+        return !addresses.isEmpty && zip(addresses, volumes).map { AudioProperty.set(id, $0, Float32($1)) }.allSatisfy { $0 }
+    }
+
+    func watchOutputVolumes(_ ids: [AudioObjectID], onChange: @escaping @MainActor () -> Void) {
+        let wanted = Set(ids)
+        for (id, listener) in volumeListeners where !wanted.contains(id) {
+            listener.stop()
+            volumeListeners[id] = nil
+        }
+        for id in wanted where volumeListeners[id] == nil {
+            let listener = AudioListener(object: id, watching: Self.outputVolumeAddresses(id))
+            listener.start(onChange)
+            volumeListeners[id] = listener
         }
     }
 
@@ -198,7 +383,7 @@ final class LiveAudioDevices: AudioDeviceAccess {
             return AudioProperty.set(id, Self.inputMute, UInt32(muted ? 1 : 0))
         }
         // Without a mute control, turn the input volume down, and back up to where it was.
-        guard let uid = AudioProperty.string(id, AudioProperty.address(kAudioDevicePropertyDeviceUID)) else { return false }
+        guard let uid = Self.uid(of: id) else { return false }
         let elements = Self.volumeElements(id)
         guard !elements.isEmpty else { return false }
         var saved = defaults.dictionary(forKey: Self.savedVolumesKey) as? [String: [Float]] ?? [:]
@@ -233,6 +418,8 @@ final class LiveAudioDevices: AudioDeviceAccess {
         listener.stop()
         inputListener?.stop()
         inputListener = nil
+        for listener in volumeListeners.values { listener.stop() }
+        volumeListeners = [:]
     }
 
     private func watchDefaultInput(_ onChange: @escaping @MainActor () -> Void) {

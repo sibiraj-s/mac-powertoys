@@ -224,6 +224,7 @@ extension AppState {
                 openAccessSettings: { permissions.openSettings(for: .audioCapture) }),
             externalDisplays: ExternalDisplaysController(
                 defaults: defaults, outputNeedsDDC: { audioDevices.outputNeedsDDC() },
-                isTrusted: { permissions.currentStatus(.accessibility) == .granted }))
+                isTrusted: { permissions.currentStatus(.accessibility) == .granted }),
+            defaults: defaults)
     }
 }

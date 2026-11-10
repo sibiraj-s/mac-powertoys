@@ -40,17 +40,19 @@ nonisolated final class AppVolumeTap: AppVolumeTapping {
     private var procID: AudioDeviceIOProcID?
     private let queue = DispatchQueue(label: "dev.sibiraj.powertoys.appvolume", qos: .userInteractive)
 
-    init(processes: [AudioObjectID], outputUID: String, gain: Float) throws {
+    /// Plays through `outputs`: the output device, or a multi-output device's own outputs, as an
+    /// aggregate can't hold another.
+    init(processes: [AudioObjectID], outputs: [String], gain: Float) throws {
         self.gain = AtomicGain(gain)
         do {
-            try start(processes: processes, outputUID: outputUID)
+            try start(processes: processes, outputs: outputs)
         } catch {
             invalidate()
             throw error
         }
     }
 
-    private func start(processes: [AudioObjectID], outputUID: String) throws {
+    private func start(processes: [AudioObjectID], outputs: [String]) throws {
         let description = CATapDescription(stereoMixdownOfProcesses: processes)
         description.uuid = UUID()
         description.name = "PowerToys app volume"
@@ -59,20 +61,23 @@ nonisolated final class AppVolumeTap: AppVolumeTapping {
         description.muteBehavior = .mutedWhenTapped
         try check(AudioHardwareCreateProcessTap(description, &tapID), "listen to the app")
 
+        guard let main = outputs.first else { throw AppVolumeTapError(step: "find the output", status: kAudioHardwareBadDeviceError) }
         let settings: [String: Any] = [
             kAudioAggregateDeviceNameKey: "PowerToys app volume",
             kAudioAggregateDeviceUIDKey: "\(Self.uidPrefix).\(UUID().uuidString)",
-            kAudioAggregateDeviceMainSubDeviceKey: outputUID,
+            kAudioAggregateDeviceMainSubDeviceKey: main,
             kAudioAggregateDeviceIsPrivateKey: true,
             kAudioAggregateDeviceIsStackedKey: false,
             kAudioAggregateDeviceTapAutoStartKey: true,
-            kAudioAggregateDeviceSubDeviceListKey: [[kAudioSubDeviceUIDKey: outputUID]],
+            kAudioAggregateDeviceSubDeviceListKey: outputs.map {
+                [kAudioSubDeviceUIDKey: $0, kAudioSubDeviceDriftCompensationKey: $0 != main] as [String: Any]
+            },
             kAudioAggregateDeviceTapListKey: [
                 [kAudioSubTapDriftCompensationKey: true, kAudioSubTapUIDKey: description.uuid.uuidString]
             ],
         ]
         try check(AudioHardwareCreateAggregateDevice(settings as CFDictionary, &aggregateID), "set up playback")
-        // The aggregate's input is the output device's own microphone, if it has one (a headset),
+        // The aggregate's input is the output devices' own microphones, if they have them (a headset),
         // followed by the tap. Only the tap is played.
         let tapChannels = Int(
             AudioProperty.get(tapID, AudioProperty.address(kAudioTapPropertyFormat), as: AudioStreamBasicDescription.self)?

@@ -31,7 +31,9 @@ protocol AudioProcessAccess: AnyObject {
     func processes() -> [AudioProcess]
     /// The app a process plays for: itself, or the app responsible for a helper.
     func app(for pid: pid_t) -> AudioAppInfo?
-    func defaultOutputUID() -> String?
+    /// The devices the default output plays through, by UID: itself, or a multi-output device's
+    /// connected outputs. Empty when there's none.
+    func defaultOutputs() -> [String]
     func observe(_ onChange: @escaping @MainActor () -> Void)
     func stopObserving()
 }
@@ -63,12 +65,12 @@ final class AppVolumeController {
     @ObservationIgnored private let openAccessSettings: () -> Void
     /// Asked or sent to System Settings once per run, not on every step of a slider.
     @ObservationIgnored private var hasAskedForAccess = false
-    @ObservationIgnored private let makeTap: ([AudioObjectID], String, Float) throws -> any AppVolumeTapping
-    @ObservationIgnored private var taps: [String: (processes: [AudioObjectID], outputUID: String, tap: any AppVolumeTapping)] = [:]
+    @ObservationIgnored private let makeTap: ([AudioObjectID], [String], Float) throws -> any AppVolumeTapping
+    @ObservationIgnored private var taps: [String: (processes: [AudioObjectID], outputs: [String], tap: any AppVolumeTapping)] = [:]
     @ObservationIgnored private var isRunning = false
     /// Taps that couldn't be made, and for what, so they're tried again only once something changes
     /// rather than on every refresh.
-    @ObservationIgnored private var failures: [String: (processes: [AudioObjectID], outputUID: String, error: String)] = [:]
+    @ObservationIgnored private var failures: [String: (processes: [AudioObjectID], outputs: [String], error: String)] = [:]
     @ObservationIgnored private var saveTask: Task<Void, Never>?
     /// Apps changed in this run, which stay listed even once back at 100%, so a row being dragged
     /// doesn't disappear when it gets there.
@@ -80,8 +82,8 @@ final class AppVolumeController {
         access: @escaping () -> PermissionStatus,
         requestAccess: @escaping (@escaping @MainActor @Sendable () -> Void) -> Void,
         openAccessSettings: @escaping () -> Void,
-        makeTap: @escaping ([AudioObjectID], String, Float) throws -> any AppVolumeTapping = {
-            try AppVolumeTap(processes: $0, outputUID: $1, gain: $2)
+        makeTap: @escaping ([AudioObjectID], [String], Float) throws -> any AppVolumeTapping = {
+            try AppVolumeTap(processes: $0, outputs: $1, gain: $2)
         }
     ) {
         self.defaults = defaults
@@ -187,17 +189,17 @@ final class AppVolumeController {
     }
 
     private func reconcile(_ grouped: [AudioApp]) {
-        let output = system.defaultOutputUID()
+        let output = system.defaultOutputs()
         let status = access()
         // macOS's check can keep answering "not asked" after access was allowed, and making the tap
         // asks anyway when it's needed, so only a refusal stops it.
         let isAllowed = status != .denied
         var wanted: [String: AudioApp] = [:]
-        if output != nil, isAllowed {
+        if !output.isEmpty, isAllowed {
             for app in grouped where !setting(for: app).isUnchanged { wanted[app.id] = app }
         }
         for (id, existing) in taps {
-            guard let app = wanted[id], existing.processes == app.processes, existing.outputUID == output else {
+            guard let app = wanted[id], existing.processes == app.processes, existing.outputs == output else {
                 existing.tap.invalidate()
                 taps[id] = nil
                 continue
@@ -206,8 +208,7 @@ final class AppVolumeController {
         }
         var errors: [String: String] = [:]
         for (id, app) in wanted where taps[id] == nil {
-            guard let output else { continue }
-            if let failure = failures[id], failure.processes == app.processes, failure.outputUID == output {
+            if let failure = failures[id], failure.processes == app.processes, failure.outputs == output {
                 errors[id] = failure.error
                 continue
             }
@@ -251,7 +252,8 @@ final class AppVolumeController {
 
 final class LiveAudioProcesses: AudioProcessAccess {
     private let listener = AudioListener(
-        watching: [kAudioHardwarePropertyProcessObjectList, kAudioHardwarePropertyDefaultOutputDevice])
+        // Devices too: a multi-output device's outputs come and go without the default changing.
+        watching: [kAudioHardwarePropertyProcessObjectList, kAudioHardwarePropertyDefaultOutputDevice, kAudioHardwarePropertyDevices])
 
     func processes() -> [AudioProcess] {
         AudioProperty.array(
@@ -284,14 +286,15 @@ final class LiveAudioProcesses: AudioProcessAccess {
         return owner
     }
 
-    func defaultOutputUID() -> String? {
+    func defaultOutputs() -> [String] {
         guard
             let id = AudioProperty.get(
                 AudioObjectID(kAudioObjectSystemObject), AudioProperty.address(kAudioHardwarePropertyDefaultOutputDevice),
                 as: AudioObjectID.self),
-            id != kAudioObjectUnknown
-        else { return nil }
-        return AudioProperty.string(id, AudioProperty.address(kAudioDevicePropertyDeviceUID))
+            id != kAudioObjectUnknown,
+            let uid = LiveAudioDevices.uid(of: id)
+        else { return [] }
+        return LiveAudioDevices.connectedSubDevices(ofDeviceWithUID: uid) ?? [uid]
     }
 
     func observe(_ onChange: @escaping @MainActor () -> Void) {

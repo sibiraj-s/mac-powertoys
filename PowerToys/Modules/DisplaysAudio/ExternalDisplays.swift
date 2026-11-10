@@ -71,6 +71,9 @@ final class ExternalDisplaysController {
     /// Shows the level a key or shortcut changed something to.
     @ObservationIgnored private let showLevel: (LevelIndicator.Kind, Double) -> Void
     @ObservationIgnored private var keyTap: MediaKeyTap?
+    /// Tried first for the volume and mute keys, for an output other than a display's speakers that
+    /// macOS has no volume for; says whether it used the key.
+    @ObservationIgnored var outputVolumeKey: (MediaKey) -> Bool = { _ in false }
     @ObservationIgnored private let isTrusted: () -> Bool
     @ObservationIgnored private let screenNames: () -> [String]
     @ObservationIgnored private var observer: NSObjectProtocol?
@@ -244,7 +247,9 @@ final class ExternalDisplaysController {
             guard usesBrightnessKeys, displays.contains(where: { $0.brightness != nil }), pointerScreenNeedsDDC() else { return false }
             step(key == .brightnessUp ? .up : .down)
         case .volumeUp, .volumeDown, .mute:
-            guard usesVolumeKeys, let speakers, outputNeedsDDC() else { return false }
+            guard usesVolumeKeys else { return false }
+            if outputVolumeKey(key) { return true }
+            guard let speakers, outputNeedsDDC() else { return false }
             if key == .mute {
                 setMuted(!speakers.isMuted, for: speakers)
             } else {
@@ -314,7 +319,7 @@ final class ExternalDisplaysController {
         }
     }
 
-    private static func stepped(_ value: Double, _ direction: Step) -> Double {
+    static func stepped(_ value: Double, _ direction: Step) -> Double {
         let steps = (value / keyStep).rounded() + (direction == .up ? 1 : -1)
         return min(max(steps * keyStep, 0), 1)
     }

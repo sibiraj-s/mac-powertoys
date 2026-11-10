@@ -16,8 +16,55 @@ final class FakeAudioDevices: AudioDeviceAccess {
     /// Devices with neither a mute control nor an input volume.
     var unmutable: Set<AudioObjectID> = []
     var onChange: (@MainActor () -> Void)?
+    var volumes: [AudioObjectID: Float] = [1: 0.5, 2: 0.25]
+    var canCombine = true
+    private(set) var clock: String?
+    /// Times the multi-output device was made, rather than changed in place.
+    private(set) var made = 0
 
     func devices() -> [AudioDevice] { all }
+    func multiOutputMembers() -> [String] {
+        guard let device = all.first(where: { $0.uid == LiveAudioDevices.multiOutputUID }) else { return [] }
+        return combined[device.id] ?? []
+    }
+    var combined: [AudioObjectID: [String]] = [:]
+    func setMultiOutput(_ uids: [String], clock: String) -> AudioObjectID? {
+        guard canCombine else { return nil }
+        self.clock = clock
+        if let existing = all.first(where: { $0.uid == LiveAudioDevices.multiOutputUID }) {
+            combined[existing.id] = uids
+            return existing.id
+        }
+        made += 1
+        let id = (all.map(\.id).max() ?? 0) + 1
+        all.append(
+            AudioDevice(
+                id: id, uid: LiveAudioDevices.multiOutputUID, name: "PowerToys Multi-Output", hasOutput: true, hasInput: false,
+                transport: kAudioDeviceTransportTypeAggregate))
+        combined[id] = uids
+        return id
+    }
+    /// Whether the multi-output device was still the output when it was removed, so macOS picked another.
+    private(set) var removedWhilePlaying = false
+    func removeMultiOutput() {
+        if let id = all.first(where: { $0.uid == LiveAudioDevices.multiOutputUID })?.id, defaults[.output] == id {
+            removedWhilePlaying = true
+        }
+        all.removeAll { $0.uid == LiveAudioDevices.multiOutputUID }
+        if let id = defaults[.output], !all.contains(where: { $0.id == id }) { defaults[.output] = 1 }
+    }
+    private(set) var watchedVolumes: [AudioObjectID] = []
+    var onVolumeChange: (@MainActor () -> Void)?
+    func watchOutputVolumes(_ ids: [AudioObjectID], onChange: @escaping @MainActor () -> Void) {
+        watchedVolumes = ids
+        onVolumeChange = onChange
+    }
+    func outputVolume(_ id: AudioObjectID) -> Float? { volumes[id] }
+    func setOutputVolume(_ volume: Float, _ id: AudioObjectID) -> Bool {
+        guard volumes[id] != nil else { return false }
+        volumes[id] = volume
+        return true
+    }
     func defaultDevice(_ direction: AudioDirection) -> AudioObjectID? { defaults[direction] }
     func setDefaultDevice(_ id: AudioObjectID, for direction: AudioDirection) -> Bool {
         defaults[direction] = id
@@ -36,24 +83,24 @@ final class FakeAudioDevices: AudioDeviceAccess {
 final class FakeAudioProcesses: AudioProcessAccess {
     var list: [AudioProcess] = []
     var owners: [pid_t: AudioAppInfo] = [:]
-    var outputUID: String? = "speakers"
+    var outputs = ["speakers"]
 
     func processes() -> [AudioProcess] { list }
     func app(for pid: pid_t) -> AudioAppInfo? { owners[pid] }
-    func defaultOutputUID() -> String? { outputUID }
+    func defaultOutputs() -> [String] { outputs }
     func observe(_ onChange: @escaping @MainActor () -> Void) {}
     func stopObserving() {}
 }
 
 final class FakeTap: AppVolumeTapping {
     let processes: [AudioObjectID]
-    let outputUID: String
+    let outputs: [String]
     var gain: Float
     var isInvalidated = false
 
-    init(processes: [AudioObjectID], outputUID: String, gain: Float) {
+    init(processes: [AudioObjectID], outputs: [String], gain: Float) {
         self.processes = processes
-        self.outputUID = outputUID
+        self.outputs = outputs
         self.gain = gain
     }
 
@@ -112,14 +159,278 @@ extension DisplaysAudioController {
             devices: devices,
             appVolume: AppVolumeController(
                 defaults: defaults, system: processes, access: { .granted }, requestAccess: { _ in }, openAccessSettings: {},
-                makeTap: { FakeTap(processes: $0, outputUID: $1, gain: $2) }),
+                makeTap: { FakeTap(processes: $0, outputs: $1, gain: $2) }),
             externalDisplays: ExternalDisplaysController(
-                defaults: defaults, ddc: FakeDDC(), screenNames: { ["Studio Display"] }, isTrusted: { false }, showLevel: { _, _ in }))
+                defaults: defaults, ddc: FakeDDC(), screenNames: { ["Studio Display"] }, isTrusted: { false }, showLevel: { _, _ in }),
+            defaults: defaults)
     }
 }
 
 struct AudioDevicesTests {
     let store = TestDefaults()
+
+    @Test func outputsPlayTogetherOnceTwoArePicked() {
+        let devices = FakeAudioDevices()
+        let controller = DisplaysAudioController.testing(devices: devices, defaults: store.defaults)
+        controller.start()
+        controller.setPlaysTogether(true, devices.all[0])
+        // One pick waits for a second, without changing the output.
+        #expect(controller.multiOutputMembers == ["speakers"])
+        #expect(controller.multiOutput == nil)
+        #expect(devices.defaults[.output] == 1)
+        controller.setPlaysTogether(true, devices.all[1])
+        #expect(controller.multiOutputMembers == ["speakers", "headset"])
+        #expect(controller.currentOutput?.uid == LiveAudioDevices.multiOutputUID)
+        // The multi-output device can't be part of itself.
+        #expect(controller.multiOutputCandidates.map(\.name) == ["Speakers", "Headset"])
+    }
+
+    @Test func droppingToOneOutputPlaysThroughIt() {
+        let devices = FakeAudioDevices()
+        let controller = DisplaysAudioController.testing(devices: devices, defaults: store.defaults)
+        controller.start()
+        controller.setPlaysTogether(true, devices.all[0])
+        controller.setPlaysTogether(true, devices.all[1])
+        controller.setPlaysTogether(false, devices.all[0])
+        #expect(controller.multiOutput == nil)
+        #expect(controller.multiOutputMembers == ["headset"])
+        #expect(devices.defaults[.output] == 2)
+    }
+
+    @Test func readsAMultiOutputDeviceMadeInAnEarlierRun() {
+        let devices = FakeAudioDevices()
+        _ = devices.setMultiOutput(["speakers", "headset"], clock: "speakers")
+        let controller = DisplaysAudioController.testing(devices: devices, defaults: store.defaults)
+        controller.start()
+        #expect(controller.multiOutputMembers == ["speakers", "headset"])
+    }
+
+    @Test func changesTheMultiOutputDeviceInPlace() {
+        let devices = FakeAudioDevices()
+        devices.all.append(AudioDevice(id: 4, uid: "usb", name: "USB DAC", hasOutput: true, hasInput: false, transport: 0))
+        let controller = DisplaysAudioController.testing(devices: devices, defaults: store.defaults)
+        controller.start()
+        controller.setPlaysTogether(true, devices.all[0])
+        controller.setPlaysTogether(true, devices.all[1])
+        let id = controller.multiOutput?.id
+        controller.setPlaysTogether(true, devices.all[3])
+        #expect(devices.made == 1)
+        #expect(controller.multiOutput?.id == id)
+        #expect(controller.multiOutputMembers == ["speakers", "headset", "usb"])
+    }
+
+    @Test func aWiredOutputKeepsTheTime() {
+        let devices = FakeAudioDevices()
+        devices.all = [
+            AudioDevice(
+                id: 1, uid: "airpods", name: "AirPods", hasOutput: true, hasInput: false, transport: kAudioDeviceTransportTypeBluetooth),
+            AudioDevice(
+                id: 2, uid: "airplay", name: "HomePod", hasOutput: true, hasInput: false, transport: kAudioDeviceTransportTypeAirPlay),
+            AudioDevice(id: 3, uid: "usb", name: "USB DAC", hasOutput: true, hasInput: false, transport: kAudioDeviceTransportTypeUSB),
+        ]
+        let controller = DisplaysAudioController.testing(devices: devices, defaults: store.defaults)
+        controller.start()
+        controller.setPlaysTogether(true, devices.all[0])
+        controller.setPlaysTogether(true, devices.all[1])
+        // AirPlay isn't wired, so the first pick keeps the time.
+        #expect(devices.clock == "airpods")
+        controller.setPlaysTogether(true, devices.all[2])
+        #expect(devices.clock == "usb")
+    }
+
+    @Test func aChangeLeavesOutOutputsThatArentConnected() {
+        let devices = FakeAudioDevices()
+        _ = devices.setMultiOutput(["gone", "speakers", "headset"], clock: "speakers")
+        let controller = DisplaysAudioController.testing(devices: devices, defaults: store.defaults)
+        controller.start()
+        #expect(controller.disconnectedMultiOutputMembers == 1)
+        controller.setPlaysTogether(false, devices.all[1])
+        // Only Speakers is left connected, so it plays on its own.
+        #expect(controller.multiOutput == nil)
+        #expect(controller.multiOutputMembers == ["speakers"])
+    }
+
+    @Test func watchesTheVolumesWithSliders() {
+        let devices = FakeAudioDevices()
+        let controller = DisplaysAudioController.testing(devices: devices, defaults: store.defaults)
+        controller.start()
+        #expect(devices.watchedVolumes.isEmpty)
+        controller.setPlaysTogether(true, devices.all[1])
+        // A lone pick shows its slider, so its volume is watched before there's a multi-output device.
+        #expect(devices.watchedVolumes == [2])
+        controller.setPlaysTogether(true, devices.all[0])
+        #expect(Set(devices.watchedVolumes) == [1, 2])
+        controller.setPlaysTogether(false, devices.all[0])
+        #expect(devices.watchedVolumes == [2])
+        devices.volumes[2] = 0.9
+        devices.onChange?()
+        #expect(controller.outputVolumes[2] == 0.9)
+    }
+
+    @Test func volumeKeysStepEachOutputPlayingTogether() {
+        let devices = FakeAudioDevices()
+        let shown = AppVolumeTests.Box<[(LevelIndicator.Kind, Double)]>([])
+        let controller = DisplaysAudioController(
+            devices: devices,
+            appVolume: AppVolumeController(
+                defaults: store.defaults, system: FakeAudioProcesses(), access: { .granted }, requestAccess: { _ in },
+                openAccessSettings: {},
+                makeTap: { FakeTap(processes: $0, outputs: $1, gain: $2) }),
+            externalDisplays: ExternalDisplaysController(
+                defaults: store.defaults, ddc: FakeDDC(), screenNames: { [] }, isTrusted: { false }, showLevel: { _, _ in }),
+            defaults: store.defaults, showLevel: { shown.value.append(($0, $1)) })
+        controller.start()
+        // Not playing together: left to macOS.
+        #expect(!controller.handleVolumeKey(.volumeUp))
+        controller.setPlaysTogether(true, devices.all[0])
+        controller.setPlaysTogether(true, devices.all[1])
+
+        // The loudest steps, and the others keep their share of it.
+        #expect(controller.handleVolumeKey(.volumeUp))
+        #expect(devices.volumes == [1: 0.5625, 2: 0.28125])
+        #expect(shown.value.last?.1 == 0.5625)
+        #expect(controller.handleVolumeKey(.volumeDown))
+        #expect(devices.volumes == [1: 0.5, 2: 0.25])
+
+        #expect(controller.handleVolumeKey(.mute))
+        #expect(devices.volumes == [1: 0, 2: 0])
+        #expect(shown.value.last?.0 == .muted)
+        // A step while muted unmutes first, from where it was.
+        #expect(controller.handleVolumeKey(.volumeDown))
+        #expect(devices.volumes == [1: 0.4375, 2: 0.21875])
+    }
+
+    @Test func aVolumeRaisedElsewhereEndsTheKeysMute() {
+        let devices = FakeAudioDevices()
+        let controller = DisplaysAudioController.testing(devices: devices, defaults: store.defaults)
+        controller.start()
+        controller.setPlaysTogether(true, devices.all[0])
+        controller.setPlaysTogether(true, devices.all[1])
+        #expect(controller.handleVolumeKey(.mute))
+        controller.setOutputVolume(0.3, for: devices.all[0])
+        // Not muted any more, so the key mutes rather than bringing back the old levels.
+        #expect(controller.handleVolumeKey(.mute))
+        #expect(devices.volumes == [1: 0, 2: 0])
+        #expect(controller.handleVolumeKey(.mute))
+        #expect(devices.volumes == [1: 0.3, 2: 0])
+    }
+
+    @Test func theMenuBarSliderSetsTheOutputsTogether() {
+        let devices = FakeAudioDevices()
+        let controller = DisplaysAudioController.testing(devices: devices, defaults: store.defaults)
+        controller.start()
+        #expect(controller.groupVolume == nil)
+        controller.setPlaysTogether(true, devices.all[0])
+        controller.setPlaysTogether(true, devices.all[1])
+        #expect(controller.groupVolume == 0.5)
+        controller.setGroupVolume(1)
+        #expect(devices.volumes == [1: 1, 2: 0.5])
+        // A change elsewhere is read without reading the devices again.
+        devices.volumes[1] = 0.75
+        devices.onVolumeChange?()
+        #expect(controller.groupVolume == 0.75)
+    }
+
+    @Test func stoppingMovesSoundOffTheMultiOutputDevice() {
+        let devices = FakeAudioDevices()
+        devices.all[1] = AudioDevice(
+            id: 2, uid: "headset", name: "Headset", hasOutput: true, hasInput: true, transport: kAudioDeviceTransportTypeBluetooth)
+        devices.all[0] = AudioDevice(
+            id: 1, uid: "speakers", name: "Speakers", hasOutput: true, hasInput: false, transport: kAudioDeviceTransportTypeBuiltIn)
+        let controller = DisplaysAudioController.testing(devices: devices, defaults: store.defaults)
+        controller.start()
+        controller.setPlaysTogether(true, devices.all[1])
+        controller.setPlaysTogether(true, devices.all[0])
+        controller.stop()
+        // To the wired one, which kept the time; the device stays for next time.
+        #expect(devices.defaults[.output] == 1)
+        #expect(devices.multiOutputMembers() == ["headset", "speakers"])
+        // And back once it starts again.
+        controller.start()
+        #expect(controller.isPlayingTogether)
+    }
+
+    @Test func staysOnAnOutputPickedWhileStopped() {
+        let devices = FakeAudioDevices()
+        let controller = DisplaysAudioController.testing(devices: devices, defaults: store.defaults)
+        controller.start()
+        controller.setPlaysTogether(true, devices.all[0])
+        controller.setPlaysTogether(true, devices.all[1])
+        controller.stop()
+        devices.defaults[.output] = 2
+        controller.start()
+        #expect(!controller.isPlayingTogether)
+        #expect(devices.defaults[.output] == 2)
+    }
+
+    @Test func theBalanceComesBackFromSilence() {
+        let devices = FakeAudioDevices()
+        let controller = DisplaysAudioController.testing(devices: devices, defaults: store.defaults)
+        controller.start()
+        controller.setPlaysTogether(true, devices.all[0])
+        controller.setPlaysTogether(true, devices.all[1])
+        controller.setGroupVolume(0)
+        controller.setGroupVolume(1)
+        #expect(devices.volumes == [1: 1, 2: 0.5])
+    }
+
+    @Test func dropsToOneWithoutMacOSPickingAnOutputMeanwhile() {
+        let devices = FakeAudioDevices()
+        let controller = DisplaysAudioController.testing(devices: devices, defaults: store.defaults)
+        controller.start()
+        controller.setPlaysTogether(true, devices.all[0])
+        controller.setPlaysTogether(true, devices.all[1])
+        controller.setPlaysTogether(false, devices.all[1])
+        #expect(!devices.removedWhilePlaying)
+        #expect(devices.defaults[.output] == 1)
+    }
+
+    @Test func theOutputTurnedOffIsntMadeTheOutput() {
+        let devices = FakeAudioDevices()
+        let id = devices.setMultiOutput(["gone", "headset"], clock: "headset")!
+        devices.defaults[.output] = id
+        let controller = DisplaysAudioController.testing(devices: devices, defaults: store.defaults)
+        controller.start()
+        controller.setPlaysTogether(false, devices.all[1])
+        #expect(devices.defaults[.output] != 2)
+    }
+
+    @Test func theVolumeKeysSettingPassesKeysToTheOutputs() {
+        let devices = FakeAudioDevices()
+        let controller = DisplaysAudioController.testing(devices: devices, defaults: store.defaults)
+        controller.start()
+        controller.setPlaysTogether(true, devices.all[0])
+        controller.setPlaysTogether(true, devices.all[1])
+        #expect(!controller.externalDisplays.handle(.volumeUp))
+        controller.externalDisplays.usesVolumeKeys = true
+        #expect(controller.externalDisplays.handle(.volumeUp))
+        #expect(devices.volumes[1] == 0.5625)
+    }
+
+    @Test func saysWhenOutputsCantBeCombined() {
+        let devices = FakeAudioDevices()
+        devices.canCombine = false
+        let controller = DisplaysAudioController.testing(devices: devices, defaults: store.defaults)
+        controller.start()
+        controller.setPlaysTogether(true, devices.all[0])
+        controller.setPlaysTogether(true, devices.all[1])
+        #expect(controller.multiOutputProblem != nil)
+        #expect(devices.defaults[.output] == 1)
+    }
+
+    @Test func setsEachOutputsVolume() {
+        let devices = FakeAudioDevices()
+        let controller = DisplaysAudioController.testing(devices: devices, defaults: store.defaults)
+        controller.start()
+        // Only outputs playing together have their volume read.
+        #expect(controller.outputVolumes.isEmpty)
+        controller.setPlaysTogether(true, devices.all[0])
+        controller.setPlaysTogether(true, devices.all[1])
+        #expect(controller.outputVolumes == [1: 0.5, 2: 0.25])
+        controller.setOutputVolume(0.8, for: devices.all[1])
+        #expect(devices.volumes[2] == 0.8)
+        #expect(controller.outputVolumes[2] == 0.8)
+    }
 
     @Test func listsOutputsAndInputsWithTheDefaults() {
         let controller = DisplaysAudioController.testing(defaults: store.defaults)
@@ -296,7 +607,7 @@ struct AppVolumeTests {
             },
             openAccessSettings: { taps.settingsOpened += 1 },
             makeTap: {
-                let tap = FakeTap(processes: $0, outputUID: $1, gain: $2)
+                let tap = FakeTap(processes: $0, outputs: $1, gain: $2)
                 taps.value.append(tap)
                 return tap
             })
@@ -337,7 +648,7 @@ struct AppVolumeTests {
         controller.setVolume(0.5, for: app)
         #expect(taps.value.count == 1)
         #expect(taps.value[0].processes == [10, 20])
-        #expect(taps.value[0].outputUID == "speakers")
+        #expect(taps.value[0].outputs == ["speakers"])
         #expect(taps.value[0].gain == 0.5)
 
         controller.setVolume(0.25, for: app)
@@ -368,16 +679,32 @@ struct AppVolumeTests {
         controller.start()
         controller.setVolume(0.5, for: try #require(controller.apps.first))
 
-        processes.outputUID = "headset"
+        processes.outputs = ["headset"]
         controller.refresh()
         #expect(taps.value.count == 2)
         #expect(taps.value[0].isInvalidated)
-        #expect(taps.value[1].outputUID == "headset")
+        #expect(taps.value[1].outputs == ["headset"])
 
         processes.list.append(AudioProcess(objectID: 40, pid: 200, isPlaying: true))
         controller.refresh()
         #expect(taps.value.count == 3)
         #expect(taps.value[2].processes == [10, 20, 40])
+    }
+
+    @Test func rebuildsTheTapWhenOutputsPlayingTogetherChange() throws {
+        let processes = browser()
+        processes.outputs = ["speakers", "headset"]
+        let taps = Box<[FakeTap]>([])
+        let controller = controller(processes, taps: taps)
+        controller.start()
+        controller.setVolume(0.5, for: try #require(controller.apps.first))
+        #expect(taps.value[0].outputs == ["speakers", "headset"])
+
+        // A third output joins the same multi-output device.
+        processes.outputs = ["speakers", "headset", "usb"]
+        controller.refresh()
+        #expect(taps.value[0].isInvalidated)
+        #expect(taps.value[1].outputs == ["speakers", "headset", "usb"])
     }
 
     @Test func volumesAreRememberedByApp() throws {
