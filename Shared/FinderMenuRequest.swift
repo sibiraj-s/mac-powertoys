@@ -48,9 +48,6 @@ nonisolated enum FinderAction: String, CaseIterable, Identifiable, Sendable {
 /// the app as a URL. The extension starts the app first when it isn't running.
 nonisolated struct FinderMenuRequest: Equatable, Sendable {
     static let scheme = "powertoys-finder"
-    /// The app's bundle ID, which is also its preferences domain, where the extension reads
-    /// whether Finder Extras is on.
-    static let appBundleID = "dev.sibiraj.powertoys"
     static let enabledModulesKey = "enabledModules"
     static let moduleID = "finderExtras"
 

@@ -50,7 +50,7 @@ nonisolated struct LiveLaunchControl: LaunchControlling {
                 commands
                 .map { ([Self.launchctl] + $0.map(Command.shellQuoted)).joined(separator: " ") }
                 .joined(separator: " && ")
-            try await Command.runAsAdministrator(script, prompt: "PowerToys wants to change a launch daemon.")
+            try await Command.runAsAdministrator(script, prompt: "\(AppInfo.name) wants to change a launch daemon.")
             return
         }
         for arguments in commands {

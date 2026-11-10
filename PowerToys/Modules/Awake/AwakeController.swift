@@ -140,7 +140,7 @@ final class AwakeController {
         let type = keepsDisplayOn ? kIOPMAssertionTypePreventUserIdleDisplaySleep : kIOPMAssertionTypePreventUserIdleSystemSleep
         var id: IOPMAssertionID = 0
         let result = IOPMAssertionCreateWithName(
-            type as CFString, IOPMAssertionLevel(kIOPMAssertionLevelOn), "PowerToys Awake" as CFString, &id)
+            type as CFString, IOPMAssertionLevel(kIOPMAssertionLevelOn), "\(AppInfo.name) Awake" as CFString, &id)
         guard result == kIOReturnSuccess else {
             NSLog("Awake: IOPMAssertionCreateWithName failed (\(result))")
             return nil

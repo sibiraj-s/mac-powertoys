@@ -32,7 +32,8 @@ nonisolated final class AtomicGain: Sendable {
 /// A Core Audio process tap that mutes the app's own playback, and a private aggregate device
 /// that plays what the tap hears through the output device, scaled by the gain.
 nonisolated final class AppVolumeTap: AppVolumeTapping {
-    static let uidPrefix = "dev.sibiraj.powertoys.appvolume"
+    /// Starts with the bundle ID, so a Debug build's devices stay apart from the installed app's.
+    static let uidPrefix = Bundle.main.bundleIdentifier! + ".appvolume"
 
     private let gain: AtomicGain
     private var tapID = AudioObjectID(kAudioObjectUnknown)
@@ -55,7 +56,7 @@ nonisolated final class AppVolumeTap: AppVolumeTapping {
     private func start(processes: [AudioObjectID], outputs: [String]) throws {
         let description = CATapDescription(stereoMixdownOfProcesses: processes)
         description.uuid = UUID()
-        description.name = "PowerToys app volume"
+        description.name = "\(AppInfo.name) app volume"
         description.isPrivate = true
         // The app is silent only while the tap is read, so if playing through stops, its sound comes back.
         description.muteBehavior = .mutedWhenTapped
@@ -63,7 +64,7 @@ nonisolated final class AppVolumeTap: AppVolumeTapping {
 
         guard let main = outputs.first else { throw AppVolumeTapError(step: "find the output", status: kAudioHardwareBadDeviceError) }
         let settings: [String: Any] = [
-            kAudioAggregateDeviceNameKey: "PowerToys app volume",
+            kAudioAggregateDeviceNameKey: "\(AppInfo.name) app volume",
             kAudioAggregateDeviceUIDKey: "\(Self.uidPrefix).\(UUID().uuidString)",
             kAudioAggregateDeviceMainSubDeviceKey: main,
             kAudioAggregateDeviceIsPrivateKey: true,

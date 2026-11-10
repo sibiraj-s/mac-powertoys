@@ -260,6 +260,33 @@ struct DefaultsBrowserControllerTests {
         #expect(controller().hasBackup(finder))
     }
 
+    @Test func keepsACopySavedElsewhere() async throws {
+        let browser = controller()
+        await browser.open(finder)
+        // Another build saves its copy after this one started.
+        let url = try #require(browser.backupURL(for: finder))
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try DefaultsValue.plistData(["AppleShowAllFiles": .bool(false)]).write(to: url)
+        #expect(browser.hasBackup(finder))
+
+        await browser.set(.bool(true), for: "AppleShowAllFiles")
+        #expect(try DefaultsValue.values(fromPlist: Data(contentsOf: url)) == ["AppleShowAllFiles": .bool(false)])
+    }
+
+    @Test func savesAnewCopyAfterOneIsDeleted() async throws {
+        let browser = controller()
+        await browser.open(finder)
+        await browser.set(.bool(true), for: "AppleShowAllFiles")
+        let url = try #require(browser.backupURL(for: finder))
+        try FileManager.default.removeItem(at: url)
+        #expect(!browser.hasBackup(finder))
+
+        await browser.set(.string("icnv"), for: "FXPreferredViewStyle")
+        let saved = try DefaultsValue.values(fromPlist: Data(contentsOf: url))
+        #expect(saved["AppleShowAllFiles"] == .bool(true))
+        #expect(saved["FXPreferredViewStyle"] == .string("Nlsv"))
+    }
+
     @Test func restoresTheOriginal() async {
         let browser = controller()
         await browser.open(finder)

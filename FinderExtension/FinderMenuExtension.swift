@@ -39,7 +39,7 @@ nonisolated final class FinderMenuExtension: FIFinderSync {
         }
         let isForFolder = menuKind == .contextualMenuForContainer
 
-        let submenu = NSMenu(title: "PowerToys")
+        let submenu = NSMenu(title: Self.menuTitle)
         for action in actions {
             let item = NSMenuItem(title: action.menuTitle, action: #selector(run(_:)), keyEquivalent: "")
             item.image = NSImage(systemSymbolName: action.symbol, accessibilityDescription: nil)
@@ -47,7 +47,7 @@ nonisolated final class FinderMenuExtension: FIFinderSync {
             submenu.addItem(item)
         }
         let menu = NSMenu(title: "")
-        let parent = NSMenuItem(title: "PowerToys", action: nil, keyEquivalent: "")
+        let parent = NSMenuItem(title: Self.menuTitle, action: nil, keyEquivalent: "")
         parent.image = NSImage(systemSymbolName: "wrench.and.screwdriver", accessibilityDescription: nil)
         parent.submenu = submenu
         menu.addItem(parent)
@@ -63,11 +63,11 @@ nonisolated final class FinderMenuExtension: FIFinderSync {
         // On empty space in a folder, the action is about the folder, not what's selected in it.
         let request = FinderMenuRequest(
             action: FinderAction.allCases[index], selection: isForFolder ? [] : Self.selection, folder: folder)
-        // PowerToys accepts requests only from this extension, which it checks by who sent
+        // The app accepts requests only from this extension, which it checks by who sent
         // them, so it's started first rather than launched by the request itself. Both go to
         // the copy holding this extension, not another copy, such as a build from Xcode.
         let hostApp = Self.hostApp
-        let isRunning = NSRunningApplication.runningApplications(withBundleIdentifier: FinderMenuRequest.appBundleID)
+        let isRunning = NSRunningApplication.runningApplications(withBundleIdentifier: Self.hostAppID)
             .contains { $0.bundleURL?.standardizedFileURL == hostApp.standardizedFileURL }
         guard !isRunning else {
             Self.send(request, to: hostApp)
@@ -88,9 +88,22 @@ nonisolated final class FinderMenuExtension: FIFinderSync {
         NSWorkspace.shared.open([request.url], withApplicationAt: app, configuration: configuration)
     }
 
-    /// PowerToys.app, from PowerToys.app/Contents/PlugIns/FinderExtension.appex.
+    /// The app holding this extension, such as PowerToys.app from
+    /// PowerToys.app/Contents/PlugIns/FinderExtension.appex, or PowerToys Dev.app for a Debug build.
     private static var hostApp: URL {
         Bundle.main.bundleURL.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+    }
+
+    /// The host app's bundle ID, which is also its preferences domain. Derived from this
+    /// extension's own ID, since Debug builds use a different one so they don't share
+    /// permissions and settings with the installed app.
+    private static var hostAppID: String {
+        Bundle.main.bundleIdentifier!.replacing(/\.FinderExtension$/, with: "")
+    }
+
+    /// "PowerToys Dev" for a Debug build, so its menu can be told apart from the installed app's.
+    private static var menuTitle: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as! String
     }
 
     private static var selection: [URL] {
@@ -100,7 +113,7 @@ nonisolated final class FinderMenuExtension: FIFinderSync {
     /// Whether Finder Extras is on in PowerToys, read from its preferences, which the extension
     /// may read but not change.
     private static var isModuleOn: Bool {
-        let enabled = UserDefaults(suiteName: FinderMenuRequest.appBundleID)?
+        let enabled = UserDefaults(suiteName: Self.hostAppID)?
             .stringArray(forKey: FinderMenuRequest.enabledModulesKey)
         return enabled?.contains(FinderMenuRequest.moduleID) ?? false
     }

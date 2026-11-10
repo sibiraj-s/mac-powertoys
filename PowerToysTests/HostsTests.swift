@@ -403,6 +403,18 @@ struct HostsControllerTests {
         #expect(controller.file.groups.isEmpty)
     }
 
+    /// Another copy of the app, such as a Debug build, may save the original after this one started.
+    @Test func keepsAnOriginalSavedElsewhere() async throws {
+        let backup = FileManager.default.temporaryDirectory.appending(path: "hosts-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: backup) }
+        let controller = makeController(FakeHostsStore(), backup: backup)
+        try "saved elsewhere".write(to: backup, atomically: true, encoding: .utf8)
+
+        await controller.change { $0.addGroup("One") }
+        #expect(controller.hasBackup)
+        #expect(try String(contentsOf: backup, encoding: .utf8) == "saved elsewhere")
+    }
+
     @Test func flushesDNS() async {
         let store = FakeHostsStore()
         let controller = makeController(store)

@@ -123,7 +123,6 @@ final class DefaultsBrowserController {
     /// The open domain's app while it's running; it may not notice changes until it restarts.
     private(set) var runningApp: NSRunningApplication?
     private(set) var error: String?
-    private(set) var backedUpDomains: Set<String> = []
     /// Filters the open domain's keys by key or value.
     var keyFilter = ""
 
@@ -149,7 +148,7 @@ final class DefaultsBrowserController {
     @ObservationIgnored private let quitProcesses: @MainActor (String) -> Void
 
     static var defaultBackupDirectory: URL {
-        URL.powerToysSupportDirectory.appending(path: "Defaults Backups")
+        URL.sharedSupportDirectory.appending(path: "Defaults Backups")
     }
 
     init(
@@ -160,9 +159,6 @@ final class DefaultsBrowserController {
         self.store = store
         self.backupDirectory = backupDirectory
         self.quitProcesses = quitProcesses
-        if let backupDirectory, let files = try? FileManager.default.contentsOfDirectory(atPath: backupDirectory.path) {
-            backedUpDomains = Set(files.filter { $0.hasSuffix(".plist") }.map { String($0.dropLast(".plist".count)) })
-        }
     }
 
     // MARK: Domains
@@ -336,8 +332,10 @@ final class DefaultsBrowserController {
         backupDirectory?.appending(path: "\(id.replacing("/", with: "_")).plist")
     }
 
+    /// Read from disk each time, not remembered: every build shares these backups, another may
+    /// have saved one since, and the user may have deleted one.
     private func hasBackup(_ id: String) -> Bool {
-        backedUpDomains.contains(id.replacing("/", with: "_"))
+        backupURL(for: id).map { FileManager.default.fileExists(atPath: $0.path) } ?? false
     }
 
     /// Saves the domain as it is now, once: later changes keep the copy from before the first.
@@ -346,7 +344,6 @@ final class DefaultsBrowserController {
         let current = await store.values(in: id)
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try DefaultsValue.plistData(current).write(to: url, options: .atomic)
-        backedUpDomains.insert(url.deletingPathExtension().lastPathComponent)
     }
 
     /// Puts the open domain back as it was before its first change: keys added since are

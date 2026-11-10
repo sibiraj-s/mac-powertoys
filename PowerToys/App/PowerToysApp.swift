@@ -28,9 +28,7 @@ struct PowerToysApp: App {
             MenuBarView()
                 .environment(appDelegate.state)
         } label: {
-            Image(
-                systemName: appDelegate.state.awake.isActive || appDelegate.state.awake.isHeldByDisplay
-                    ? "cup.and.saucer.fill" : "wrench.and.screwdriver")
+            MenuBarIcon.image(awake: appDelegate.state.awake.isActive || appDelegate.state.awake.isHeldByDisplay)
         }
         .menuBarExtraStyle(.window)
     }
@@ -100,8 +98,51 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
-enum AppInfo {
-    static let name = Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String ?? "PowerToys"
+enum MenuBarIcon {
+    static func symbol(awake: Bool) -> String {
+        awake ? "cup.and.saucer.fill" : "wrench.and.screwdriver"
+    }
+
+    /// Debug builds add a dot in the corner, so they can be told apart from the installed app
+    /// in the menu bar, where icons are drawn in one colour.
+    static func image(awake: Bool) -> Image {
+        #if DEBUG
+            Image(nsImage: awake ? dottedAwake : dottedIdle)
+        #else
+            Image(systemName: symbol(awake: awake))
+        #endif
+    }
+
+    #if DEBUG
+        // Made once: the label is re-evaluated on every Awake change.
+        private static let dottedIdle = dotted(symbol(awake: false))
+        private static let dottedAwake = dotted(symbol(awake: true))
+    #endif
+
+    /// The symbol with a dot at its lower right, cut out of the symbol so it stays visible.
+    static func dotted(_ name: String) -> NSImage {
+        let symbol = NSImage(systemSymbolName: name, accessibilityDescription: AppInfo.name)!
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 14, weight: .regular))!
+        let dot: CGFloat = 6
+        let gap: CGFloat = 1.5
+        let size = NSSize(width: symbol.size.width + dot / 3, height: symbol.size.height)
+        let image = NSImage(size: size, flipped: false) { _ in
+            symbol.draw(in: NSRect(origin: .zero, size: symbol.size))
+            let spot = NSRect(x: size.width - dot, y: 0, width: dot, height: dot)
+            NSGraphicsContext.current?.compositingOperation = .clear
+            NSBezierPath(ovalIn: spot.insetBy(dx: -gap, dy: -gap)).fill()
+            NSGraphicsContext.current?.compositingOperation = .sourceOver
+            NSColor.black.setFill()
+            NSBezierPath(ovalIn: spot).fill()
+            return true
+        }
+        image.isTemplate = true
+        return image
+    }
+}
+
+nonisolated enum AppInfo {
+    static let name = Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as! String
 }
 
 enum MainWindow {

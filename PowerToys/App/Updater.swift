@@ -14,7 +14,7 @@ final class Updater {
     #if DEBUG
         let isEnabled = false
     #else
-        let isEnabled = !(Bundle.main.object(forInfoDictionaryKey: "SUPublicEDKey") as? String ?? "").isEmpty
+        let isEnabled = !(Bundle.main.object(forInfoDictionaryKey: "SUPublicEDKey") as! String).isEmpty
     #endif
 
     /// False while a check or an update is in progress.
@@ -37,7 +37,7 @@ final class Updater {
     @ObservationIgnored private var observation: NSKeyValueObservation?
 
     var currentVersion: String {
-        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as! String
     }
 
     private init() {}

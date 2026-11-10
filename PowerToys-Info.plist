@@ -15,7 +15,7 @@
 	     access even when it's allowed in System Settings. Kept in this file because Xcode doesn't
 	     generate it from an INFOPLIST_KEY_ build setting. -->
 	<key>NSAudioCaptureUsageDescription</key>
-	<string>PowerToys plays each app's sound through at the volume you set for it.</string>
+	<string>$(APP_DISPLAY_NAME) plays each app's sound through at the volume you set for it.</string>
 	<!-- Merged with the generated Info.plist. Finder's menu extension sends its actions here. -->
 	<key>CFBundleURLTypes</key>
 	<array>

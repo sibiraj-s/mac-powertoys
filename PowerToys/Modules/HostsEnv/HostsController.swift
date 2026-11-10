@@ -39,14 +39,14 @@ nonisolated struct LiveHostsStore: HostsStore {
             else echo \(Self.changedMarker) >&2; exit 1; fi
             """
         do {
-            try await Command.runAsAdministrator(command, prompt: "PowerToys wants to update the hosts file.")
+            try await Command.runAsAdministrator(command, prompt: "\(AppInfo.name) wants to update the hosts file.")
         } catch let error as CommandError where error.errorDescription?.contains(Self.changedMarker) == true {
             throw HostsChangedError()
         }
     }
 
     func flushDNS() async throws {
-        try await Command.runAsAdministrator(Self.flushCommand, prompt: "PowerToys wants to flush the DNS cache.")
+        try await Command.runAsAdministrator(Self.flushCommand, prompt: "\(AppInfo.name) wants to flush the DNS cache.")
     }
 }
 
@@ -65,13 +65,13 @@ final class HostsController {
     @ObservationIgnored private var lastText: String?
 
     static var defaultBackupURL: URL {
-        URL.powerToysSupportDirectory.appending(path: "hosts.original")
+        URL.sharedSupportDirectory.appending(path: "hosts.original")
     }
 
     init(store: any HostsStore = LiveHostsStore(), backupURL: URL? = HostsController.defaultBackupURL) {
         self.store = store
         self.backupURL = backupURL
-        hasBackup = backupURL.map { FileManager.default.fileExists(atPath: $0.path) } ?? false
+        hasBackup = Self.exists(backupURL)
     }
 
     /// Picks up changes made elsewhere. Unchanged text keeps the entries as they are.
@@ -83,6 +83,7 @@ final class HostsController {
                 lastText = text
             }
             isLoaded = true
+            hasBackup = Self.exists(backupURL)
             if !isSaving { error = nil }
         } catch {
             self.error = "Couldn't read \(HostsFile.path): \(error.localizedDescription)"
@@ -153,10 +154,18 @@ final class HostsController {
         }
     }
 
+    /// Read from disk each time, not remembered: a Debug build shares this backup with the
+    /// installed app, and either may have saved it since.
+    private static func exists(_ backup: URL?) -> Bool {
+        backup.map { FileManager.default.fileExists(atPath: $0.path) } ?? false
+    }
+
     private func backUpIfNeeded() throws {
+        hasBackup = Self.exists(backupURL)
         guard let backupURL, !hasBackup, let lastText else { return }
         try FileManager.default.createDirectory(at: backupURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try lastText.write(to: backupURL, atomically: true, encoding: .utf8)
+        // Atomic, so a crash or full disk can't leave a cut-off original that's never replaced.
+        try Data(lastText.utf8).write(to: backupURL, options: .atomic)
         hasBackup = true
     }
 }

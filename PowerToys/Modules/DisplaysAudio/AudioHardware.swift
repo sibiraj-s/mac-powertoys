@@ -163,8 +163,9 @@ final class LiveAudioDevices: AudioDeviceAccess {
     /// back after a relaunch too.
     static let savedVolumesKey = "displaysAudio.savedInputVolumes"
     /// The multi-output device made here. It's public, so it can be the default output, and Core
-    /// Audio keeps it after the app quits; it's found again by this UID.
-    nonisolated static let multiOutputUID = "dev.sibiraj.powertoys.multioutput"
+    /// Audio keeps it after the app quits; it's found again by this UID. It starts with the bundle
+    /// ID, so a Debug build doesn't take over or remove the installed app's device.
+    nonisolated static let multiOutputUID = Bundle.main.bundleIdentifier! + ".multioutput"
 
     private let defaults: UserDefaults
     private let listener = AudioListener(

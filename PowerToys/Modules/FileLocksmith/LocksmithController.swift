@@ -36,7 +36,7 @@ nonisolated struct LiveFileHolderScanner: FileHolderScanning {
             do {
                 stdout = try await Command.runAsAdministrator(
                     "\(command); [ $? -ne 124 ] || { echo \(Self.timeoutMarker) >&2; exit 1; }",
-                    prompt: "PowerToys wants to see which system processes are using “\(url.lastPathComponent)”.")
+                    prompt: "\(AppInfo.name) wants to see which system processes are using “\(url.lastPathComponent)”.")
             } catch let error as CommandError where error.errorDescription?.contains(Self.timeoutMarker) == true {
                 throw Self.tooLong
             }
@@ -83,7 +83,7 @@ struct LiveProcessQuitter: ProcessQuitting {
         guard kill(pid, signal) != 0 else { return }
         guard errno == EPERM else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EPERM) }
         try await Command.runAsAdministrator(
-            "kill -\(force ? "KILL" : "TERM") \(pid)", prompt: "PowerToys wants to quit a process run by the system.")
+            "kill -\(force ? "KILL" : "TERM") \(pid)", prompt: "\(AppInfo.name) wants to quit a process run by the system.")
     }
 
     func isRunning(_ pid: pid_t) -> Bool {

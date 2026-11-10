@@ -8,7 +8,7 @@
 	<!-- Read-only, to hide the menu while Finder Extras is off in PowerToys. -->
 	<key>com.apple.security.temporary-exception.shared-preference.read-only</key>
 	<array>
-		<string>dev.sibiraj.powertoys</string>
+		<string>$(APP_BUNDLE_ID)</string>
 	</array>
 </dict>
 </plist>

@@ -211,7 +211,9 @@ struct FinderMenuRequestTests {
 
     /// The extension can't use the app's code, so it keeps its own copies of these.
     @Test func extensionNamesMatchTheApp() {
-        #expect(FinderMenuRequest.appBundleID == Bundle.main.bundleIdentifier)
+        // The extension finds the app's ID, and so its preferences, by dropping this suffix from its own.
+        let plugin = Bundle(url: Bundle.main.bundleURL.appending(path: "Contents/PlugIns/\(FinderMenuSender.extensionName)"))
+        #expect(plugin?.bundleIdentifier == Bundle.main.bundleIdentifier.map { $0 + ".FinderExtension" })
         #expect(FinderMenuRequest.enabledModulesKey == AppState.enabledModulesKey)
         #expect(FinderMenuRequest.moduleID == ModuleID.finderExtras.rawValue)
         let schemes = (Bundle.main.object(forInfoDictionaryKey: "CFBundleURLTypes") as? [[String: Any]])?
