@@ -28,7 +28,7 @@ struct PowerToysApp: App {
             MenuBarView()
                 .environment(appDelegate.state)
         } label: {
-            MenuBarIcon.image(awake: appDelegate.state.awake.isActive || appDelegate.state.awake.isHeldByDisplay)
+            MenuBarIcon.image
         }
         .menuBarExtraStyle(.window)
     }
@@ -99,24 +99,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 enum MenuBarIcon {
-    static func symbol(awake: Bool) -> String {
-        awake ? "cup.and.saucer.fill" : "wrench.and.screwdriver"
-    }
+    /// One icon whatever the modules are doing: a changing icon reads as a different app.
+    static let symbol = "wrench.and.screwdriver"
 
     /// Debug builds add a dot in the corner, so they can be told apart from the installed app
     /// in the menu bar, where icons are drawn in one colour.
-    static func image(awake: Bool) -> Image {
+    static var image: Image {
         #if DEBUG
-            Image(nsImage: awake ? dottedAwake : dottedIdle)
+            Image(nsImage: dottedSymbol)
         #else
-            Image(systemName: symbol(awake: awake))
+            Image(systemName: symbol)
         #endif
     }
 
     #if DEBUG
-        // Made once: the label is re-evaluated on every Awake change.
-        private static let dottedIdle = dotted(symbol(awake: false))
-        private static let dottedAwake = dotted(symbol(awake: true))
+        private static let dottedSymbol = dotted(symbol)
     #endif
 
     /// The symbol with a dot at its lower right, cut out of the symbol so it stays visible.

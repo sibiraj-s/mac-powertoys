@@ -84,8 +84,8 @@ private struct AwakeSettingsView: View {
 
         CardSection("Keep awake") {
             CardRow("Status", hint: statusText) {
-                Button("Stop") { awake.stop() }
-                    .disabled(!awake.isActive)
+                Button("Stop") { awake.turnOff() }
+                    .disabled(!awake.isKeepingAwake)
             }
             CardRow("For", hint: "Starts now and ends after the chosen time.") {
                 HStack(spacing: 6) {
@@ -110,7 +110,7 @@ private struct AwakeSettingsView: View {
             if awake.isLaptop {
                 CardRow(
                     "While a display is connected",
-                    hint: "Stays awake whenever an external display is plugged in. Turn this off to stop it."
+                    hint: "Stays awake whenever an external display is plugged in. Stop pauses this until the display is unplugged."
                 ) {
                     RowSwitch(label: "While a display is connected", isOn: $awake.whileDisplayConnected)
                 }
@@ -124,7 +124,10 @@ private struct AwakeSettingsView: View {
 
     private var statusText: String {
         let awake = state.awake
-        guard awake.isActive else { return awake.isHeldByDisplay ? "Awake while a display is connected" : "Off" }
+        guard awake.isActive else {
+            if awake.isHeldByDisplay { return "Awake while a display is connected" }
+            return awake.isDisplayHoldPaused ? "Paused until the display is unplugged" : "Off"
+        }
         guard let endsAt = awake.endsAt else { return "Awake until you stop it" }
         let style: Date.FormatStyle =
             endsAt.timeIntervalSinceNow > 12 * 60 * 60

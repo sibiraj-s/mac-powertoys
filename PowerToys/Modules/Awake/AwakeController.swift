@@ -57,12 +57,16 @@ final class AwakeController {
     var whileDisplayConnected: Bool {
         didSet {
             defaults.set(whileDisplayConnected, forKey: Self.whileDisplayConnectedKey)
+            isDisplayHoldPaused = false
             updateDisplayHold()
         }
     }
 
     /// Whether a connected external display is what's keeping the Mac awake right now.
     private(set) var isHeldByDisplay = false
+
+    /// Whether the Mac is being kept awake for any reason, by a session or by a display.
+    var isKeepingAwake: Bool { isActive || isHeldByDisplay }
 
     var lastDuration: Duration = .indefinitely
 
@@ -77,13 +81,21 @@ final class AwakeController {
     @ObservationIgnored private var displayAssertionID: IOPMAssertionID = 0
     @ObservationIgnored private var expiryTask: Task<Void, Never>?
     @ObservationIgnored private var isWatchingDisplays = false
+    /// Set when the hold is turned off by hand; lasts until no external display is connected, so
+    /// the hold comes back the next time one is plugged in.
+    private(set) var isDisplayHoldPaused = false
+    /// How long no external display must be seen before it counts as unplugged.
+    @ObservationIgnored private let unplugGrace: TimeInterval
+    @ObservationIgnored private var unplugCheck: Task<Void, Never>?
     @ObservationIgnored private var observers: [(center: NotificationCenter, token: any NSObjectProtocol)] = []
 
     init(
         defaults: UserDefaults = .standard,
         hasExternalDisplay: @escaping () -> Bool = Hardware.hasExternalDisplay,
-        isLaptop: Bool = Hardware.isLaptop
+        isLaptop: Bool = Hardware.isLaptop,
+        unplugGrace: TimeInterval = 5
     ) {
+        self.unplugGrace = unplugGrace
         self.defaults = defaults
         self.hasExternalDisplay = hasExternalDisplay
         self.isLaptop = isLaptop
@@ -115,12 +127,29 @@ final class AwakeController {
         for observer in observers { observer.center.removeObserver(observer.token) }
         observers = []
         isWatchingDisplays = false
+        isDisplayHoldPaused = false
+        unplugCheck?.cancel()
+        unplugCheck = nil
         releaseDisplayHold()
     }
 
     /// Takes or drops the display hold to match the setting and what's connected now.
     func updateDisplayHold() {
-        let wanted = isWatchingDisplays && isLaptop && whileDisplayConnected && hasExternalDisplay()
+        let connected = hasExternalDisplay()
+        if connected {
+            unplugCheck?.cancel()
+            unplugCheck = nil
+        } else if isDisplayHoldPaused, unplugCheck == nil {
+            // A display can be missing for a moment after wake or a mode change; only a lasting
+            // absence counts as unplugged.
+            unplugCheck = Task { [weak self, unplugGrace] in
+                try? await Task.sleep(for: .seconds(unplugGrace))
+                guard !Task.isCancelled, let self else { return }
+                unplugCheck = nil
+                if !hasExternalDisplay() { isDisplayHoldPaused = false }
+            }
+        }
+        let wanted = isWatchingDisplays && isLaptop && whileDisplayConnected && connected && !isDisplayHoldPaused
         if wanted, !isHeldByDisplay, let id = makeAssertion() {
             displayAssertionID = id
             isHeldByDisplay = true
@@ -149,7 +178,15 @@ final class AwakeController {
     }
 
     func toggle() {
-        isActive ? stop() : start(lastDuration)
+        isKeepingAwake ? turnOff() : start(lastDuration)
+    }
+
+    /// Lets the Mac sleep again: ends any session and pauses the display hold until the display is unplugged.
+    func turnOff() {
+        stop()
+        // Releases rather than re-evaluating the hold, which could retry one macOS refused earlier.
+        if isHeldByDisplay { isDisplayHoldPaused = true }
+        releaseDisplayHold()
     }
 
     func start(_ duration: Duration) {

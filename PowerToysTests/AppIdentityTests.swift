@@ -37,9 +37,8 @@ struct AppIdentityTests {
         }
     }
 
-    @Test(arguments: [false, true])
-    func menuBarIconAddsADot(awake: Bool) throws {
-        let symbol = MenuBarIcon.symbol(awake: awake)
+    @Test func menuBarIconAddsADot() throws {
+        let symbol = MenuBarIcon.symbol
         #expect(NSImage(systemSymbolName: symbol, accessibilityDescription: nil) != nil)
         let dotted = MenuBarIcon.dotted(symbol)
         // Drawn in the menu bar's colour, like the plain symbol.

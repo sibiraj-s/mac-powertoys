@@ -14,16 +14,16 @@ struct MenuBarView: View {
 
             LazyVGrid(columns: columns, spacing: 8) {
                 if state.isEnabled(.awake) {
-                    QuickToggle(title: "Awake", subtitle: awakeSubtitle, symbol: "cup.and.saucer", isOn: state.awake.isActive) {
+                    QuickToggle(title: "Awake", subtitle: awakeSubtitle, symbol: "cup.and.saucer", isOn: state.awake.isKeepingAwake) {
                         state.awake.toggle()
                     }
                     .contextMenu {
                         ForEach(AwakeController.Duration.allCases) { duration in
                             Button(duration.title) { state.awake.start(duration) }
                         }
-                        if state.awake.isActive {
+                        if state.awake.isKeepingAwake {
                             Divider()
-                            Button("Stop") { state.awake.stop() }
+                            Button("Stop") { state.awake.turnOff() }
                         }
                         Divider()
                         Button(Vigil.installedURL != nil ? "Open Vigil…" : "Get Vigil for triggers…") { Vigil.open() }
@@ -212,7 +212,10 @@ struct MenuBarView: View {
     }
 
     private var awakeSubtitle: String {
-        guard state.awake.isActive else { return state.awake.isHeldByDisplay ? "Held by display" : "Off" }
+        guard state.awake.isActive else {
+            if state.awake.isHeldByDisplay { return "Held by display" }
+            return state.awake.isDisplayHoldPaused ? "Paused" : "Off"
+        }
         guard let endsAt = state.awake.endsAt else { return "On" }
         return "Until \(endsAt.formatted(date: .omitted, time: .shortened))"
     }

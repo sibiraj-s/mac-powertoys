@@ -130,6 +130,71 @@ struct AwakeDisplayConnectedTests {
         #expect(!awake.isHeldByDisplay)
     }
 
+    @Test func turningOffPausesHoldUntilUnplugged() async throws {
+        var connected = true
+        let awake = AwakeController(
+            defaults: store.defaults, hasExternalDisplay: { connected }, isLaptop: true, unplugGrace: 0.05)
+        defer { awake.stopWatchingDisplays() }
+        awake.whileDisplayConnected = true
+        awake.startWatchingDisplays()
+        #expect(awake.isKeepingAwake)
+
+        awake.toggle()
+        #expect(!awake.isKeepingAwake)
+        awake.updateDisplayHold()
+        #expect(!awake.isHeldByDisplay)
+
+        awake.toggle()
+        #expect(awake.isActive)
+        awake.toggle()
+        #expect(!awake.isKeepingAwake)
+
+        #expect(awake.isDisplayHoldPaused)
+        connected = false
+        awake.updateDisplayHold()
+        // Waits for the grace period to run out, however long a busy machine takes to get there.
+        let deadline = Date.now.addingTimeInterval(5)
+        while awake.isDisplayHoldPaused, Date.now < deadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(!awake.isDisplayHoldPaused)
+        connected = true
+        awake.updateDisplayHold()
+        #expect(awake.isHeldByDisplay)
+    }
+
+    /// After wake, a display can be missing for a moment; that isn't an unplug.
+    @Test func briefDisplayDropoutKeepsPause() async throws {
+        var connected = true
+        let awake = AwakeController(
+            defaults: store.defaults, hasExternalDisplay: { connected }, isLaptop: true, unplugGrace: 0.05)
+        defer { awake.stopWatchingDisplays() }
+        awake.whileDisplayConnected = true
+        awake.startWatchingDisplays()
+        awake.toggle()
+
+        connected = false
+        awake.updateDisplayHold()
+        connected = true
+        awake.updateDisplayHold()
+        try await Task.sleep(for: .milliseconds(300))
+        awake.updateDisplayHold()
+        #expect(awake.isDisplayHoldPaused)
+        #expect(!awake.isHeldByDisplay)
+    }
+
+    @Test func turningOffEndsSessionAndHoldTogether() {
+        let awake = AwakeController(defaults: store.defaults, hasExternalDisplay: { true }, isLaptop: true)
+        defer { awake.stopWatchingDisplays() }
+        awake.whileDisplayConnected = true
+        awake.startWatchingDisplays()
+        awake.start(.indefinitely)
+
+        awake.toggle()
+        #expect(!awake.isActive)
+        #expect(!awake.isHeldByDisplay)
+    }
+
     @Test func holdSurvivesManualStopAndDisplaySetting() {
         let awake = AwakeController(defaults: store.defaults, hasExternalDisplay: { true }, isLaptop: true)
         defer { awake.stopWatchingDisplays() }
