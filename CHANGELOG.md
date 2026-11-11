@@ -1,5 +1,12 @@
 # powertoys
 
+## 1.4.2
+
+### Patch Changes
+
+- 33ddcf2: The menu bar icon no longer turns into a coffee cup while Awake is on. The Awake tile is highlighted while a connected display keeps the Mac awake, and tapping it, the Awake shortcut, or Stop pauses that hold until the display is unplugged
+- 03a7c58: File Locksmith and Ports & Processes no longer signal a process whose ID was reused by another since it was listed
+
 ## 1.4.1
 
 ### Patch Changes
