@@ -25,6 +25,7 @@ extension AppState {
     ) -> AppState {
         AppState(
             defaults: defaults,
+            lidSleep: FakeLidSleep(),
             permissions: PermissionsService(defaults: defaults, check: { _ in .denied }, prompt: { _, _ in }, openURL: { _ in }),
             clipboardStore: nil, hotKeys: hotKeys, system: system,
             hostsStore: FakeHostsStore(), hostsBackup: nil,
@@ -72,5 +73,32 @@ nonisolated final class Gate: Sendable {
 nonisolated func stall(seconds: Double) async {
     await withCheckedContinuation { continuation in
         DispatchQueue.global().asyncAfter(deadline: .now() + seconds) { continuation.resume() }
+    }
+}
+
+/// Records what Awake asks of the lid-sleep control, without a helper.
+final class FakeLidSleep: LidSleepControl {
+    var onInterrupted: (() -> Void)?
+    var isAllowed = false
+    var needsApproval = false
+    var works = true
+    private(set) var calls: [Bool] = []
+    private(set) var disallowed = 0
+
+    func allow() throws {
+        if needsApproval { throw LidSleepNeedsApproval() }
+        isAllowed = true
+    }
+
+    /// Like the real one, does nothing when it isn't registered.
+    func disallow() {
+        guard isAllowed else { return }
+        isAllowed = false
+        disallowed += 1
+    }
+
+    func setSleepDisabled(_ disabled: Bool) -> Bool {
+        calls.append(disabled)
+        return works
     }
 }

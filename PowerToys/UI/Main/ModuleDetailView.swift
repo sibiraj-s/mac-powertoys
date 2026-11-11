@@ -114,6 +114,20 @@ private struct AwakeSettingsView: View {
                 ) {
                     RowSwitch(label: "While a display is connected", isOn: $awake.whileDisplayConnected)
                 }
+                CardRow(
+                    "With the lid closed",
+                    hint: awake.lidClosedProblem
+                        ?? (awake.isLidClosedPausedForBattery
+                            ? "Paused: the battery is below \(AwakeController.lowBatteryPercent)%, so the Mac sleeps when its lid closes. Plug in to resume."
+                            : "Keeps working with the lid closed, even on battery, until it drops below \(AwakeController.lowBatteryPercent)%. Needs a helper you allow once in System Settings. Don't pack the Mac in a bag while it's on: it can overheat.")
+                ) {
+                    RowSwitch(
+                        label: "With the lid closed",
+                        isOn: Binding(
+                            get: { awake.keepsAwakeWithLidClosed },
+                            set: { awake.setKeepsAwakeWithLidClosed($0) }
+                        ))
+                }
             }
         }
 

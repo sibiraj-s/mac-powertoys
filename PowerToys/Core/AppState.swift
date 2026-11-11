@@ -38,6 +38,7 @@ final class AppState {
 
     init(
         defaults: UserDefaults = .standard,
+        lidSleep: any LidSleepControl = AwakeHelperClient(),
         permissions: PermissionsService? = nil,
         clipboardStore: URL? = ClipboardController.defaultStoreDirectory,
         hotKeys: any HotKeyRegistering = HotKeyCenter.shared,
@@ -64,7 +65,7 @@ final class AppState {
         self.defaults = defaults
         self.permissions = permissions ?? PermissionsService(defaults: defaults)
         shortcuts = Shortcuts(defaults: defaults, center: hotKeys)
-        awake = AwakeController(defaults: defaults)
+        awake = AwakeController(defaults: defaults, lidSleep: lidSleep)
         zones = ZonesController(defaults: defaults, shortcuts: shortcuts)
         clipboard = ClipboardController(defaults: defaults, storeDirectory: clipboardStore, shortcuts: shortcuts)
         systemToggles = SystemTogglesController(defaults: defaults, system: system)
