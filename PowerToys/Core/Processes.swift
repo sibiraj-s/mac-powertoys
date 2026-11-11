@@ -21,6 +21,14 @@ nonisolated enum ProcessStart {
         guard start.tv_sec > 0 else { return nil }
         return Date(timeIntervalSince1970: TimeInterval(start.tv_sec) + TimeInterval(start.tv_usec) / 1_000_000)
     }
+
+    /// Whether `pid` is still the process a list showed as started at `listed`, rather than one
+    /// that got its ID after it quit. Without a start time from the list there's no telling, so
+    /// it isn't.
+    static func isSame(_ pid: pid_t, startedAt listed: Date?, read: (pid_t) -> Date?) -> Bool {
+        guard let listed else { return false }
+        return read(pid) == listed
+    }
 }
 
 /// An app bundle's ID, read from its Info.plist rather than through `Bundle`, which keeps every

@@ -60,6 +60,7 @@ nonisolated struct LiveFileHolderScanner: FileHolderScanning {
             .map { holder in
                 var holder = holder
                 holder.path = ProcessDetails.executablePath(holder.pid)
+                holder.started = ProcessStart.read(holder.pid)
                 return holder
             }
             .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
@@ -82,8 +83,27 @@ struct LiveProcessQuitter: ProcessQuitting {
         let signal = force ? SIGKILL : SIGTERM
         guard kill(pid, signal) != 0 else { return }
         guard errno == EPERM else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EPERM) }
+        // The password prompt can stay open for any length of time, so root checks that the
+        // process is still the one that started when this one did before signalling it.
+        let started = try await Command.run(Self.ps, Self.startArguments(pid), environment: ["LC_ALL": "C"], timeout: .seconds(10))
+            .stdout.trimmingCharacters(in: .newlines)
+        guard !started.isEmpty else { throw Self.alreadyQuit }
         try await Command.runAsAdministrator(
-            "kill -\(force ? "KILL" : "TERM") \(pid)", prompt: "\(AppInfo.name) wants to quit a process run by the system.")
+            Self.killCommand(pid, force: force, started: started),
+            prompt: "\(AppInfo.name) wants to quit a process run by the system.")
+    }
+
+    static let ps = "/bin/ps"
+    static let alreadyQuit = CommandError(errorDescription: "It has already quit.")
+
+    /// The process's start time alone, as ps writes it.
+    static func startArguments(_ pid: pid_t) -> [String] { ["-o", "lstart=", "-p", String(pid)] }
+
+    /// Signals the process only while ps still gives `started` for it.
+    static func killCommand(_ pid: pid_t, force: Bool, started: String) -> String {
+        let now = "$(LC_ALL=C \(ps) \(startArguments(pid).joined(separator: " ")))"
+        return "if [ \"\(now)\" = \(Command.shellQuoted(started)) ]; then /bin/kill -\(force ? "KILL" : "TERM") \(pid); "
+            + "else echo \(Command.shellQuoted(alreadyQuit.errorDescription ?? "")) >&2; exit 1; fi"
     }
 
     func isRunning(_ pid: pid_t) -> Bool {
@@ -114,6 +134,7 @@ final class LocksmithController {
     @ObservationIgnored private let finder: any FinderAccess
     @ObservationIgnored private let ejector: @Sendable (URL) async throws -> Void
     @ObservationIgnored private let listVolumes: () -> [URL]
+    @ObservationIgnored private let startTime: (pid_t) -> Date?
     @ObservationIgnored private let quitTimeout: Duration
     /// Counts scans, so a slow one that's been overtaken doesn't overwrite the newer result.
     @ObservationIgnored private var scanCount = 0
@@ -124,6 +145,7 @@ final class LocksmithController {
         finder: any FinderAccess = LiveFinder(),
         eject: @escaping @Sendable (URL) async throws -> Void = LocksmithController.eject,
         volumes: @escaping () -> [URL] = { LiveSystemSettings.ejectableVolumes() },
+        startTime: @escaping (pid_t) -> Date? = { ProcessStart.read($0) },
         quitTimeout: Duration = .seconds(5)
     ) {
         self.scanner = scanner
@@ -131,6 +153,7 @@ final class LocksmithController {
         self.finder = finder
         self.ejector = eject
         listVolumes = volumes
+        self.startTime = startTime
         self.quitTimeout = quitTimeout
     }
 
@@ -195,6 +218,13 @@ final class LocksmithController {
     func quit(_ holder: FileHolder, force: Bool = false) async {
         let pid = holder.pid
         guard force || !quitting.contains(pid) else { return }
+        // The list isn't kept up to date, so the process may have quit and its ID gone to
+        // another, which started later.
+        guard ProcessStart.isSame(pid, startedAt: holder.started, read: startTime) else {
+            await scan()
+            error = "\(holder.name) has already quit."
+            return
+        }
         // Marked before asking, which can wait on a password, so a second click doesn't ask again.
         let marked = quitting.insert(pid).inserted
         do {
@@ -208,13 +238,15 @@ final class LocksmithController {
             return
         }
         error = nil
+        // A process that quits while this waits can have its ID taken by another at once.
+        let isRunning = { self.quitter.isRunning(pid) && ProcessStart.isSame(pid, startedAt: holder.started, read: self.startTime) }
         let clock = ContinuousClock()
         let deadline = clock.now + quitTimeout
-        while quitter.isRunning(pid), clock.now < deadline {
+        while isRunning(), clock.now < deadline {
             try? await Task.sleep(for: .milliseconds(100))
         }
         quitting.remove(pid)
-        if quitter.isRunning(pid) {
+        if isRunning() {
             stubborn.insert(pid)
         } else {
             stubborn.remove(pid)

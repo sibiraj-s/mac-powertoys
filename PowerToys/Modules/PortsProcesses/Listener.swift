@@ -14,6 +14,8 @@ nonisolated struct Listener: Identifiable, Hashable, Sendable {
     /// Child processes sharing the port, such as the worker `uvicorn --reload` or gunicorn runs
     /// the app in. They inherit the socket from this process, which is the one you started.
     var workers: [pid_t] = []
+    /// When each worker started, to tell it apart from a later process given its ID.
+    var workerStarts: [pid_t: Date] = [:]
 
     var id: String { "\(pid):\(port)" }
 

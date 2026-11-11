@@ -244,8 +244,8 @@ final class CleanerController {
     func quit(_ process: ProcessUsage) {
         guard canQuit(process), !quitting.contains(process.pid) else { return }
         // The list is a moment old, so the process may have quit and its ID gone to another,
-        // which started later. Without a start time from the list there's no telling.
-        guard let listed = process.started, startTime(process.pid) == listed else {
+        // which started later.
+        guard ProcessStart.isSame(process.pid, startedAt: process.started, read: startTime) else {
             actionError = "\(process.name) has already quit."
             return
         }

@@ -48,6 +48,7 @@ nonisolated final class LivePortScanner: PortScanning, Sendable {
         return listeners.map { listener in
             var listener = listener
             listener.process = details[listener.pid]
+            for worker in listener.workers { listener.workerStarts[worker] = ProcessStart.read(worker) }
             return listener
         }
     }
@@ -90,6 +91,7 @@ final class PortsController {
     private let defaults: UserDefaults
     @ObservationIgnored private let scanner: any PortScanning
     @ObservationIgnored private let signaling: any ProcessSignaling
+    @ObservationIgnored private let startTime: (pid_t) -> Date?
     /// How long a process gets to quit before it's offered a force quit.
     @ObservationIgnored private let quitTimeout: Duration
     @ObservationIgnored private var isRefreshing = false
@@ -102,8 +104,10 @@ final class PortsController {
         defaults: UserDefaults = .standard,
         scanner: any PortScanning = LivePortScanner(),
         signaling: any ProcessSignaling = LiveProcessSignaling(),
+        startTime: @escaping (pid_t) -> Date? = { ProcessStart.read($0) },
         quitTimeout: Duration = .seconds(3)
     ) {
+        self.startTime = startTime
         self.quitTimeout = quitTimeout
         self.defaults = defaults
         self.scanner = scanner
@@ -163,9 +167,20 @@ final class PortsController {
         let pid = listener.pid
         // Force quitting is allowed while waiting for a quit, rather than waiting it out.
         guard force || !quitting.contains(pid) else { return }
+        // The list is a moment old, so the process may have quit and its ID gone to another,
+        // which started later.
+        guard ProcessStart.isSame(pid, startedAt: listener.process?.started, read: startTime) else {
+            await refresh()
+            error = "\(listener.name) has already quit."
+            return
+        }
+        // Workers that quit since are neither killed nor waited for: their IDs may be another's now.
+        let workers = listener.workers.filter {
+            ProcessStart.isSame($0, startedAt: listener.workerStarts[$0], read: startTime)
+        }
         let result = signaling.send(force ? SIGKILL : SIGTERM, to: pid)
         if force, result == 0 {
-            for worker in listener.workers { _ = signaling.send(SIGKILL, to: worker) }
+            for worker in workers { _ = signaling.send(SIGKILL, to: worker) }
         }
         guard result == 0 else {
             error =
@@ -178,7 +193,14 @@ final class PortsController {
         quitting.insert(pid)
         let clock = ContinuousClock()
         let deadline = clock.now + quitTimeout
-        let isRunning = { listener.allPIDs.contains { self.signaling.isRunning($0) } }
+        // A process that quits while this waits can have its ID taken by another at once.
+        var starts = listener.workerStarts
+        starts[pid] = listener.process?.started
+        let isRunning = {
+            ([pid] + workers).contains {
+                self.signaling.isRunning($0) && ProcessStart.isSame($0, startedAt: starts[$0], read: self.startTime)
+            }
+        }
         while isRunning(), clock.now < deadline {
             try? await Task.sleep(for: .milliseconds(100))
         }

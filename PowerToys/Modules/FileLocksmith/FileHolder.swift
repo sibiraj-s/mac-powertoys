@@ -9,6 +9,8 @@ nonisolated struct FileHolder: Identifiable, Hashable, Sendable {
     var files: [OpenFile]
     /// The executable's path, for its full name.
     var path: String?
+    /// When it started, to tell it apart from a later process given the same ID.
+    var started: Date?
 
     var id: pid_t { pid }
 

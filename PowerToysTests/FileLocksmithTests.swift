@@ -87,14 +87,18 @@ final class FakeQuitter: ProcessQuitting {
 
 struct LocksmithControllerTests {
     private let file = URL(filePath: "/tmp/report.pdf")
-    private let preview = FileHolder(pid: 42, command: "Preview", files: [.init(descriptor: "12", path: "/tmp/report.pdf")])
+    /// When Preview started, as listed and as still running.
+    private static let listedStart = Date(timeIntervalSince1970: 1_000)
+    private let preview = FileHolder(
+        pid: 42, command: "Preview", files: [.init(descriptor: "12", path: "/tmp/report.pdf")], started: listedStart)
 
     private func controller(
         _ scanner: FakeHolderScanner, _ quitter: FakeQuitter = FakeQuitter(), finder: FakeFinder = FakeFinder(),
-        eject: @escaping @Sendable (URL) async throws -> Void = { _ in }
+        eject: @escaping @Sendable (URL) async throws -> Void = { _ in }, startTime: @escaping (pid_t) -> Date? = { _ in listedStart }
     ) -> LocksmithController {
         LocksmithController(
-            scanner: scanner, quitter: quitter, finder: finder, eject: eject, volumes: { [] }, quitTimeout: .milliseconds(300))
+            scanner: scanner, quitter: quitter, finder: finder, eject: eject, volumes: { [] }, startTime: startTime,
+            quitTimeout: .milliseconds(300))
     }
 
     @Test func listsWhatHasItOpen() async {
@@ -182,6 +186,63 @@ struct LocksmithControllerTests {
         #expect(locksmith.error == "Couldn't quit Preview: Not allowed.")
         #expect(locksmith.holders == [preview])
         #expect(locksmith.status(of: preview) == nil)
+    }
+
+    @Test func aReusedProcessIDIsntQuit() async {
+        let listed = Self.listedStart
+        let holder = preview
+        let scanner = FakeHolderScanner()
+        scanner.holders = [holder]
+        let quitter = FakeQuitter()
+        quitter.running = [42]
+        // Another process has the ID now, started later.
+        let locksmith = controller(scanner, quitter, startTime: { _ in listed.addingTimeInterval(60) })
+        await locksmith.check(file)
+        scanner.holders = []
+        await locksmith.quit(holder, force: true)
+        #expect(quitter.asked == 0)
+        #expect(quitter.running == [42])
+        #expect(locksmith.holders.isEmpty)
+        #expect(locksmith.error == "Preview has already quit.")
+    }
+
+    @Test func aProcessWhoseIDIsReusedWhileWaitingHasQuit() async {
+        let scanner = FakeHolderScanner()
+        scanner.holders = [preview]
+        let quitter = FakeQuitter()
+        quitter.running = [42]
+        // It quits, and another process gets its ID straight away, so the ID stays in use.
+        quitter.ignoresQuit = [42]
+        let locksmith = controller(
+            scanner, quitter, startTime: { _ in quitter.asked > 0 ? Self.listedStart.addingTimeInterval(1) : Self.listedStart })
+        await locksmith.check(file)
+        await locksmith.quit(preview)
+        #expect(locksmith.stubborn.isEmpty)
+    }
+
+    /// The command root runs after the password prompt, run here as this user on a process of its own.
+    @Test func theAdministratorCommandSignalsOnlyTheProcessItWasGiven() async throws {
+        let sleeper = Process()
+        sleeper.executableURL = URL(filePath: "/bin/sleep")
+        sleeper.arguments = ["60"]
+        try sleeper.run()
+        defer { sleeper.terminate() }
+        let pid = sleeper.processIdentifier
+        let started = try await Command.run(
+            LiveProcessQuitter.ps, LiveProcessQuitter.startArguments(pid), environment: ["LC_ALL": "C"]
+        ).stdout.trimmingCharacters(in: .newlines)
+        #expect(!started.isEmpty)
+
+        let stale = LiveProcessQuitter.killCommand(pid, force: true, started: "Thu Jan  1 00:00:00 1970")
+        let refused = try await Command.run("/bin/sh", ["-c", stale])
+        #expect(refused.status == 1)
+        #expect(refused.stderr.contains("already quit"))
+        #expect(sleeper.isRunning)
+
+        let current = LiveProcessQuitter.killCommand(pid, force: true, started: started)
+        #expect(try await Command.run("/bin/sh", ["-c", current]).status == 0)
+        sleeper.waitUntilExit()
+        #expect(sleeper.terminationReason == .uncaughtSignal)
     }
 
     @Test func checksFinderSelection() async {

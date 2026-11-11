@@ -349,18 +349,24 @@ final class FakeSignaling: ProcessSignaling {
     func isRunning(_ pid: pid_t) -> Bool { running.contains(pid) }
 }
 
+/// When the processes in the tests started, as listed and as still running.
+private let listedStart = Date(timeIntervalSince1970: 1_000)
+
 struct PortsControllerTests {
-    private let node = Listener(pid: 10, port: 3000, addresses: ["127.0.0.1"], command: "node")
+    private let node = Listener(
+        pid: 10, port: 3000, addresses: ["127.0.0.1"], command: "node",
+        process: ProcessDetails(path: nil, arguments: [], started: listedStart))
     private let rapportd = Listener(
         pid: 20, port: 49152, addresses: ["*"], command: "rapportd",
-        process: ProcessDetails(path: "/usr/libexec/rapportd", arguments: [])
+        process: ProcessDetails(path: "/usr/libexec/rapportd", arguments: [], started: listedStart)
     )
 
     @Test func hidesSystemServicesUnlessAsked() async {
         let store = TestDefaults()
         let scanner = FakePortScanner()
         scanner.listeners = [node, rapportd]
-        let controller = PortsController(defaults: store.defaults, scanner: scanner, signaling: FakeSignaling())
+        let controller = PortsController(
+            defaults: store.defaults, scanner: scanner, signaling: FakeSignaling(), startTime: { _ in listedStart })
         await controller.refresh()
         #expect(controller.isLoaded)
         #expect(controller.visibleListeners == [node])
@@ -368,19 +374,26 @@ struct PortsControllerTests {
 
         controller.showsSystemServices = true
         #expect(controller.visibleListeners == [node, rapportd])
-        #expect(PortsController(defaults: store.defaults, scanner: scanner, signaling: FakeSignaling()).showsSystemServices)
+        #expect(
+            PortsController(defaults: store.defaults, scanner: scanner, signaling: FakeSignaling(), startTime: { _ in listedStart })
+                .showsSystemServices)
     }
 
     @Test func showsInTheMenuBarByDefault() {
         let store = TestDefaults()
-        #expect(PortsController(defaults: store.defaults, scanner: FakePortScanner(), signaling: FakeSignaling()).showsInMenuBar)
+        #expect(
+            PortsController(
+                defaults: store.defaults, scanner: FakePortScanner(), signaling: FakeSignaling(), startTime: { _ in listedStart }
+            )
+            .showsInMenuBar)
     }
 
     @Test func scanFailuresAreShown() async {
         let store = TestDefaults()
         let scanner = FakePortScanner()
         scanner.fails = true
-        let controller = PortsController(defaults: store.defaults, scanner: scanner, signaling: FakeSignaling())
+        let controller = PortsController(
+            defaults: store.defaults, scanner: scanner, signaling: FakeSignaling(), startTime: { _ in listedStart })
         await controller.refresh()
         #expect(controller.error?.contains("lsof broke") == true)
         scanner.fails = false
@@ -395,7 +408,7 @@ struct PortsControllerTests {
         let signaling = FakeSignaling()
         signaling.running = [10]
         signaling.onQuit = { pid in scanner.listeners.removeAll { $0.pid == pid } }
-        let controller = PortsController(defaults: store.defaults, scanner: scanner, signaling: signaling)
+        let controller = PortsController(defaults: store.defaults, scanner: scanner, signaling: signaling, startTime: { _ in listedStart })
         await controller.refresh()
 
         await controller.quit(node)
@@ -414,7 +427,9 @@ struct PortsControllerTests {
         signaling.running = [10]
         signaling.ignoresTerm = [10]
         signaling.onQuit = { pid in scanner.listeners.removeAll { $0.pid == pid } }
-        let controller = PortsController(defaults: store.defaults, scanner: scanner, signaling: signaling, quitTimeout: .milliseconds(200))
+        let controller = PortsController(
+            defaults: store.defaults, scanner: scanner, signaling: signaling, startTime: { _ in listedStart },
+            quitTimeout: .milliseconds(200))
         await controller.refresh()
 
         await controller.quit(node)
@@ -432,12 +447,15 @@ struct PortsControllerTests {
         let store = TestDefaults()
         var server = node
         server.workers = [11]
+        server.workerStarts = [11: listedStart]
         let scanner = FakePortScanner()
         scanner.listeners = [server]
         let signaling = FakeSignaling()
         signaling.running = [10, 11]
         signaling.ignoresTerm = [10, 11]
-        let controller = PortsController(defaults: store.defaults, scanner: scanner, signaling: signaling, quitTimeout: .milliseconds(200))
+        let controller = PortsController(
+            defaults: store.defaults, scanner: scanner, signaling: signaling, startTime: { _ in listedStart },
+            quitTimeout: .milliseconds(200))
 
         await controller.quit(server)
         #expect(signaling.sent.map(\.1) == [10])
@@ -455,12 +473,15 @@ struct PortsControllerTests {
         let store = TestDefaults()
         var server = node
         server.workers = [11]
+        server.workerStarts = [11: listedStart]
         let signaling = FakeSignaling()
         signaling.running = [10, 11]
         let scanner = FakePortScanner()
         scanner.listeners = [server]
         // The worker outlives the parent, still holding the port.
-        let controller = PortsController(defaults: store.defaults, scanner: scanner, signaling: signaling, quitTimeout: .milliseconds(200))
+        let controller = PortsController(
+            defaults: store.defaults, scanner: scanner, signaling: signaling, startTime: { _ in listedStart },
+            quitTimeout: .milliseconds(200))
         await controller.quit(server)
         #expect(controller.stubborn == [10])
     }
@@ -473,7 +494,7 @@ struct PortsControllerTests {
         let signaling = FakeSignaling()
         signaling.running = [10]
         signaling.onQuit = { pid in scanner.listeners.removeAll { $0.pid == pid } }
-        let controller = PortsController(defaults: store.defaults, scanner: scanner, signaling: signaling)
+        let controller = PortsController(defaults: store.defaults, scanner: scanner, signaling: signaling, startTime: { _ in listedStart })
         await controller.refresh()
 
         // A refresh, as the page's every two seconds, starts while node is still listening.
@@ -495,7 +516,8 @@ struct PortsControllerTests {
         signaling.running = [10]
         signaling.ignoresTerm = [10]
         let controller = PortsController(
-            defaults: store.defaults, scanner: FakePortScanner(), signaling: signaling, quitTimeout: .seconds(30))
+            defaults: store.defaults, scanner: FakePortScanner(), signaling: signaling, startTime: { _ in listedStart },
+            quitTimeout: .seconds(30))
 
         let quit = Task { await controller.quit(node) }
         await waitUntil { controller.quitting.contains(10) }
@@ -511,10 +533,71 @@ struct PortsControllerTests {
         let store = TestDefaults()
         let signaling = FakeSignaling()
         signaling.result = EPERM
-        let controller = PortsController(defaults: store.defaults, scanner: FakePortScanner(), signaling: signaling)
+        let controller = PortsController(
+            defaults: store.defaults, scanner: FakePortScanner(), signaling: signaling, startTime: { _ in listedStart })
         await controller.quit(node)
         #expect(controller.error?.contains("another user") == true)
         #expect(controller.quitting.isEmpty)
+    }
+
+    @Test func aReusedProcessIDIsntSignalled() async {
+        let store = TestDefaults()
+        let listed = listedStart
+        let server = node
+        let signaling = FakeSignaling()
+        signaling.running = [10]
+        // Another process has the ID now, started later.
+        let controller = PortsController(
+            defaults: store.defaults, scanner: FakePortScanner(), signaling: signaling, startTime: { _ in listed.addingTimeInterval(60) })
+        await controller.quit(server, force: true)
+        #expect(signaling.sent.isEmpty)
+        #expect(controller.error == "node has already quit.")
+    }
+
+    @Test(.timeLimit(.minutes(1)))
+    func aReusedWorkerIDIsntKilled() async {
+        let store = TestDefaults()
+        let listed = listedStart
+        var server = node
+        server.workers = [11, 12]
+        server.workerStarts = [11: listed, 12: listed]
+        let signaling = FakeSignaling()
+        // Worker 12 quit, and its ID went to a process that started later and is still running.
+        signaling.running = [10, 11, 12]
+        let controller = PortsController(
+            defaults: store.defaults, scanner: FakePortScanner(), signaling: signaling,
+            startTime: { $0 == 12 ? listed.addingTimeInterval(60) : listed }, quitTimeout: .milliseconds(200))
+        await controller.quit(server, force: true)
+        #expect(signaling.sent.map(\.1) == [10, 11])
+        // Not waited for either, so the server isn't taken for one that wouldn't quit.
+        #expect(controller.stubborn.isEmpty)
+        #expect(signaling.running == [12])
+    }
+
+    @Test func aProcessWhoseIDIsReusedWhileWaitingHasQuit() async {
+        let store = TestDefaults()
+        let signaling = FakeSignaling()
+        // It quits, and another process gets its ID straight away, so the ID stays in use.
+        signaling.running = [10]
+        signaling.ignoresTerm = [10]
+        let controller = PortsController(
+            defaults: store.defaults, scanner: FakePortScanner(), signaling: signaling,
+            startTime: { _ in signaling.sent.isEmpty ? listedStart : listedStart.addingTimeInterval(1) })
+        await controller.quit(node)
+        #expect(controller.stubborn.isEmpty)
+    }
+
+    @Test func aProcessListedWithoutAStartTimeIsntSignalled() async {
+        let store = TestDefaults()
+        var server = node
+        server.process = nil
+        let signaling = FakeSignaling()
+        signaling.running = [10]
+        let controller = PortsController(
+            defaults: store.defaults, scanner: FakePortScanner(), signaling: signaling, startTime: { _ in listedStart })
+        await controller.quit(server)
+        #expect(signaling.sent.isEmpty)
+        #expect(controller.error == "node has already quit.")
     }
 
     @Test func findsARealListener() async throws {
