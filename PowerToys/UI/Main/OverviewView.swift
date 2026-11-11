@@ -29,12 +29,15 @@ struct OverviewView: View {
                     RowSwitch(label: "Show in menu bar", isOn: $showsMenuBarIcon)
                 }
                 CardRow(
-                    "Keep in menu bar when closed", hint: "Closing the window hides the Dock icon. Right-click the menu bar icon to quit."
+                    "Keep in menu bar",
+                    hint: "Closing the window or ⌘Q hides the Dock icon. Quit with ⌥⌘Q or by right-clicking the menu bar icon."
                 ) {
                     // Shown off while it has no effect, keeping the choice for when the icon returns.
                     RowSwitch(
-                        label: "Keep in menu bar when closed",
-                        isOn: Binding(get: { showsMenuBarIcon && hidesDockIconOnClose }, set: { hidesDockIconOnClose = $0 })
+                        label: "Keep in menu bar",
+                        isOn: Binding(
+                            get: { DockIcon.keepsInMenuBar(hidesOnClose: hidesDockIconOnClose, menuBarIconShown: showsMenuBarIcon) },
+                            set: { hidesDockIconOnClose = $0 })
                     )
                     .disabled(!showsMenuBarIcon)
                 }

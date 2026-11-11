@@ -4,6 +4,7 @@ import SwiftUI
 struct PowerToysApp: App {
     @NSApplicationDelegateAdaptor private var appDelegate: AppDelegate
     @AppStorage(DockIcon.showsMenuBarIconKey) private var showsMenuBarIcon = DockIcon.showsMenuBarIconDefault
+    @AppStorage(DockIcon.hidesOnCloseKey) private var hidesDockIconOnClose = false
 
     var body: some Scene {
         Window(AppInfo.name, id: MainWindow.id) {
@@ -21,6 +22,18 @@ struct PowerToysApp: App {
             CommandGroup(replacing: .appSettings) {
                 OpenMainWindowButton(title: "Settings…")
                     .keyboardShortcut(",", modifiers: .command)
+            }
+            // Only the menu's Quit is replaced: logout, relaunch and updates still quit the app.
+            CommandGroup(replacing: .appTermination) {
+                if DockIcon.keepsInMenuBar(hidesOnClose: hidesDockIconOnClose, menuBarIconShown: showsMenuBarIcon) {
+                    Button("Quit to Menu Bar") { MainWindow.closeAll() }
+                        .keyboardShortcut("q", modifiers: .command)
+                    Button("Quit \(AppInfo.name)") { NSApp.terminate(nil) }
+                        .keyboardShortcut("q", modifiers: [.command, .option])
+                } else {
+                    Button("Quit \(AppInfo.name)") { NSApp.terminate(nil) }
+                        .keyboardShortcut("q", modifiers: .command)
+                }
             }
         }
 
@@ -144,6 +157,14 @@ nonisolated enum AppInfo {
 
 enum MainWindow {
     static let id = "main"
+
+    /// Closes the app's windows, leaving its modules running from the menu bar. Goes through
+    /// the close button's path, so a window can still refuse or tidy up first.
+    @MainActor static func closeAll() {
+        for window in NSApp.windows where DockIcon.isAppWindow(window) {
+            window.performClose(nil)
+        }
+    }
 }
 
 /// With the option on, the app keeps running in the menu bar alone while none of its windows
@@ -153,9 +174,14 @@ enum MainWindow {
     static let showsMenuBarIconKey = "showsMenuBarIcon"
     static let showsMenuBarIconDefault = true
 
-    /// Hidden only while the menu bar icon is there to bring the window back.
+    /// Closing the window and ⌘Q leave the app in the menu bar, but only while the menu bar
+    /// icon is there to bring the window back or quit from.
+    nonisolated static func keepsInMenuBar(hidesOnClose: Bool, menuBarIconShown: Bool) -> Bool {
+        hidesOnClose && menuBarIconShown
+    }
+
     nonisolated static func isShown(windowOpen: Bool, hidesOnClose: Bool, menuBarIconShown: Bool) -> Bool {
-        windowOpen || !hidesOnClose || !menuBarIconShown
+        windowOpen || !keepsInMenuBar(hidesOnClose: hidesOnClose, menuBarIconShown: menuBarIconShown)
     }
 
     /// Follows the app's windows opening, closing and minimizing, and both settings changing.
@@ -188,7 +214,7 @@ enum MainWindow {
 
     /// The main window, the update window and the like, minimized ones included; not the
     /// menu bar panel, pins or overlays, which float above normal windows.
-    private static func isAppWindow(_ window: NSWindow) -> Bool {
+    static func isAppWindow(_ window: NSWindow) -> Bool {
         window.level == .normal && window.canBecomeMain && (window.isVisible || window.isMiniaturized)
     }
 }

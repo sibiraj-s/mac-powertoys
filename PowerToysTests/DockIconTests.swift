@@ -19,4 +19,11 @@ struct DockIconTests {
     @Test func shownWhenThereIsNoMenuBarIcon() {
         #expect(DockIcon.isShown(windowOpen: false, hidesOnClose: true, menuBarIconShown: false))
     }
+
+    /// ⌘Q goes to the menu bar only with the option on and the icon there to quit from.
+    @Test func keepsInMenuBarOnlyWithTheOptionAndIcon() {
+        #expect(DockIcon.keepsInMenuBar(hidesOnClose: true, menuBarIconShown: true))
+        #expect(!DockIcon.keepsInMenuBar(hidesOnClose: false, menuBarIconShown: true))
+        #expect(!DockIcon.keepsInMenuBar(hidesOnClose: true, menuBarIconShown: false))
+    }
 }
