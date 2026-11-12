@@ -3,6 +3,9 @@ name: Release
 on:
   push:
     branches: [master]
+    paths-ignore:
+      - site/**
+      - .github/workflows/pages.yml
 
 concurrency:
   group: release
