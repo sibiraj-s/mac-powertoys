@@ -142,6 +142,14 @@ final class LanesController {
     @ObservationIgnored private let displayGrace: TimeInterval
     /// Since when a display with a row has been missing.
     @ObservationIgnored private var displayGoneAt: Date?
+    /// How long after waking a display with a row is waited for, in seconds: one coming out of
+    /// sleep can take a good while longer to be found than one that only blinked.
+    @ObservationIgnored private let wakeGrace: TimeInterval
+    /// Whether the Mac or its displays are asleep, when displays come and go and nothing is arranged.
+    @ObservationIgnored private var isAsleep = false
+    /// When the Mac or its displays last woke.
+    @ObservationIgnored private var wokeAt = Date.distantPast
+    @ObservationIgnored private let now: () -> Date
     /// When each process with an arranged window started, which doesn't change, asked once.
     @ObservationIgnored private var starts: [pid_t: Date] = [:]
 
@@ -153,7 +161,8 @@ final class LanesController {
             Displays.screen(at: Displays.flip(NSEvent.mouseLocation)).map { Displays.key(for: $0) }
         },
         startTime: @escaping (pid_t) -> Date? = { ProcessStart.read($0) },
-        slideDuration: Duration = .milliseconds(220), displayGrace: TimeInterval = 3
+        slideDuration: Duration = .milliseconds(220), displayGrace: TimeInterval = 3, wakeGrace: TimeInterval = 20,
+        now: @escaping () -> Date = { .now }
     ) {
         self.defaults = defaults
         self.shortcuts = shortcuts
@@ -164,6 +173,8 @@ final class LanesController {
         self.startTime = startTime
         self.slideDuration = slideDuration
         self.displayGrace = displayGrace
+        self.wakeGrace = wakeGrace
+        self.now = now
         scrollModifier = defaults.string(forKey: Self.scrollModifierKey).flatMap(ScrollModifier.init(rawValue:)) ?? .off
     }
 
@@ -184,6 +195,8 @@ final class LanesController {
             // Its process may be gone too, and its number given to another in time.
             self?.starts = [:]
         }
+        windows.onSleep = { [weak self] in self?.fallAsleep() }
+        windows.onWake = { [weak self] in self?.wakeUp() }
         windows.start()
         updateScrollTap()
         // Places kept from a run that didn't put its windows back. Those of apps that have since
@@ -225,6 +238,9 @@ final class LanesController {
         retry = nil
         unsettled = [:]
         awaitedFocus = nil
+        isAsleep = false
+        wokeAt = .distantPast
+        displayGoneAt = nil
         // Every window is to go back, those of apps that weren't answering a moment ago too.
         windows.askAgain()
         // A window that can't be put back now, its app not answering, is kept to be found later.
@@ -246,7 +262,7 @@ final class LanesController {
     // MARK: Shortcuts
 
     func perform(_ action: Action) {
-        guard isRunning, windows.isReady else { return }
+        guard isRunning, windows.isReady, !wokeByHand() else { return }
         endScroll()
         finishSlide()
         guard let step = action.step else {
@@ -269,7 +285,7 @@ final class LanesController {
 
     /// Steps the focus along the row under the pointer, as the mouse wheel does.
     func stepFocus(by places: Int) {
-        guard isRunning, windows.isReady, let display = pointerDisplay() else { return }
+        guard isRunning, windows.isReady, !wokeByHand(), let display = pointerDisplay() else { return }
         endScroll()
         finishSlide()
         change { board, _ in board.stepFocus(by: places, on: display) }
@@ -325,6 +341,8 @@ final class LanesController {
             waitUntilReady()
             return
         }
+        // Nothing is looked at while asleep: waking looks at everything.
+        guard !isAsleep else { return }
         endScroll()
         finishSlide()
         let snapshot = current()
@@ -334,16 +352,27 @@ final class LanesController {
         askSilentAppsAgain()
     }
 
-    /// Whether to leave the windows be because a display with a row has only just gone. It's
-    /// looked for again in a moment; one still gone after a few seconds has its rows given up.
+    /// Whether to leave the windows be: the Mac is asleep, or a display with a row has only
+    /// just gone. It's looked for again in a moment; one still gone after a few seconds, or
+    /// longer just after waking, has its rows given up. With no display at all there's nowhere
+    /// for the rows to go, and they're kept however long that lasts.
     private func waitsForADisplay(_ snapshot: LaneSnapshot) -> Bool {
+        // Waking looks at everything afresh.
+        guard !isAsleep else { return true }
         guard board.isMissingADisplay(in: snapshot) else {
             displayGoneAt = nil
             return false
         }
-        let since = displayGoneAt ?? .now
+        // With none at all, there's nothing to time, nor to look again for: one turning up is
+        // heard of as a change, and the wait for any still missing starts then.
+        guard !snapshot.displays.isEmpty else {
+            displayGoneAt = nil
+            return true
+        }
+        let since = displayGoneAt ?? now()
         displayGoneAt = since
-        guard Date.now.timeIntervalSince(since) < displayGrace else { return false }
+        let time = now()
+        guard time.timeIntervalSince(since) < displayGrace || time.timeIntervalSince(wokeAt) < wakeGrace else { return false }
         retry?.cancel()
         retry = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(500))
@@ -351,6 +380,44 @@ final class LanesController {
             retry = nil
             setNeedsRefresh()
         }
+        return true
+    }
+
+    /// The Mac or its displays went to sleep. Displays drop out and windows are shuffled about
+    /// until they wake, none of which is to change the rows.
+    private func fallAsleep() {
+        guard isRunning else { return }
+        // A swipe or slide under way is finished first, while windows can still be arranged.
+        endScroll()
+        finishSlide()
+        isAsleep = true
+        // Where windows are found now isn't where their apps would have them.
+        widthCheck?.cancel()
+        widthCheck = nil
+        unsettled = [:]
+        pendingRefresh?.cancel()
+        pendingRefresh = nil
+        retry?.cancel()
+        retry = nil
+    }
+
+    /// The Mac or its displays woke. A display missing since before the sleep is waited for
+    /// from now, not from when it went.
+    private func wakeUp() {
+        guard isRunning else { return }
+        isAsleep = false
+        wokeAt = now()
+        displayGoneAt = nil
+        // Apps asked while the Mac was going to sleep may not have answered.
+        windows.askAgain()
+        setNeedsRefresh()
+    }
+
+    /// Whether a shortcut, wheel or swipe came while asleep, which it can't have: a wake went
+    /// unheard of, or the keys beat it here. It wakes Lanes, and is let go by.
+    private func wokeByHand() -> Bool {
+        guard isAsleep else { return false }
+        wakeUp()
         return true
     }
 
@@ -452,7 +519,7 @@ final class LanesController {
     /// which the row then makes room for. One still changing is looked at again, a second's
     /// worth of times at most.
     func confirmPlaces() {
-        guard isRunning, !unsettled.isEmpty else { return }
+        guard isRunning, !isAsleep, !unsettled.isEmpty else { return }
         var stopped = false
         for (id, doubt) in unsettled {
             let frame = windows.frame(of: id)
@@ -526,7 +593,7 @@ final class LanesController {
     /// A swipe that says when it ends goes on, through any pause with the fingers down, until
     /// it does. One that doesn't is over when nothing more comes for a moment.
     func scroll(by distance: CGFloat, saysWhenItEnds: Bool = false) {
-        guard isRunning, windows.isReady else { return }
+        guard isRunning, windows.isReady, !wokeByHand() else { return }
         // Even one that says when it ends is given up on in time, should its end go missing.
         endSwipe(after: saysWhenItEnds ? .seconds(3) : .milliseconds(150))
         guard !swipeIsIdle else { return }

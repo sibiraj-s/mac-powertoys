@@ -8,6 +8,10 @@ protocol LaneWindowSystem: AnyObject {
     var onChange: () -> Void { get set }
     /// Called when a window is gone for good.
     var onClose: (Int) -> Void { get set }
+    /// Called when the Mac or its displays go to sleep, after which displays can come and go.
+    var onSleep: () -> Void { get set }
+    /// Called when the Mac or its displays wake. Displays may take a while yet to be found again.
+    var onWake: () -> Void { get set }
 
     /// Whether windows can be looked at and moved yet, which needs Accessibility.
     var isReady: Bool { get }
@@ -45,6 +49,8 @@ protocol LaneWindowSystem: AnyObject {
 final class LiveLaneWindows: LaneWindowSystem {
     var onChange: () -> Void = {}
     var onClose: (Int) -> Void = { _ in }
+    var onSleep: () -> Void = {}
+    var onWake: () -> Void = {}
 
     /// An Accessibility element as a dictionary key.
     private struct Element: Hashable {
@@ -111,6 +117,19 @@ final class LiveLaneWindows: LaneWindowSystem {
                 MainActor.assumeIsolated {
                     if let pid { self?.stale.insert(pid) } else { self?.allStale = true }
                     self?.onChange()
+                }
+            }
+            tokens.append((workspace, token))
+        }
+        for (name, isWaking) in [
+            (NSWorkspace.willSleepNotification, false), (NSWorkspace.screensDidSleepNotification, false),
+            (NSWorkspace.didWakeNotification, true), (NSWorkspace.screensDidWakeNotification, true),
+        ] {
+            let token = workspace.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    self.allStale = true
+                    isWaking ? self.onWake() : self.onSleep()
                 }
             }
             tokens.append((workspace, token))

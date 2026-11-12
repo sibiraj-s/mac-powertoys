@@ -919,6 +919,8 @@ struct LaneBoardTests {
 final class FakeLaneWindows: LaneWindowSystem {
     var onChange: () -> Void = {}
     var onClose: (Int) -> Void = { _ in }
+    var onSleep: () -> Void = {}
+    var onWake: () -> Void = {}
 
     var displays = [
         LaneDisplay(key: "A", frame: CGRect(x: 0, y: 0, width: 1000, height: 800), area: CGRect(x: 0, y: 25, width: 1000, height: 775))
@@ -1544,6 +1546,129 @@ struct LanesControllerTests {
         lanes.start()
         windows.displays.removeLast()
         windows.frames[2] = CGRect(x: 100, y: 100, width: 400, height: 775)
+        lanes.refresh()
+        #expect(windows.frames[2] == CGRect(x: 400, y: 25, width: 400, height: 775))
+        lanes.stop()
+    }
+
+    private func makeController(
+        displayGrace: TimeInterval, wakeGrace: TimeInterval, now: @escaping () -> Date = { .now }
+    ) -> LanesController {
+        LanesController(
+            defaults: store.defaults, shortcuts: Shortcuts(defaults: store.defaults, center: FakeHotKeys()), windows: windows,
+            isMouseDown: { false }, pointerDisplay: { "A" }, startTime: { _ in Date(timeIntervalSinceReferenceDate: 0) },
+            slideDuration: .zero, displayGrace: displayGrace, wakeGrace: wakeGrace, now: now)
+    }
+
+    @Test func rowsOutlastSleep() {
+        windows.frames = threeWindows()
+        windows.focused = 2
+        // Given up at once when a display goes, but for sleeping.
+        let lanes = makeController(displayGrace: 0, wakeGrace: 0)
+        lanes.start()
+        let arranged = windows.frames
+        windows.onSleep()
+        // The only display drops out and macOS moves windows about.
+        let display = windows.displays
+        windows.displays = []
+        windows.frames = arranged.mapValues { CGRect(origin: CGPoint(x: 10, y: 30), size: $0.size) }
+        let shuffled = windows.frames
+        let looks = windows.looks
+        lanes.refresh()
+        #expect(windows.looks == looks)
+        lanes.perform(.focusRight)
+        #expect(windows.frames == shuffled)
+        // Awake, with the display still to be found: there's nowhere to put the rows, so they're kept.
+        windows.onWake()
+        lanes.refresh()
+        #expect(windows.frames == shuffled)
+        // It's back, and so is every window's place in the row.
+        windows.displays = display
+        lanes.refresh()
+        #expect(windows.frames == arranged)
+        lanes.stop()
+        #expect(windows.frames == threeWindows())
+    }
+
+    @Test func displayMissingOnWakingIsWaitedForAWhile() {
+        let second = LaneDisplay(
+            key: "B", frame: CGRect(x: 1000, y: 0, width: 1000, height: 800), area: CGRect(x: 1000, y: 25, width: 1000, height: 775))
+        windows.displays.append(second)
+        windows.frames = [1: CGRect(x: 0, y: 100, width: 400, height: 300), 2: CGRect(x: 1500, y: 100, width: 400, height: 300)]
+        windows.focused = 1
+        var clock = Date(timeIntervalSinceReferenceDate: 0)
+        let lanes = makeController(displayGrace: 3, wakeGrace: 20, now: { clock })
+        lanes.start()
+        // Seen gone just before sleeping, and asleep far longer than it's waited for.
+        windows.displays.removeLast()
+        lanes.refresh()
+        windows.onSleep()
+        windows.frames[2] = CGRect(x: 100, y: 100, width: 400, height: 775)
+        clock += 3600
+        // The wait starts over on waking, and lasts longer.
+        windows.onWake()
+        clock += 10
+        lanes.refresh()
+        #expect(windows.frames[2] == CGRect(x: 100, y: 100, width: 400, height: 775))
+        // Still gone once that's up: its windows join the display left.
+        clock += 11
+        lanes.refresh()
+        #expect(windows.frames[2] == CGRect(x: 400, y: 25, width: 400, height: 775))
+        lanes.stop()
+    }
+
+    @Test func displayBackSoonAfterWakingHasItsRowAsItWas() {
+        let second = LaneDisplay(
+            key: "B", frame: CGRect(x: 1000, y: 0, width: 1000, height: 800), area: CGRect(x: 1000, y: 25, width: 1000, height: 775))
+        windows.displays.append(second)
+        windows.frames = [1: CGRect(x: 0, y: 100, width: 400, height: 300), 2: CGRect(x: 1500, y: 100, width: 400, height: 300)]
+        windows.focused = 1
+        var clock = Date(timeIntervalSinceReferenceDate: 0)
+        let lanes = makeController(displayGrace: 3, wakeGrace: 20, now: { clock })
+        lanes.start()
+        let arranged = windows.frames
+        windows.onSleep()
+        windows.displays.removeLast()
+        windows.frames[2] = CGRect(x: 100, y: 100, width: 400, height: 775)
+        clock += 3600
+        windows.onWake()
+        clock += 10
+        lanes.refresh()
+        windows.displays.append(second)
+        windows.frames[2] = arranged[2]
+        lanes.refresh()
+        #expect(windows.frames == arranged)
+        lanes.stop()
+    }
+
+    @Test func shortcutWhileAsleepWakesLanes() {
+        windows.frames = threeWindows()
+        windows.focused = 1
+        let lanes = makeController(displayGrace: 3, wakeGrace: 20)
+        lanes.start()
+        let arranged = windows.frames
+        windows.onSleep()
+        // The wake went unheard of: the first press is let go by, and wakes Lanes.
+        lanes.perform(.focusRight)
+        #expect(windows.frames == arranged)
+        #expect(windows.raised.isEmpty)
+        lanes.perform(.focusRight)
+        #expect(windows.raised == [2])
+        lanes.stop()
+    }
+
+    @Test func displayStillGoneAfterWakingHasItsWindowsJoinTheOneLeft() {
+        let second = LaneDisplay(
+            key: "B", frame: CGRect(x: 1000, y: 0, width: 1000, height: 800), area: CGRect(x: 1000, y: 25, width: 1000, height: 775))
+        windows.displays.append(second)
+        windows.frames = [1: CGRect(x: 0, y: 100, width: 400, height: 300), 2: CGRect(x: 1500, y: 100, width: 400, height: 300)]
+        windows.focused = 1
+        let lanes = makeController(displayGrace: 0, wakeGrace: 0)
+        lanes.start()
+        windows.onSleep()
+        windows.displays.removeLast()
+        windows.frames[2] = CGRect(x: 100, y: 100, width: 400, height: 775)
+        windows.onWake()
         lanes.refresh()
         #expect(windows.frames[2] == CGRect(x: 400, y: 25, width: 400, height: 775))
         lanes.stop()
