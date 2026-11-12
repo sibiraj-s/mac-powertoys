@@ -1,5 +1,15 @@
 # powertoys
 
+## 1.5.0
+
+### Minor Changes
+
+- c81d975: Awake can keep a MacBook awake with its lid closed, through a helper you allow once in System Settings; sleep comes back when the session ends, the battery drops below 20% or the app quits
+
+### Patch Changes
+
+- 375dd61: With "Keep in menu bar" on, ⌘Q closes the window and leaves the app in the menu bar, like closing it; ⌥⌘Q or right-clicking the menu bar icon quits
+
 ## 1.4.2
 
 ### Patch Changes
