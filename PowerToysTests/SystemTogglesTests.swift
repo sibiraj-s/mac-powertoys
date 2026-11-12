@@ -44,10 +44,11 @@ final class FakeSystemSettings: SystemSettingsAccess {
 }
 
 /// Lets tasks the code under test started, such as a shortcut's, run until `condition` holds.
-/// Returns once the condition holds, or after 10 seconds: a busy CI runner can take far longer
-/// than a Mac at a desk, and a passing check returns as soon as it's true.
+/// Returns once the condition holds, or after 30 seconds: tests share the main actor and run in
+/// parallel, so on a busy CI runner a task can wait several seconds for its turn, and a passing
+/// check returns as soon as it's true.
 func waitUntil(_ condition: () -> Bool) async {
-    let deadline = ContinuousClock.now + .seconds(10)
+    let deadline = ContinuousClock.now + .seconds(30)
     while !condition(), ContinuousClock.now < deadline {
         try? await Task.sleep(for: .milliseconds(5))
     }

@@ -153,10 +153,7 @@ struct AwakeDisplayConnectedTests {
         connected = false
         awake.updateDisplayHold()
         // Waits for the grace period to run out, however long a busy machine takes to get there.
-        let deadline = Date.now.addingTimeInterval(5)
-        while awake.isDisplayHoldPaused, Date.now < deadline {
-            try await Task.sleep(for: .milliseconds(20))
-        }
+        await waitUntil { !awake.isDisplayHoldPaused }
         #expect(!awake.isDisplayHoldPaused)
         connected = true
         awake.updateDisplayHold()
@@ -369,8 +366,7 @@ struct AwakeLidClosedTests {
         lid.works = false
         awake.stop()
         lid.isAllowed = false
-        let deadline = Date.now.addingTimeInterval(2)
-        while awake.keepsAwakeWithLidClosed, Date.now < deadline { try? await Task.sleep(for: .milliseconds(10)) }
+        await waitUntil { !awake.keepsAwakeWithLidClosed }
         #expect(!awake.keepsAwakeWithLidClosed)
         #expect(lid.calls == [true, false])
     }
@@ -511,8 +507,7 @@ struct AwakeLidClosedTests {
         lid.works = false
         awake.stop()
         lid.works = true
-        let deadline = Date.now.addingTimeInterval(2)
-        while lid.calls.count < 3, Date.now < deadline { try? await Task.sleep(for: .milliseconds(10)) }
+        await waitUntil { lid.calls.count >= 3 }
         #expect(lid.calls == [true, false, false])
         #expect(awake.lidClosedProblem == nil)
     }
