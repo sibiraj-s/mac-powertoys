@@ -497,7 +497,9 @@ final class LanesController {
         guard !recovering.isEmpty else { return }
         for window in snapshot.windows where board.originals[window.id] == nil {
             guard let pid = windows.owner(of: window.id),
-                let index = recovering.firstIndex(where: { $0.pid == pid && LaneBoard.near($0.placed, window.frame) })
+                let index = recovering.firstIndex(where: {
+                    $0.pid == pid && LaneBoard.isSamePlace($0.placed, window.frame, in: snapshot.displays)
+                })
             else { continue }
             board.adopt(recovering.remove(at: index).original, for: window.id)
         }

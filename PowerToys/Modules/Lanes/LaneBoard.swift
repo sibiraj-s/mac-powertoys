@@ -449,7 +449,7 @@ nonisolated struct LaneBoard {
     mutating func release(_ id: Int) -> LaneMove? {
         let original = originals[id]
         forget(id)
-        return original.map { LaneMove(id: id, frame: $0, resizes: true, slide: nil) }
+        return original.map { LaneMove(id: id, frame: Self.onScreen($0, displays: displays), resizes: true, slide: nil) }
     }
 
     /// The moves that put every window back where it was before it joined a lane, those that
@@ -460,14 +460,22 @@ nonisolated struct LaneBoard {
         }
     }
 
-    /// `frame` as it is if it's on a display. One that isn't, as when its display was
-    /// unplugged, is moved onto the nearest display and made to fit it.
+    /// `frame` as it is if enough of it shows on a display to take hold of. One that doesn't,
+    /// as when its display was unplugged, or it was hidden at an edge when an earlier run went
+    /// away, is moved onto its display, or else the nearest, and made to fit it.
     static func onScreen(_ frame: CGRect, displays: [LaneDisplay]) -> CGRect {
-        guard !displays.isEmpty, !displays.contains(where: { area(of: $0.frame.intersection(frame)) > 0 }) else { return frame }
+        guard !displays.isEmpty else { return frame }
+        let shows = displays.contains { display in
+            let visible = display.frame.intersection(frame)
+            return !visible.isNull && visible.width >= min(frame.width, Self.grip) && visible.height >= min(frame.height, Self.grip)
+        }
+        guard !shows else { return frame }
         func distance(_ display: LaneDisplay) -> CGFloat {
             hypot(display.frame.midX - frame.midX, display.frame.midY - frame.midY)
         }
-        guard let nearest = displays.min(by: { distance($0) < distance($1) })?.area else { return frame }
+        guard let nearest = (home(of: frame, in: displays) ?? displays.min(by: { distance($0) < distance($1) }))?.area else {
+            return frame
+        }
         let size = CGSize(width: min(frame.width, nearest.width), height: min(frame.height, nearest.height))
         return CGRect(
             x: min(max(frame.minX, nearest.minX), nearest.maxX - size.width),
@@ -537,13 +545,35 @@ nonisolated struct LaneBoard {
     /// hidden window would be, or else the one holding most of it. A hidden window has only a
     /// point on its own display, and can have more than that on the one next to it.
     static func home(of frame: CGRect, in displays: [LaneDisplay]) -> LaneDisplay? {
-        let tuckedAt = displays.first { display in
-            tuckOrigins(size: frame.size, nearSide: .left, display: display.frame, top: display.area.minY).contains {
-                abs($0.x - frame.minX) <= 1 && abs($0.y - frame.minY) <= 1
-            }
-        }
-        return tuckedAt ?? display(holding: frame, in: displays)
+        displays.first { isTucked(frame, at: $0, among: displays) } ?? display(holding: frame, in: displays)
     }
+
+    /// Whether `frame` is where a hidden window of `display` goes, or went: macOS pulls one
+    /// left at a bottom corner partly back up in time, so that strip of it shows. One pulled up
+    /// counts only while it's on no other display, as hidden windows are wherever they can be,
+    /// so that a window simply at the edge of the display next door isn't taken for one.
+    private static func isTucked(_ frame: CGRect, at display: LaneDisplay, among displays: [LaneDisplay]) -> Bool {
+        tuckOrigins(size: frame.size, nearSide: .left, display: display.frame, top: display.area.minY).contains { origin in
+            guard abs(origin.x - frame.minX) <= 1 else { return false }
+            if abs(origin.y - frame.minY) <= 1 { return true }
+            return origin.y == display.frame.maxY - 1 && frame.minY < origin.y && frame.minY >= display.frame.maxY - Self.pullBack
+                && !displays.contains { $0.key != display.key && area(of: $0.frame.intersection(frame)) > 0 }
+        }
+    }
+
+    /// Whether a window found at `frame` is one an earlier run put at `placed`: there still,
+    /// or hidden at the same edge, where macOS may have moved it up or down since.
+    static func isSamePlace(_ placed: CGRect, _ frame: CGRect, in displays: [LaneDisplay]) -> Bool {
+        near(placed, frame)
+            || (abs(placed.minX - frame.minX) <= 1 && sizeNear(placed.size, frame.size)
+                && displays.contains { isTucked(placed, at: $0, among: displays) && isTucked(frame, at: $0, among: displays) })
+    }
+
+    /// How far macOS may have pulled a window hidden at a bottom corner back up, in points.
+    private static let pullBack: CGFloat = 200
+
+    /// How much of a window has to show, across and down, for it to be taken hold of, in points.
+    private static let grip: CGFloat = 40
 
     static func sizeNear(_ a: CGSize, _ b: CGSize) -> Bool {
         abs(a.width - b.width) <= 1 && abs(a.height - b.height) <= 1

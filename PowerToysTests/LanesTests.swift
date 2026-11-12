@@ -863,6 +863,33 @@ struct LaneBoardTests {
         #expect(LaneBoard.home(of: CGRect(x: 1100, y: 100, width: 600, height: 300), in: displays)?.key == "B")
     }
 
+    @Test func hiddenWindowPulledBackUpByMacOSStillCountsAsHidden() {
+        let displays = [main, right]
+        // Hidden at the bottom left, then moved up by macOS so a strip of it shows.
+        let placed = CGRect(x: -599, y: 799, width: 600, height: 300)
+        let pulledUp = CGRect(x: -599, y: 690, width: 600, height: 300)
+        #expect(LaneBoard.isSamePlace(placed, pulledUp, in: displays))
+        #expect(!LaneBoard.isSamePlace(placed, pulledUp.offsetBy(dx: 50, dy: 0), in: displays))
+        // Where a hidden window of the middle display would have been pulled up to, but lying
+        // on the display to its right, it's that display's: hidden windows go where they don't.
+        #expect(LaneBoard.home(of: CGRect(x: 999, y: 700, width: 600, height: 300), in: displays)?.key == "B")
+        #expect(LaneBoard.home(of: CGRect(x: 1000, y: 650, width: 600, height: 140), in: displays)?.key == "B")
+        // A window merely low on a display isn't hidden.
+        #expect(
+            !LaneBoard.isSamePlace(
+                CGRect(x: 100, y: 500, width: 600, height: 300), CGRect(x: 100, y: 450, width: 600, height: 300), in: displays))
+    }
+
+    @Test func windowIsNeverPutBackWhereTooLittleOfItShows() {
+        let displays = [main]
+        // Only a line of it shows: it comes onto the display.
+        let lost = LaneBoard.onScreen(CGRect(x: -599, y: 690, width: 600, height: 300), displays: displays)
+        #expect(lost == CGRect(x: 0, y: 500, width: 600, height: 300))
+        // Enough of it shows to drag it back: it stays.
+        let partly = CGRect(x: -500, y: 100, width: 600, height: 300)
+        #expect(LaneBoard.onScreen(partly, displays: displays) == partly)
+    }
+
     @Test func restoringSendsEveryWindowBack() {
         var board = LaneBoard()
         var frames: [Int: CGRect] = [1: CGRect(x: 10, y: 40, width: 300, height: 300), 2: CGRect(x: 400, y: 60, width: 320, height: 240)]
@@ -983,6 +1010,14 @@ struct LanesControllerTests {
             defaults: store.defaults, shortcuts: Shortcuts(defaults: store.defaults, center: FakeHotKeys()), windows: windows,
             isMouseDown: { false },
             pointerDisplay: { "A" }, startTime: { _ in Date(timeIntervalSinceReferenceDate: 0) }, slideDuration: .zero)
+    }
+
+    /// Where windows found hidden at the bottom right of the display, by a run that
+    /// recovers nothing, are put back: in view, as near where they were as fits.
+    private func broughtIntoView(_ arranged: [Int: CGRect]) -> [Int: CGRect] {
+        arranged.mapValues { frame in
+            frame.minY == 799 ? CGRect(x: 400, y: 800 - frame.height, width: frame.width, height: frame.height) : frame
+        }
     }
 
     private func threeWindows() -> [Int: CGRect] {
@@ -1170,8 +1205,10 @@ struct LanesControllerTests {
         let arranged = windows.frames
         relaunched.start()
         relaunched.stop()
-        // Nothing was recovered, so the windows count as having started where they were found.
-        #expect(windows.frames == arranged)
+        // Nothing was recovered, so the windows count as having started where they were found,
+        // except that one found hidden is brought into view rather than left where it can't be reached.
+        #expect(arranged.values.contains { $0.minY == 799 })
+        #expect(windows.frames == broughtIntoView(arranged))
     }
 
     @Test func windowsLeftArrangedByACrashAreStillPutBack() {
@@ -1184,6 +1221,21 @@ struct LanesControllerTests {
         relaunched.stop()
         #expect(windows.frames == threeWindows())
         // A clean stop leaves nothing to recover.
+        #expect(store.defaults.data(forKey: LanesController.placesKey) == nil)
+    }
+
+    @Test func windowsHiddenByAKilledRunAndMovedSinceAreStillPutBack() {
+        windows.frames = threeWindows()
+        windows.focused = 1
+        makeController().start()  // killed with windows arranged
+        // macOS then pulls the hidden windows partly back up.
+        let hidden = windows.frames.filter { $0.value.minY == 799 }.map(\.key)
+        #expect(!hidden.isEmpty)
+        for id in hidden { windows.frames[id]?.origin.y = 690 }
+        let relaunched = makeController()
+        relaunched.start()
+        relaunched.stop()
+        #expect(windows.frames == threeWindows())
         #expect(store.defaults.data(forKey: LanesController.placesKey) == nil)
     }
 
@@ -1405,7 +1457,8 @@ struct LanesControllerTests {
             isMouseDown: { false }, startTime: { _ in Date(timeIntervalSinceReferenceDate: 5000) }, slideDuration: .zero)
         later.start()
         later.stop()
-        #expect(windows.frames == arranged)
+        // Shown windows stay where they were found; a hidden one is brought into view.
+        #expect(windows.frames == broughtIntoView(arranged))
     }
 
     @Test func windowThatDidNotLandWhereASwipePutItIsPutRightAfterwards() {
