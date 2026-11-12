@@ -12,7 +12,7 @@ struct ModuleCatalogTests {
     @Test func tiersMatchTheFeatureMap() {
         let counts = Dictionary(grouping: ModuleCatalog.all, by: \.tier).mapValues(\.count)
         #expect(counts[.mvp] == 7)
-        #expect(counts[.utilities] == 9)
+        #expect(counts[.utilities] == 10)
         #expect(counts[.pro] == 5)
     }
 
@@ -28,7 +28,9 @@ struct ModuleCatalogTests {
             #expect(names == names.sorted { $0.localizedStandardCompare($1) == .orderedAscending })
         }
         #expect(
-            ModuleCatalog.modules(in: .windowsInput).map(\.name) == ["Keys", "Pin & Crop", "Scroll & Mouse", "Window Switcher", "Zones"])
+            ModuleCatalog.modules(in: .windowsInput).map(\.name) == [
+                "Keys", "Lanes", "Pin & Crop", "Scroll & Mouse", "Window Switcher", "Zones",
+            ])
     }
 
     @Test func descriptorsHaveCopyAndSymbols() {
@@ -51,7 +53,7 @@ struct ModuleCatalogTests {
             implemented == [
                 .zones, .clipboard, .awake, .systemToggles, .hostsEnv, .portsProcesses, .launchAgents, .colorPicker, .textExtractor,
                 .defaultsBrowser, .scrollMouse, .cleaner, .apps, .pinCrop, .keys, .windowSwitcher, .displaysAudio, .batchRename,
-                .fileLocksmith, .finderExtras, .screenRuler,
+                .fileLocksmith, .finderExtras, .screenRuler, .lanes,
             ])
     }
 }

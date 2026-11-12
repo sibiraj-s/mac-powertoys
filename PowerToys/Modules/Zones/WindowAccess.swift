@@ -7,11 +7,14 @@ struct AXWindow {
     let element: AXUIElement
     let pid: pid_t
 
-    /// The focused window of the frontmost app.
-    static func focused() -> AXWindow? {
+    /// The focused window of the frontmost app. With a `timeout`, an app that's hung is given
+    /// up on after that many seconds rather than the default six.
+    static func focused(timeout: Float? = nil) -> AXWindow? {
         guard let app = NSWorkspace.shared.frontmostApplication else { return nil }
         let appElement = AXUIElementCreateApplication(app.processIdentifier)
+        if let timeout { AXUIElementSetMessagingTimeout(appElement, timeout) }
         guard let window: AXUIElement = appElement.value(of: kAXFocusedWindowAttribute) else { return nil }
+        if let timeout { AXUIElementSetMessagingTimeout(window, timeout) }
         return AXWindow(element: window, pid: app.processIdentifier)
     }
 
@@ -38,9 +41,15 @@ struct AXWindow {
     /// holding things up after that many seconds rather than the default six, both for the list
     /// and for anything asked of the windows later; `useDefaultTimeout()` undoes it.
     static func windows(of pid: pid_t, timeout: Float? = nil) -> [AXWindow] {
+        answeredWindows(of: pid, timeout: timeout) ?? []
+    }
+
+    /// The app's windows as `windows(of:timeout:)` gives them, or nil when the app didn't
+    /// answer, which isn't the same as having none.
+    static func answeredWindows(of pid: pid_t, timeout: Float? = nil) -> [AXWindow]? {
         let app = AXUIElementCreateApplication(pid)
         if let timeout { AXUIElementSetMessagingTimeout(app, timeout) }
-        let windows: [AXUIElement] = app.value(of: kAXWindowsAttribute) ?? []
+        guard let windows: [AXUIElement] = app.value(of: kAXWindowsAttribute) else { return nil }
         return windows.map { window in
             if let timeout { AXUIElementSetMessagingTimeout(window, timeout) }
             return AXWindow(element: window, pid: pid)
@@ -52,12 +61,34 @@ struct AXWindow {
         AXUIElementSetMessagingTimeout(element, 0)
     }
 
+    /// Whether the window's app answers at all: false when a question put to it ran out of time.
+    /// A window that has closed still gets an answer, that it's gone.
+    var isAnswering: Bool {
+        var value: CFTypeRef?
+        return AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &value) != .cannotComplete
+    }
+
     var title: String { element.value(of: kAXTitleAttribute) ?? "" }
     var isMinimized: Bool { element.value(of: kAXMinimizedAttribute) ?? false }
     /// Ordinary windows and dialogs, not palettes, inspectors or other floating panels.
     var isStandard: Bool {
-        let subrole: String? = element.value(of: kAXSubroleAttribute)
+        let subrole = subrole
         return subrole == kAXStandardWindowSubrole || subrole == kAXDialogSubrole
+    }
+
+    /// What kind of window it is, such as a standard one, a dialog or a floating panel.
+    private var subrole: String? { element.value(of: kAXSubroleAttribute) }
+
+    /// An ordinary window: not a dialog, sheet, palette or inspector.
+    var isPlainWindow: Bool { subrole == kAXStandardWindowSubrole }
+
+    /// In a full-screen Space of its own.
+    var isFullScreen: Bool { element.value(of: "AXFullScreen") ?? false }
+
+    /// Whether its size can be set; a fixed-size window's can't.
+    var isResizable: Bool {
+        var settable: DarwinBoolean = false
+        return AXUIElementIsAttributeSettable(element, kAXSizeAttribute as CFString, &settable) == .success && settable.boolValue
     }
 
     var frame: CGRect? {
@@ -71,26 +102,37 @@ struct AXWindow {
         return CGRect(origin: position, size: size)
     }
 
-    func setFrame(_ frame: CGRect) {
-        withoutEnhancedUserInterface {
+    /// - Parameter appTimeout: How long to wait on the window's app for what's asked of the app
+    ///   itself, in seconds; without one, as long as Accessibility normally does.
+    func setFrame(_ frame: CGRect, appTimeout: Float? = nil) {
+        withoutEnhancedUserInterface(appTimeout: appTimeout) {
             // Size, then position, then size again: a window moving to a smaller display can be
             // clamped by its old position, and one moving to a larger one by its old size.
             setSize(frame.size)
-            setPosition(frame.origin)
+            nudge(to: frame.origin)
             setSize(frame.size)
         }
     }
 
-    func move(to origin: CGPoint) {
-        withoutEnhancedUserInterface { setPosition(origin) }
+    func move(to origin: CGPoint, appTimeout: Float? = nil) {
+        withoutEnhancedUserInterface(appTimeout: appTimeout) { nudge(to: origin) }
+    }
+
+    /// Sets the position and nothing else, for moving a window many times a second. Apps that
+    /// animate frame changes may lag behind; `move(to:)` allows for those.
+    func nudge(to origin: CGPoint) {
+        var point = origin
+        if let value = AXValueCreate(.cgPoint, &point) {
+            AXUIElementSetAttributeValue(element, kAXPositionAttribute as CFString, value)
+        }
     }
 
     /// Restores the window if minimized, puts it in front of its app's other windows, and brings the app forward.
-    func raise() {
+    func raise(appTimeout: Float? = nil) {
         AXUIElementSetAttributeValue(element, kAXMinimizedAttribute as CFString, kCFBooleanFalse)
         AXUIElementPerformAction(element, kAXRaiseAction as CFString)
         AXUIElementSetAttributeValue(element, kAXMainAttribute as CFString, kCFBooleanTrue)
-        AXUIElementSetAttributeValue(AXUIElementCreateApplication(pid), kAXFrontmostAttribute as CFString, kCFBooleanTrue)
+        AXUIElementSetAttributeValue(appElement(timeout: appTimeout), kAXFrontmostAttribute as CFString, kCFBooleanTrue)
     }
 
     /// Presses its close button, as clicking it would; an app may ask to save first.
@@ -110,22 +152,21 @@ struct AXWindow {
         }
     }
 
-    private func setPosition(_ point: CGPoint) {
-        var point = point
-        if let value = AXValueCreate(.cgPoint, &point) {
-            AXUIElementSetAttributeValue(element, kAXPositionAttribute as CFString, value)
-        }
-    }
-
     /// Some apps (Chromium-based browsers, for one) animate frame changes while VoiceOver-style
     /// "enhanced UI" is on, which makes snapping slow and inexact. Turn it off for the change.
-    private func withoutEnhancedUserInterface(_ change: () -> Void) {
-        let app = AXUIElementCreateApplication(pid)
+    private func withoutEnhancedUserInterface(appTimeout: Float?, _ change: () -> Void) {
+        let app = appElement(timeout: appTimeout)
         let attribute = "AXEnhancedUserInterface" as CFString
         let wasEnhanced: Bool = app.value(of: attribute as String) ?? false
         if wasEnhanced { AXUIElementSetAttributeValue(app, attribute, kCFBooleanFalse) }
         change()
         if wasEnhanced { AXUIElementSetAttributeValue(app, attribute, kCFBooleanTrue) }
+    }
+
+    private func appElement(timeout: Float?) -> AXUIElement {
+        let app = AXUIElementCreateApplication(pid)
+        if let timeout { AXUIElementSetMessagingTimeout(app, timeout) }
+        return app
     }
 
     func isSame(as other: AXWindow) -> Bool {

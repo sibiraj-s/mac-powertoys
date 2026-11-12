@@ -10,6 +10,7 @@ final class AppState {
     let shortcuts: Shortcuts
     let awake: AwakeController
     let zones: ZonesController
+    let lanes: LanesController
     let clipboard: ClipboardController
     let systemToggles: SystemTogglesController
     let hosts: HostsController
@@ -60,7 +61,8 @@ final class AppState {
         displaysAudio: DisplaysAudioController? = nil,
         finder: any FinderAccess = LiveFinder(),
         locksmith: LocksmithController? = nil,
-        screenRuler: ScreenRulerController? = nil
+        screenRuler: ScreenRulerController? = nil,
+        laneWindows: (any LaneWindowSystem)? = nil
     ) {
         self.defaults = defaults
         self.permissions = permissions ?? PermissionsService(defaults: defaults)
@@ -75,6 +77,10 @@ final class AppState {
         launchAgents = LaunchAgentsController(defaults: defaults)
         colorPicker = ColorPickerController(defaults: defaults, sampler: colorSampler, pasteboard: pasteboard)
         let permissions = self.permissions
+        let isTrusted = { permissions.currentStatus(.accessibility) == .granted }
+        lanes = LanesController(
+            defaults: defaults, shortcuts: shortcuts, windows: laneWindows ?? LiveLaneWindows(isTrusted: isTrusted),
+            isTrusted: isTrusted)
         textExtractor = TextExtractorController(
             defaults: defaults, capturer: regionCapture, reader: textReader, pasteboard: pasteboard,
             access: ScreenAccess(for: .textExtractor, permissions: permissions)
@@ -106,6 +112,7 @@ final class AppState {
         }
         if enabledModules.contains(.awake) { awake.startWatchingDisplays() }
         if enabledModules.contains(.zones) { zones.start() }
+        if enabledModules.contains(.lanes) { lanes.start(lookingNow: false) }
         if enabledModules.contains(.clipboard) { clipboard.start() }
         if enabledModules.contains(.scrollMouse) { scrollMouse.start() }
         if enabledModules.contains(.keys) { keys.start() }
@@ -184,6 +191,7 @@ final class AppState {
         case .screenRuler where !enabled: screenRuler.cancel()
         case .windowSwitcher where !enabled: windowSwitcher.cancel()
         case .zones: enabled ? zones.start() : zones.stop()
+        case .lanes: enabled ? lanes.start() : lanes.stop()
         case .clipboard: enabled ? clipboard.start() : clipboard.stop()
         case .scrollMouse: enabled ? scrollMouse.start() : scrollMouse.stop()
         case .keys: enabled ? keys.start() : keys.stop()

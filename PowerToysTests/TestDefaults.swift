@@ -21,7 +21,8 @@ extension AppState {
     /// An app state that touches no files, shortcuts or settings outside the test.
     static func testing(
         defaults: UserDefaults, hotKeys: any HotKeyRegistering, system: any SystemSettingsAccess, pinCrop: PinCropController? = nil,
-        displaysAudio: DisplaysAudioController? = nil, screenRuler: ScreenRulerController? = nil
+        displaysAudio: DisplaysAudioController? = nil, screenRuler: ScreenRulerController? = nil,
+        laneWindows: any LaneWindowSystem = FakeLaneWindows()
     ) -> AppState {
         AppState(
             defaults: defaults,
@@ -35,7 +36,8 @@ extension AppState {
             keyMapping: FakeKeyMappingStore(),
             displaysAudio: displaysAudio ?? .testing(defaults: defaults),
             finder: FakeFinder(),
-            screenRuler: screenRuler
+            screenRuler: screenRuler,
+            laneWindows: laneWindows
         )
     }
 }

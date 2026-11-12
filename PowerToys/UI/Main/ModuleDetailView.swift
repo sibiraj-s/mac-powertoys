@@ -50,6 +50,7 @@ struct ModuleDetailView: View {
         switch module.id {
         case .awake: AwakeSettingsView()
         case .zones: ZonesSettingsView()
+        case .lanes: LanesSettingsView()
         case .clipboard: ClipboardSettingsView()
         case .systemToggles: SystemTogglesSettingsView()
         case .hostsEnv: HostsEnvSettingsView()

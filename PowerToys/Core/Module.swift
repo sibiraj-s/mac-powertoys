@@ -4,7 +4,7 @@ enum ModuleID: String, CaseIterable, Identifiable, Codable, Sendable {
     // Tier 1 — MVP
     case zones, windowSwitcher, keys, clipboard, awake, systemToggles, scrollMouse
     // Tier 2 — power utilities
-    case colorPicker, textExtractor, pinCrop, batchRename, fileLocksmith, finderExtras, displaysAudio, cleaner, apps
+    case colorPicker, textExtractor, pinCrop, batchRename, fileLocksmith, finderExtras, displaysAudio, cleaner, apps, lanes
     // Tier 3 — developer
     case portsProcesses, hostsEnv, launchAgents, defaultsBrowser, screenRuler
 
@@ -142,6 +142,12 @@ enum ModuleCatalog {
                 "Uninstall apps with their settings, caches and data, and see which have updates in the App Store, their own update feeds or Homebrew.",
             symbol: "square.grid.2x2", category: .system, tier: .utilities,
             permissions: [], replaces: "AppCleaner, MacUpdater", isImplemented: true),
+        .init(
+            id: .lanes, name: "Lanes",
+            summary:
+                "Keep each display's windows in one row that scrolls sideways. New windows open beside the one you're using, and shortcuts move along the row.",
+            symbol: "rectangle.3.group", category: .windowsInput, tier: .utilities,
+            permissions: [.accessibility], replaces: "Ribbon, PaperWM.spoon", isImplemented: true),
 
         // MARK: Tier 3 — developer
         .init(

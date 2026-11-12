@@ -57,6 +57,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         false
     }
 
+    /// Lanes keeps other apps' windows in rows, some of them off the edge of the display; they
+    /// go back where they were before the app leaves.
+    func applicationWillTerminate(_ notification: Notification) {
+        state.lanes.stop()
+    }
+
     // Installed before launch finishes, so a request that launched the app isn't missed, and
     // again after, in case SwiftUI installed its own handler in between.
     func applicationWillFinishLaunching(_ notification: Notification) {

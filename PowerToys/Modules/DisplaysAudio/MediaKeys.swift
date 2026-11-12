@@ -44,122 +44,62 @@ nonisolated enum MediaKey: Equatable, Sendable {
     }
 }
 
-/// Listens for the media keys while Accessibility is allowed, retrying until it is. `handle` says
+/// Listens for the media keys while Accessibility is allowed. `handle` says
 /// whether a press was used, in which case it doesn't reach macOS. The tap runs on a thread of its
 /// own and sees every key press, so ordinary keys go straight through without waiting on the main
 /// thread; only media keys wait for `handle` there.
 final class MediaKeyTap {
     private let isTrusted: () -> Bool
     private let handle: (MediaKey) -> Bool
-    private var listener: MediaKeyListener?
-    private var retryTimer: Timer?
+    private var tap: EventTap?
 
     init(isTrusted: @escaping () -> Bool, handle: @escaping (MediaKey) -> Bool) {
         self.isTrusted = isTrusted
         self.handle = handle
     }
 
-    var isRunning: Bool { listener != nil || retryTimer != nil }
+    var isRunning: Bool { tap != nil }
 
     func start() {
-        guard !isRunning else { return }
-        install()
-        guard listener == nil else { return }
-        // Accessibility may be allowed later, in System Settings; keep trying until it is.
-        retryTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.install() }
+        guard tap == nil else { return }
+        // A key already on its way when the tap stops goes to macOS, not to a tap that's gone.
+        let decide: @Sendable (MediaKey) -> Bool = { [weak self] key in
+            DispatchQueue.main.sync { MainActor.assumeIsolated { self?.decide(key) ?? false } }
         }
+        // Made anew each time, so a press used before a stop doesn't swallow a release after the next start.
+        let listener = MediaKeyListener(decide: decide)
+        // NX_SYSDEFINED, which CGEventType doesn't name, and key presses for F14 and F15.
+        let tap = EventTap(
+            events: CGEventMask(1) << 14 | EventTap.mask(of: [.keyDown, .keyUp]), isTrusted: isTrusted,
+            handler: .onOwnThread(name: "PowerToys media keys") { type, event in listener.process(type, event) })
+        self.tap = tap
+        tap.start()
     }
 
     func stop() {
-        retryTimer?.invalidate()
-        retryTimer = nil
-        listener?.stop()
-        listener = nil
+        tap?.stop()
+        tap = nil
     }
 
-    private func install() {
-        guard listener == nil, isTrusted() else { return }
-        let decide: @Sendable (MediaKey) -> Bool = { [weak self] key in
-            DispatchQueue.main.sync { MainActor.assumeIsolated { self?.handle(key) ?? false } }
-        }
-        guard let listener = MediaKeyListener.start(decide: decide) else { return }
-        self.listener = listener
-        retryTimer?.invalidate()
-        retryTimer = nil
+    private func decide(_ key: MediaKey) -> Bool {
+        tap != nil && handle(key)
     }
 }
 
-/// The event tap and the thread it runs on.
+/// What the tap's thread keeps track of between key events.
 private nonisolated final class MediaKeyListener: @unchecked Sendable {
     private let decide: @Sendable (MediaKey) -> Bool
-    // Only touched on the tap's thread once it runs.
-    private var tap: CFMachPort?
-    /// Set by the tap's thread before `start` returns; read and cleared only by `stop`.
-    private var runLoop: CFRunLoop?
-    /// A press used here, so its release is kept from macOS too.
+    /// A press used here, so its release is kept from macOS too. Only touched on the tap's thread.
     private var swallowing = false
 
-    private init(decide: @escaping @Sendable (MediaKey) -> Bool) {
+    init(decide: @escaping @Sendable (MediaKey) -> Bool) {
         self.decide = decide
     }
 
-    static func start(decide: @escaping @Sendable (MediaKey) -> Bool) -> MediaKeyListener? {
-        let listener = MediaKeyListener(decide: decide)
-        // NX_SYSDEFINED, which CGEventType doesn't name, and key presses for F14 and F15.
-        let mask = CGEventMask(1) << 14 | CGEventMask(1) << CGEventType.keyDown.rawValue | CGEventMask(1) << CGEventType.keyUp.rawValue
-        let callback: CGEventTapCallBack = { _, type, event, refcon in
-            guard let refcon else { return Unmanaged.passUnretained(event) }
-            let listener = Unmanaged<MediaKeyListener>.fromOpaque(refcon).takeUnretainedValue()
-            return listener.process(type, event) ? Unmanaged.passUnretained(event) : nil
-        }
-        guard
-            let tap = CGEvent.tapCreate(
-                tap: .cgSessionEventTap, place: .headInsertEventTap, options: .defaultTap, eventsOfInterest: mask,
-                callback: callback, userInfo: Unmanaged.passUnretained(listener).toOpaque())
-        else { return nil }
-        listener.tap = tap
-        let ready = DispatchSemaphore(value: 0)
-        let thread = Thread {
-            guard let tap = listener.tap else {
-                ready.signal()
-                return
-            }
-            let source = CFMachPortCreateRunLoopSource(nil, tap, 0)
-            listener.runLoop = CFRunLoopGetCurrent()
-            CFRunLoopAddSource(CFRunLoopGetCurrent(), source, .commonModes)
-            CGEvent.tapEnable(tap: tap, enable: true)
-            ready.signal()
-            CFRunLoopRun()
-        }
-        thread.name = "PowerToys media keys"
-        thread.qualityOfService = .userInteractive
-        thread.start()
-        ready.wait()
-        return listener
-    }
-
-    /// The tap is ended on its own thread, which may be using it at that moment.
-    func stop() {
-        guard let runLoop else { return }
-        self.runLoop = nil
-        CFRunLoopPerformBlock(runLoop, CFRunLoopMode.commonModes.rawValue) { [self] in
-            if let tap {
-                CGEvent.tapEnable(tap: tap, enable: false)
-                CFMachPortInvalidate(tap)
-            }
-            tap = nil
-            CFRunLoopStop(CFRunLoopGetCurrent())
-        }
-        CFRunLoopWakeUp(runLoop)
-    }
-
     /// Returns whether the event goes on to macOS.
-    private func process(_ type: CGEventType, _ event: CGEvent) -> Bool {
+    func process(_ type: CGEventType, _ event: CGEvent) -> Bool {
         switch type {
         case .tapDisabledByTimeout, .tapDisabledByUserInput:
-            // macOS turns off a tap that's slow to answer; turn it back on.
-            if let tap { CGEvent.tapEnable(tap: tap, enable: true) }
             return true
         case .keyDown, .keyUp:
             let keyCode = Int(event.getIntegerValueField(.keyboardEventKeycode))

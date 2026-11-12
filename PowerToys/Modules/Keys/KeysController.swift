@@ -37,9 +37,7 @@ final class KeysController {
     /// Whether Accessibility is allowed, which the event tap needs; asked afresh each time.
     @ObservationIgnored private let isTrusted: () -> Bool
     @ObservationIgnored private let frontmostApp: () -> String?
-    @ObservationIgnored private var tap: CFMachPort?
-    @ObservationIgnored private var tapSource: CFRunLoopSource?
-    @ObservationIgnored private var retryTimer: Timer?
+    @ObservationIgnored private var tap: EventTap?
     @ObservationIgnored private var terminationObserver: (any NSObjectProtocol)?
     @ObservationIgnored private var hyper = HyperKeyState()
     /// What each remapped key that's still down was turned into, so its repeats and release match.
@@ -68,7 +66,6 @@ final class KeysController {
         }
     }
 
-    /// The tap calls back with an unretained pointer to this controller, so it mustn't outlive it.
     isolated deinit {
         stop()
         if let terminationObserver { NotificationCenter.default.removeObserver(terminationObserver) }
@@ -125,32 +122,36 @@ final class KeysController {
 
     /// Whether the event tap is installed; it's only there while Hyper or a remap needs it, since
     /// it sees every key press on the main thread.
-    var isListening: Bool { tap != nil }
+    var isListening: Bool { tap?.isInstalled == true }
 
     private var needsTap: Bool {
         isRunning && (capsLock.usesHyper || remaps.contains(where: \.isActive))
     }
 
     private func updateTap() {
-        if needsTap {
-            guard tap == nil, retryTimer == nil else { return }
-            installTap()
-            guard tap == nil else { return }
-            // Accessibility may be allowed later, in System Settings; keep trying until it is.
-            retryTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
-                MainActor.assumeIsolated { self?.installTap() }
-            }
-        } else {
-            retryTimer?.invalidate()
-            retryTimer = nil
+        guard needsTap else {
             removeTap()
+            return
         }
+        guard tap == nil else { return }
+        let types: [CGEventType] = [
+            .keyDown, .keyUp, .flagsChanged, .leftMouseDown, .leftMouseUp, .rightMouseDown, .rightMouseUp,
+            .otherMouseDown, .otherMouseUp,
+        ]
+        let tap = EventTap(
+            at: .cghidEventTap, events: EventTap.mask(of: types), isTrusted: isTrusted,
+            handler: .onMain { [weak self] type, event in self?.handle(type, event) ?? true },
+            // Accessibility may be allowed long after this; Hyper waits for the tap.
+            onInstall: { [weak self] in self?.applyCapsLock() })
+        // Kept before it starts: it may install at once, and `applyCapsLock` asks whether it has.
+        self.tap = tap
+        tap.start()
     }
 
     /// Escape and Control apply once running; Hyper only once the tap is there to turn the mapped
     /// key into ⌃⌥⇧⌘, or Caps Lock would do nothing until Accessibility is allowed.
     private func applyCapsLock() {
-        let destination = isRunning && (!capsLock.usesHyper || tap != nil) ? capsLock.hidDestination : nil
+        let destination = isRunning && (!capsLock.usesHyper || isListening) ? capsLock.hidDestination : nil
         let mapsCapsLock = defaults.bool(forKey: Self.mapsCapsLockKey)
         // Leave Caps Lock alone unless this app mapped it, in case it was mapped some other way.
         guard destination != nil || mapsCapsLock else { return }
@@ -159,42 +160,11 @@ final class KeysController {
         defaults.set(destination != nil, forKey: Self.mapsCapsLockKey)
     }
 
-    private func installTap() {
-        guard needsTap, tap == nil, isTrusted() else { return }
-        let types: [CGEventType] = [
-            .keyDown, .keyUp, .flagsChanged, .leftMouseDown, .leftMouseUp, .rightMouseDown, .rightMouseUp,
-            .otherMouseDown, .otherMouseUp,
-        ]
-        let mask = types.reduce(CGEventMask(0)) { $0 | (1 << $1.rawValue) }
-        let callback: CGEventTapCallBack = { _, type, event, refcon in
-            guard let refcon else { return Unmanaged.passUnretained(event) }
-            let controller = Unmanaged<KeysController>.fromOpaque(refcon).takeUnretainedValue()
-            // The tap's source is on the main run loop, so this runs on the main thread.
-            let keeps = MainActor.assumeIsolated { controller.handle(type, event) }
-            return keeps ? Unmanaged.passUnretained(event) : nil
-        }
-        guard
-            let tap = CGEvent.tapCreate(
-                tap: .cghidEventTap, place: .headInsertEventTap, options: .defaultTap, eventsOfInterest: mask,
-                callback: callback, userInfo: Unmanaged.passUnretained(self).toOpaque())
-        else { return }
-        let source = CFMachPortCreateRunLoopSource(nil, tap, 0)
-        CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
-        CGEvent.tapEnable(tap: tap, enable: true)
-        self.tap = tap
-        tapSource = source
-        retryTimer?.invalidate()
-        retryTimer = nil
-        applyCapsLock()
-    }
-
     private func removeTap() {
         releaseHeldKeys()
         hyper = HyperKeyState()
-        if let tap { CGEvent.tapEnable(tap: tap, enable: false) }
-        if let tapSource { CFRunLoopRemoveSource(CFRunLoopGetMain(), tapSource, .commonModes) }
+        tap?.stop()
         tap = nil
-        tapSource = nil
     }
 
     /// Releases the keys remapped keys were turned into, for when their own release may never be
@@ -215,11 +185,10 @@ final class KeysController {
     private func handle(_ type: CGEventType, _ event: CGEvent) -> Bool {
         switch type {
         case .tapDisabledByTimeout, .tapDisabledByUserInput:
-            // macOS turns off a tap that's slow to answer; turn it back on. Releases went by
-            // unseen meanwhile, so let go of anything held.
+            // macOS turned the tap off for being slow to answer, and it's back on. Releases went
+            // by unseen meanwhile, so let go of anything held.
             releaseHeldKeys()
             hyper = HyperKeyState()
-            if let tap { CGEvent.tapEnable(tap: tap, enable: true) }
             return true
         case _ where Self.ownMarkers.contains(event.getIntegerValueField(.eventSourceUserData)):
             return true

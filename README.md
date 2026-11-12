@@ -7,6 +7,7 @@ It's a regular app with a Dock icon and a main window where each module has its 
 ## Modules
 
 - **Zones** – Snap windows to halves, thirds, focus or 2×2 layouts per display. ⇧-drag to snap (⌥ to span), with shortcuts for moving between zones and displays.
+- **Lanes** – Keep each display's windows in one row that scrolls sideways, like a scrolling window manager. New windows open beside the one you're using and keep the widths you give them; shortcuts move along the row, reorder windows, stack them and step through widths. Drag a window to another place in the row, or hold keys you choose and swipe or turn the wheel to scroll it. Turning it off puts every window back.
 - **Clipboard** – Searchable history of text, links, colors, images and files, with pins, a preview pane and paste as plain text, Markdown or JSON. Stays on this Mac and skips concealed items.
 - **Awake** – Keep the Mac awake indefinitely, for a set time or until a time of day, optionally with the display on. See [Vigil](https://github.com/sibiraj-s/vigil) for triggers and automation.
 - **System Toggles** – Dark mode, Dock and menu bar hiding, desktop icons, hidden files, Wi‑Fi, screen saver, eject disks, empty Trash and more, each with an optional shortcut and menu bar tile.

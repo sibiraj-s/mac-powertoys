@@ -17,6 +17,7 @@ struct ShortcutDefinition: Identifiable, Hashable {
 enum ShortcutCatalog {
     static var all: [ShortcutDefinition] {
         ZonesController.Action.allCases.map(\.shortcut)
+            + LanesController.Action.allCases.map(\.shortcut)
             + ClipboardController.Action.allCases.map(\.shortcut)
             + [AwakeController.toggleShortcut]
             + SystemToggle.allCases.map(\.shortcut)

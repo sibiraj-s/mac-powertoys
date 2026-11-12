@@ -38,9 +38,7 @@ final class ScrollMouseController {
     private let defaults: UserDefaults
     /// Whether Accessibility is allowed, which the event tap needs; asked afresh each time.
     @ObservationIgnored private let isTrusted: () -> Bool
-    @ObservationIgnored private var tap: CFMachPort?
-    @ObservationIgnored private var tapSource: CFRunLoopSource?
-    @ObservationIgnored private var retryTimer: Timer?
+    @ObservationIgnored private var tap: EventTap?
     @ObservationIgnored private var smoother = ScrollSmoother()
     @ObservationIgnored private var smoothingTimer: Timer?
     /// Buttons whose press was turned into keys, so their drags and release are swallowed too.
@@ -58,7 +56,6 @@ final class ScrollMouseController {
         buttonActions = stored ?? [:]
     }
 
-    /// The tap calls back with an unretained pointer to this controller, so it mustn't outlive it.
     isolated deinit {
         stop()
     }
@@ -90,50 +87,20 @@ final class ScrollMouseController {
     func start() {
         guard !isRunning else { return }
         isRunning = true
-        installTap()
-        guard tap == nil else { return }
-        // Accessibility may be allowed later, in System Settings; keep trying until it is.
-        retryTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.installTap() }
-        }
+        let tap = EventTap(
+            events: EventTap.mask(of: [.scrollWheel, .otherMouseDown, .otherMouseUp, .otherMouseDragged]), isTrusted: isTrusted,
+            handler: .onMain { [weak self] type, event in self?.handle(type, event) ?? true })
+        self.tap = tap
+        tap.start()
     }
 
     func stop() {
         guard isRunning else { return }
         isRunning = false
-        retryTimer?.invalidate()
-        retryTimer = nil
         stopSmoothing()
         remappedButtons = []
-        if let tap { CGEvent.tapEnable(tap: tap, enable: false) }
-        if let tapSource { CFRunLoopRemoveSource(CFRunLoopGetMain(), tapSource, .commonModes) }
+        tap?.stop()
         tap = nil
-        tapSource = nil
-    }
-
-    private func installTap() {
-        guard isRunning, tap == nil, isTrusted() else { return }
-        let types: [CGEventType] = [.scrollWheel, .otherMouseDown, .otherMouseUp, .otherMouseDragged]
-        let mask = types.reduce(CGEventMask(0)) { $0 | (1 << $1.rawValue) }
-        let callback: CGEventTapCallBack = { _, type, event, refcon in
-            guard let refcon else { return Unmanaged.passUnretained(event) }
-            let controller = Unmanaged<ScrollMouseController>.fromOpaque(refcon).takeUnretainedValue()
-            // The tap's source is on the main run loop, so this runs on the main thread.
-            let keeps = MainActor.assumeIsolated { controller.handle(type, event) }
-            return keeps ? Unmanaged.passUnretained(event) : nil
-        }
-        guard
-            let tap = CGEvent.tapCreate(
-                tap: .cgSessionEventTap, place: .headInsertEventTap, options: .defaultTap, eventsOfInterest: mask,
-                callback: callback, userInfo: Unmanaged.passUnretained(self).toOpaque())
-        else { return }
-        let source = CFMachPortCreateRunLoopSource(nil, tap, 0)
-        CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
-        CGEvent.tapEnable(tap: tap, enable: true)
-        self.tap = tap
-        tapSource = source
-        retryTimer?.invalidate()
-        retryTimer = nil
     }
 
     // MARK: Events
@@ -142,8 +109,6 @@ final class ScrollMouseController {
     private func handle(_ type: CGEventType, _ event: CGEvent) -> Bool {
         switch type {
         case .tapDisabledByTimeout, .tapDisabledByUserInput:
-            // macOS turns off a tap that's slow to answer; turn it back on.
-            if let tap { CGEvent.tapEnable(tap: tap, enable: true) }
             return true
         case _ where event.getIntegerValueField(.eventSourceUserData) == Self.syntheticMarker:
             return true
