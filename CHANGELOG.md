@@ -1,5 +1,16 @@
 # powertoys
 
+## 1.7.0
+
+### Minor Changes
+
+- 87be807: Lanes shows where a window will land while you drag it along its row: an outline of its place, which follows the drag and goes away when you let go
+- 1d5e9f8: Lanes shows the whole row while you scroll it with a swipe or the mouse wheel, with a picture of each window, the part on screen framed and the window the row is on picked out. Pick top, middle or bottom of the display for it, or turn it off
+
+### Patch Changes
+
+- 3d863eb: Lanes keeps its rows when the Mac sleeps and wakes, waiting for a display that takes a while to come back instead of starting the rows over
+
 ## 1.6.0
 
 ### Minor Changes

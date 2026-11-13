@@ -1,6 +1,6 @@
 {
   "name": "powertoys",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "private": true,
   "description": "Release and commit tooling for PowerToys (Changesets, husky, lint-staged)",
   "license": "MIT",
