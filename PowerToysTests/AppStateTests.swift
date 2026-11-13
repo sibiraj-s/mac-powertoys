@@ -39,6 +39,55 @@ struct AppStateTests {
         #expect(!state.awake.isActive)
     }
 
+    @Test func turningLanesOnTurnsZonesOff() {
+        let state = AppState.testing(defaults: store.defaults, hotKeys: FakeHotKeys(), system: FakeSystemSettings())
+        state.setEnabled(.zones, true)
+        #expect(state.zones.isRunning)
+
+        state.setEnabled(.lanes, true)
+        #expect(state.isEnabled(.lanes))
+        #expect(!state.isEnabled(.zones))
+        #expect(!state.zones.isRunning)
+        #expect(store.defaults.stringArray(forKey: AppState.enabledModulesKey)?.contains("zones") == false)
+        state.setEnabled(.lanes, false)
+    }
+
+    @Test func turningZonesOnTurnsLanesOff() {
+        let state = AppState.testing(defaults: store.defaults, hotKeys: FakeHotKeys(), system: FakeSystemSettings())
+        state.setEnabled(.lanes, true)
+
+        state.setEnabled(.zones, true)
+        #expect(state.isEnabled(.zones))
+        #expect(!state.isEnabled(.lanes))
+        #expect(!state.lanes.isRunning)
+        state.setEnabled(.zones, false)
+    }
+
+    @Test func turningOneOffLeavesTheOtherOff() {
+        let state = AppState.testing(defaults: store.defaults, hotKeys: FakeHotKeys(), system: FakeSystemSettings())
+        state.setEnabled(.zones, true)
+        state.setEnabled(.lanes, true)
+        state.setEnabled(.lanes, false)
+        #expect(!state.isEnabled(.zones))
+        #expect(!state.zones.isRunning)
+        #expect(!state.isEnabled(.lanes))
+    }
+
+    @Test func bothStoredOnKeepsOnlyLanes() {
+        store.defaults.set(["lanes", "zones"], forKey: AppState.enabledModulesKey)
+        let state = AppState.testing(defaults: store.defaults, hotKeys: FakeHotKeys(), system: FakeSystemSettings())
+        #expect(state.enabledModules == [.lanes])
+        #expect(!state.zones.isRunning)
+        #expect(store.defaults.stringArray(forKey: AppState.enabledModulesKey) == ["lanes"])
+        state.setEnabled(.lanes, false)
+    }
+
+    @Test func onlyZonesAndLanesAreRivals() {
+        #expect(AppState.rival(of: .zones) == .lanes)
+        #expect(AppState.rival(of: .lanes) == .zones)
+        #expect(ModuleID.allCases.filter { AppState.rival(of: $0) != nil } == [.zones, .lanes])
+    }
+
     @Test func bindingReadsAndWritesEnabledState() {
         let state = AppState.testing(defaults: store.defaults, hotKeys: FakeHotKeys(), system: FakeSystemSettings())
         let binding = state.binding(for: .batchRename)

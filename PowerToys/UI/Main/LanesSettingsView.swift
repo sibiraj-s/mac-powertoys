@@ -6,13 +6,6 @@ struct LanesSettingsView: View {
     var body: some View {
         @Bindable var lanes = state.lanes
 
-        if state.isEnabled(.zones) {
-            MessageBanner(
-                message:
-                    "Zones is on too. Both arrange windows: a window snapped into a zone keeps the zone's width and goes back into its row.",
-                isError: true, dismiss: nil)
-        }
-
         CardSection("Scrolling") {
             CardRow(
                 "Scroll a row with a swipe or the wheel",
@@ -75,5 +68,6 @@ struct LanesSettingsView: View {
         "Drag a window's edge to set its width, or drag the window to another place in the row. Minimized windows come back where they were.",
         "Dialogs, fixed-size windows, full-screen apps and \(AppInfo.name)'s own windows are left alone.",
         "Turning Lanes off, or quitting \(AppInfo.name), puts every window back where it was.",
+        "Lanes and Zones can't be on together: turning one on turns the other off.",
     ]
 }

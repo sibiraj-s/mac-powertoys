@@ -29,6 +29,14 @@ struct ModuleDetailView: View {
                 }
             }
 
+            if let rival = AppState.rival(of: module.id), state.isEnabled(rival), !state.isEnabled(module.id) {
+                let other = ModuleCatalog.descriptor(rival).name
+                MessageBanner(
+                    message:
+                        "\(other) is on. Both arrange windows, so only one can be on: turning \(module.name) on turns \(other) off.",
+                    isError: true, dismiss: nil)
+            }
+
             if module.isImplemented {
                 settings
                     .disabled(!state.isEnabled(module.id))

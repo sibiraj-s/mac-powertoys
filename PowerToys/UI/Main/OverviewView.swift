@@ -68,6 +68,10 @@ struct OverviewView: View {
                         } trailing: {
                             if module.isImplemented {
                                 RowSwitch(label: module.name, isOn: state.binding(for: module.id))
+                                    .help(
+                                        AppState.rival(of: module.id).map {
+                                            "Turning \(module.name) on turns \(ModuleCatalog.descriptor($0).name) off."
+                                        } ?? "")
                             } else {
                                 Text("Soon")
                                     .font(.system(size: 11))

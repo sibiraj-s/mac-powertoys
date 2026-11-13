@@ -111,6 +111,10 @@ final class AppState {
             enabledModules = Set(
                 ModuleCatalog.all.filter { $0.isImplemented && $0.permissions.isEmpty && !$0.offByDefault }.map(\.id))
         }
+        // From before only one of a pair could be on: the one added later, Lanes, stays.
+        if enabledModules.contains(.lanes), enabledModules.remove(.zones) != nil {
+            defaults.set(enabledModules.map(\.rawValue).sorted(), forKey: Self.enabledModulesKey)
+        }
         if enabledModules.contains(.awake) { awake.startWatchingDisplays() }
         if enabledModules.contains(.zones) { zones.start() }
         if enabledModules.contains(.lanes) { lanes.start(lookingNow: false) }
@@ -169,7 +173,22 @@ final class AppState {
         enabledModules.contains(id)
     }
 
+    /// The module that can't be on at the same time as `id`. Zones and Lanes both arrange
+    /// windows, and each would undo what the other did.
+    static func rival(of id: ModuleID) -> ModuleID? {
+        switch id {
+        case .zones: .lanes
+        case .lanes: .zones
+        default: nil
+        }
+    }
+
     func setEnabled(_ id: ModuleID, _ enabled: Bool) {
+        // The rival goes first, so Lanes puts every window back before Zones starts, and the
+        // other way round.
+        if enabled, let rival = Self.rival(of: id), isEnabled(rival) {
+            setEnabled(rival, false)
+        }
         if enabled {
             enabledModules.insert(id)
             // Permissions are requested when a module is turned on, never up front.
