@@ -1,5 +1,19 @@
 import SwiftUI
 
+@main
+enum Launcher {
+    static func main() {
+        // Unit tests run inside the app. Start an empty one for them, hidden from the Dock, so a
+        // test run never starts modules, registers shortcuts or checks for updates.
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil || NSClassFromString("XCTestCase") != nil {
+            NSApplication.shared.setActivationPolicy(.prohibited)
+            NSApplication.shared.run()
+        } else {
+            PowerToysApp.main()
+        }
+    }
+}
+
 struct PowerToysApp: App {
     @NSApplicationDelegateAdaptor private var appDelegate: AppDelegate
     @AppStorage(DockIcon.showsMenuBarIconKey) private var showsMenuBarIcon = DockIcon.showsMenuBarIconDefault
