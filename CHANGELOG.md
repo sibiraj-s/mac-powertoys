@@ -1,5 +1,11 @@
 # powertoys
 
+## 1.7.1
+
+### Patch Changes
+
+- 8e6c6d3: Lanes and Zones can't be on together any more, since each undid what the other did to a window. Turning one on turns the other off, and its page says so while the other is on. If both were on, Lanes stays on
+
 ## 1.7.0
 
 ### Minor Changes
