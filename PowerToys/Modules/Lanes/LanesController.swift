@@ -85,6 +85,16 @@ final class LanesController {
     }
 
     static let scrollModifierKey = "lanes.scrollModifier"
+
+    /// Where a picture of the whole row shows while it's scrolled with a swipe or the wheel.
+    var overviewPosition: LaneOverview.Position {
+        didSet {
+            defaults.set(overviewPosition.rawValue, forKey: Self.overviewPositionKey)
+            if overviewPosition == .off { hideOverview() }
+        }
+    }
+
+    static let overviewPositionKey = "lanes.overview"
     static let placesKey = "lanes.places"
 
     /// Where a window was put and where it was before, kept on disk while Lanes runs. If the
@@ -115,6 +125,9 @@ final class LanesController {
     @ObservationIgnored private let isTrusted: () -> Bool
     @ObservationIgnored private let pointerDisplay: () -> String?
     @ObservationIgnored private var scrollTap: LaneScrollTap?
+    @ObservationIgnored private let overview: (any LaneOverviewPresenting)?
+    /// Waiting to put the overview away once scrolling has stopped.
+    @ObservationIgnored private var overviewHide: Task<Void, Never>?
     /// The row being scrolled by hand, with the windows as they are now. Looking them all up
     /// again for every bit of a swipe would be too slow, so their frames are kept up here.
     @ObservationIgnored private var swipe: (display: String, snapshot: LaneSnapshot)?
@@ -155,7 +168,7 @@ final class LanesController {
 
     init(
         defaults: UserDefaults = .standard, shortcuts: Shortcuts, windows: any LaneWindowSystem = LiveLaneWindows(),
-        isTrusted: @escaping () -> Bool = { false },
+        isTrusted: @escaping () -> Bool = { false }, overview: (any LaneOverviewPresenting)? = nil,
         isMouseDown: @escaping () -> Bool = { NSEvent.pressedMouseButtons & 1 != 0 },
         pointerDisplay: @escaping () -> String? = {
             Displays.screen(at: Displays.flip(NSEvent.mouseLocation)).map { Displays.key(for: $0) }
@@ -168,6 +181,7 @@ final class LanesController {
         self.shortcuts = shortcuts
         self.windows = windows
         self.isTrusted = isTrusted
+        self.overview = overview
         self.isMouseDown = isMouseDown
         self.pointerDisplay = pointerDisplay
         self.startTime = startTime
@@ -176,6 +190,8 @@ final class LanesController {
         self.wakeGrace = wakeGrace
         self.now = now
         scrollModifier = defaults.string(forKey: Self.scrollModifierKey).flatMap(ScrollModifier.init(rawValue:)) ?? .off
+        overviewPosition =
+            defaults.string(forKey: Self.overviewPositionKey).flatMap(LaneOverview.Position.init(rawValue:)) ?? .bottom
     }
 
     // MARK: Lifecycle
@@ -225,6 +241,7 @@ final class LanesController {
         swipeEnd = nil
         swipe = nil
         swipeIsIdle = false
+        hideOverview()
         slideTask?.cancel()
         slideTask = nil
         sliding = []
@@ -288,16 +305,22 @@ final class LanesController {
         guard isRunning, windows.isReady, !wokeByHand(), let display = pointerDisplay() else { return }
         endScroll()
         finishSlide()
-        change { board, _ in board.stepFocus(by: places, on: display) }
+        guard let snapshot = change({ board, _ in board.stepFocus(by: places, on: display) }) else { return }
+        // There's no telling when the wheel has stopped, so the overview stays a moment after each notch.
+        showOverview(on: display, in: snapshot, settling: false, animated: true)
+        hideOverview(after: .milliseconds(900))
     }
 
     /// Makes a change to the lanes as they are now and arranges the windows to match, bringing
-    /// forward the window the change returns.
-    private func change(_ make: (inout LaneBoard, LaneSnapshot) -> Int?) {
+    /// forward the window the change returns. Returns the windows as they were found, unless
+    /// they're being left be.
+    @discardableResult
+    private func change(_ make: (inout LaneBoard, LaneSnapshot) -> Int?) -> LaneSnapshot? {
         let snapshot = current()
-        guard !waitsForADisplay(snapshot) else { return }
+        guard !waitsForADisplay(snapshot) else { return nil }
         board.sync(snapshot, afterDrag: wasDragging)
         arrange(snapshot, bringing: make(&board, snapshot))
+        return snapshot
     }
 
     /// Arranges the windows, then brings `forward` to the front if there is one.
@@ -390,6 +413,7 @@ final class LanesController {
         // A swipe or slide under way is finished first, while windows can still be arranged.
         endScroll()
         finishSlide()
+        hideOverview()
         isAsleep = true
         // Where windows are found now isn't where their apps would have them.
         widthCheck?.cancel()
@@ -638,6 +662,7 @@ final class LanesController {
             }
         }
         self.swipe = swipe
+        showOverview(on: swipe.display, in: swipe.snapshot, settling: true, animated: false)
     }
 
     /// The fingers lifted. The swipe is over unless it coasts on, which it starts to at once.
@@ -660,16 +685,60 @@ final class LanesController {
         swipeEnd?.cancel()
         swipeEnd = nil
         swipeIsIdle = false
-        guard swipe != nil else { return }
+        guard let display = swipe?.display else { return }
         swipe = nil
+        hideOverview(after: .milliseconds(600))
         // Windows were sent on their way without hearing back; now they're looked at, and any
         // that didn't end up where it was sent is put right.
         let snapshot = current()
         guard !waitsForADisplay(snapshot) else { return }
         board.sync(snapshot)
         arrange(snapshot, bringing: board.endScroll(in: snapshot))
+        // The row settled on a window; the overview shows which, on its way out.
+        showOverview(on: display, in: snapshot, settling: false, animated: true, staying: true)
         // Anything that changed during the swipe is caught up on.
         setNeedsRefresh()
+    }
+
+    // MARK: Overview
+
+    /// Shows the picture of a display's row as it is now, picking out the focused window, or
+    /// while `settling` the one the row would settle on if let go. Unless `staying`, a wait to
+    /// put it away is called off.
+    private func showOverview(on displayKey: String, in snapshot: LaneSnapshot, settling: Bool, animated: Bool, staying: Bool = false) {
+        guard overviewPosition != .off, let overview, let lane = board.lane(on: displayKey),
+            let display = snapshot.displays.first(where: { $0.key == displayKey })
+        else { return }
+        if !staying {
+            overviewHide?.cancel()
+            overviewHide = nil
+        }
+        let width = display.area.width
+        let picture = LaneOverview(
+            lane: lane, area: display.area.size, current: settling ? lane.settlesOn(viewWidth: width) : lane.focus,
+            fitting: LaneOverview.bounds(in: display.area))
+        let sources = lane.ids.compactMap { id in
+            windows.owner(of: id).map { LaneOverview.Window(id: id, pid: $0, number: windows.number(of: id)) }
+        }
+        overview.show(
+            picture, at: LaneOverview.frame(of: picture.size, in: display.area, at: overviewPosition), windows: sources, animated: animated)
+    }
+
+    /// Puts the overview away after `wait`, or at once.
+    private func hideOverview(after wait: Duration = .zero) {
+        overviewHide?.cancel()
+        overviewHide = nil
+        guard let overview else { return }
+        guard wait > .zero else {
+            overview.hide()
+            return
+        }
+        overviewHide = Task { [weak self] in
+            try? await Task.sleep(for: wait)
+            guard !Task.isCancelled else { return }
+            self?.overviewHide = nil
+            overview.hide()
+        }
     }
 
     // MARK: Sliding

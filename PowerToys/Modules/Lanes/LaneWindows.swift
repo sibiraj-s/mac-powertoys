@@ -33,6 +33,8 @@ protocol LaneWindowSystem: AnyObject {
     func slide(_ id: Int, to origin: CGPoint)
     /// The process a window belongs to.
     func owner(of id: Int) -> pid_t?
+    /// The window server's number for a window, to take a picture of it by.
+    func number(of id: Int) -> CGWindowID?
     /// Whether a window can't be moved for now because its app isn't answering.
     func isHeldUp(_ id: Int) -> Bool
     func focus(_ id: Int)
@@ -64,6 +66,8 @@ final class LiveLaneWindows: LaneWindowSystem {
     private var windows: [Int: AXWindow] = [:]
     private var nextID = 1
     private var floating: Set<Int> = []
+    /// The window server's numbers, asked once: a window keeps its number while it lasts.
+    private var numbers: [Int: CGWindowID] = [:]
     /// Windows found not to be ones to arrange, such as dialogs and fixed-size windows, by app.
     /// A window can be given its kind a moment after it opens, so each is asked again after a
     /// second, then two, then four, and after that taken at its word.
@@ -318,6 +322,22 @@ final class LiveLaneWindows: LaneWindowSystem {
         windows[id]?.pid
     }
 
+    func number(of id: Int) -> CGWindowID? {
+        if let number = numbers[id] { return number }
+        guard let window = windows[id], let getWindow = Self.getWindow else { return nil }
+        var number: CGWindowID = 0
+        guard getWindow(window.element, &number) == .success, number != 0 else { return nil }
+        numbers[id] = number
+        return number
+    }
+
+    private typealias GetWindow = @convention(c) (AXUIElement, UnsafeMutablePointer<CGWindowID>) -> AXError
+    /// Accessibility has no public call from a window to its number, but has had this one for
+    /// years; looked up once, and nil should a macOS not have it.
+    private static let getWindow = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "_AXUIElementGetWindow").map {
+        unsafeBitCast($0, to: GetWindow.self)
+    }
+
     func isHeldUp(_ id: Int) -> Bool {
         windows[id].map { silent[$0.pid] != nil } ?? false
     }
@@ -414,6 +434,7 @@ final class LiveLaneWindows: LaneWindowSystem {
 
     private func close(_ id: Int) {
         floating.remove(id)
+        numbers[id] = nil
         onClose(id)
     }
 }

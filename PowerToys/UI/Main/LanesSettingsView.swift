@@ -25,6 +25,29 @@ struct LanesSettingsView: View {
                 .labelsHidden()
                 .fixedSize()
             }
+            CardRow(
+                "Overview while scrolling",
+                hint:
+                    "Shows the whole row while you scroll it, with the part on screen framed and the window the row is on picked out. Pick where on the display it goes."
+            ) {
+                Picker("Overview while scrolling", selection: $lanes.overviewPosition) {
+                    ForEach(LaneOverview.Position.allCases) { Text($0.title).tag($0) }
+                }
+                .labelsHidden()
+                .fixedSize()
+            }
+            if lanes.overviewPosition != .off, state.permissions.status(.screenRecording) != .granted {
+                CardRow(
+                    "Screen Recording is off (optional)",
+                    hint:
+                        "Shows a picture of each window in the overview instead of its app's icon. After allowing it, quit and open \(AppInfo.name) again."
+                ) {
+                    HStack(spacing: 6) {
+                        Button("Open Settings") { state.permissions.openSettings(for: .screenRecording) }
+                        Button("Quit & Reopen") { Relaunch.now() }
+                    }
+                }
+            }
         }
 
         CardSection("Shortcuts") {

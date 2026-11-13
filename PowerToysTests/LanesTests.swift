@@ -974,6 +974,10 @@ final class FakeLaneWindows: LaneWindowSystem {
         frames[id] == nil ? nil : 100 + pid_t(id)
     }
 
+    func number(of id: Int) -> CGWindowID? {
+        frames[id] == nil ? nil : 1000 + CGWindowID(id)
+    }
+
     func isHeldUp(_ id: Int) -> Bool {
         stuck.contains(id)
     }
@@ -1851,5 +1855,184 @@ struct LanesControllerTests {
             try? await Task.sleep(for: .milliseconds(10))
         }
         #expect(windows.frames[1] == CGRect(x: 0, y: 25, width: 600, height: 775))
+    }
+}
+
+struct LaneOverviewTests {
+    private func lane(_ columns: [[Int]], widths: [CGFloat]) -> Lane {
+        var lane = Lane(displayKey: "A")
+        for (index, ids) in columns.enumerated() {
+            lane.insert(ids[0], width: widths[index], after: nil)
+            for id in ids.dropFirst() {
+                lane.insert(id, width: widths[index], after: nil)
+                lane.stack(id)
+            }
+        }
+        return lane
+    }
+
+    @Test func windowsAreDrawnToScaleWithThePartOnScreenFramed() {
+        var lane = lane([[1], [2], [3]], widths: [600, 600, 600])
+        lane.scroll(by: 300)
+        let overview = LaneOverview(
+            lane: lane, area: CGSize(width: 1000, height: 800), current: 2, fitting: CGSize(width: 1000, height: 120))
+        // The row is 1800 wide and the display 800 high: the height sets the scale.
+        #expect(overview.size == CGSize(width: 270, height: 120))
+        #expect(overview.tiles.map(\.id) == [1, 2, 3])
+        #expect(overview.tiles[1].frame == CGRect(x: 90, y: 0, width: 90, height: 120))
+        #expect(overview.view == CGRect(x: 45, y: 0, width: 150, height: 120))
+        #expect(overview.current == 2)
+    }
+
+    @Test func longRowsShrinkToFitTheWidth() {
+        let lane = lane([[1], [2], [3], [4]], widths: [1000, 1000, 1000, 1000])
+        let overview = LaneOverview(
+            lane: lane, area: CGSize(width: 1000, height: 800), current: nil, fitting: CGSize(width: 400, height: 120))
+        #expect(overview.size == CGSize(width: 400, height: 80))
+        #expect(overview.view.width == 100)
+    }
+
+    @Test func stackedWindowsShareTheirColumnsHeight() {
+        let lane = lane([[1, 2], [3]], widths: [500, 500])
+        let overview = LaneOverview(
+            lane: lane, area: CGSize(width: 1000, height: 800), current: nil, fitting: CGSize(width: 1000, height: 100))
+        #expect(overview.tiles.map(\.id) == [1, 2, 3])
+        #expect(overview.tiles[0].frame == CGRect(x: 0, y: 0, width: 62.5, height: 50))
+        #expect(overview.tiles[1].frame == CGRect(x: 0, y: 50, width: 62.5, height: 50))
+        #expect(overview.tiles[2].frame == CGRect(x: 62.5, y: 0, width: 62.5, height: 100))
+    }
+
+    @Test func rowNarrowerThanTheDisplayIsDrawnDisplayWide() {
+        let lane = lane([[1]], widths: [400])
+        let overview = LaneOverview(
+            lane: lane, area: CGSize(width: 1000, height: 800), current: 1, fitting: CGSize(width: 1000, height: 80))
+        #expect(overview.size == CGSize(width: 100, height: 80))
+        #expect(overview.view == CGRect(x: 0, y: 0, width: 100, height: 80))
+    }
+
+    @Test func panelGoesWherePicked() {
+        let area = CGRect(x: 0, y: 25, width: 1000, height: 775)
+        let size = CGSize(width: 284, height: 104)
+        let top = LaneOverview.frame(of: size, in: area, at: .top)
+        let middle = LaneOverview.frame(of: size, in: area, at: .middle)
+        let bottom = LaneOverview.frame(of: size, in: area, at: .bottom)
+        // The panel adds its padding all round, and is centered across the display.
+        #expect(top == CGRect(x: 350, y: 49, width: 300, height: 120))
+        #expect(middle.midY.rounded() == area.midY.rounded())
+        #expect(bottom.maxY == area.maxY - LaneOverview.margin)
+        #expect(Set([top.minX, middle.minX, bottom.minX]) == [350])
+    }
+
+    @Test func rowSettlesOnTheFocusedWindowWhileItIsWhollyInView() {
+        var lane = lane([[1], [2], [3]], widths: [600, 600, 600])
+        lane.setFocus(1)
+        #expect(lane.settlesOn(viewWidth: 1000) == 1)
+        lane.scroll(by: 150)
+        #expect(lane.settlesOn(viewWidth: 1000) == 2)
+    }
+}
+
+final class FakeLaneOverview: LaneOverviewPresenting {
+    struct Showing {
+        let overview: LaneOverview
+        let frame: CGRect
+        let windows: [LaneOverview.Window]
+        let animated: Bool
+    }
+
+    private(set) var shown: [Showing] = []
+    private(set) var isShowing = false
+
+    func show(_ overview: LaneOverview, at frame: CGRect, windows: [LaneOverview.Window], animated: Bool) {
+        shown.append(Showing(overview: overview, frame: frame, windows: windows, animated: animated))
+        isShowing = true
+    }
+
+    func hide() {
+        isShowing = false
+    }
+}
+
+struct LaneOverviewControllerTests {
+    private let store = TestDefaults()
+    private let windows = FakeLaneWindows()
+    private let overview = FakeLaneOverview()
+
+    private func makeController() -> LanesController {
+        windows.frames = [
+            1: CGRect(x: 20, y: 40, width: 600, height: 300),
+            2: CGRect(x: 300, y: 80, width: 600, height: 400),
+            3: CGRect(x: 500, y: 120, width: 600, height: 500),
+        ]
+        windows.focused = 1
+        return LanesController(
+            defaults: store.defaults, shortcuts: Shortcuts(defaults: store.defaults, center: FakeHotKeys()), windows: windows,
+            overview: overview, isMouseDown: { false }, pointerDisplay: { "A" }, slideDuration: .zero)
+    }
+
+    @Test func swipeShowsTheWholeRowAndWhereItWillSettle() async throws {
+        let lanes = makeController()
+        lanes.start()
+        #expect(overview.shown.isEmpty)
+        lanes.scroll(by: 150)
+        let showing = try #require(overview.shown.last)
+        #expect(overview.isShowing)
+        #expect(!showing.animated)
+        #expect(showing.overview.tiles.map(\.id) == [1, 2, 3])
+        // The second window has the most in view, so the row would settle on it.
+        #expect(showing.overview.current == 2)
+        #expect(showing.windows.map(\.id) == [1, 2, 3])
+        #expect(showing.windows.map(\.pid) == [101, 102, 103])
+        #expect(showing.windows.map(\.number) == [1001, 1002, 1003])
+        // At the bottom by default, centered across the display.
+        #expect(showing.frame.maxY == 800 - LaneOverview.margin)
+        #expect(abs(showing.frame.midX - 500) <= 1)
+
+        lanes.endScroll()
+        #expect(overview.shown.last?.overview.current == 2)
+        #expect(overview.shown.last?.animated == true)
+        // It stays a moment, then goes.
+        #expect(overview.isShowing)
+        await waitUntil { !overview.isShowing }
+        #expect(!overview.isShowing)
+    }
+
+    @Test func wheelShowsTheRowSteppingAlong() async {
+        let lanes = makeController()
+        lanes.start()
+        lanes.stepFocus(by: 1)
+        #expect(overview.shown.last?.overview.current == 2)
+        #expect(overview.shown.last?.animated == true)
+        await waitUntil { !overview.isShowing }
+        #expect(!overview.isShowing)
+    }
+
+    @Test func positionIsKeptAndOffShowsNothing() {
+        let lanes = makeController()
+        #expect(lanes.overviewPosition == .bottom)
+        lanes.overviewPosition = .top
+        lanes.start()
+        lanes.scroll(by: 150)
+        #expect(overview.shown.last?.frame.minY == 25 + LaneOverview.margin)
+        lanes.overviewPosition = .off
+        #expect(!overview.isShowing)
+        let count = overview.shown.count
+        lanes.scroll(by: 100)
+        lanes.endScroll()
+        lanes.stepFocus(by: 1)
+        #expect(overview.shown.count == count)
+        lanes.stop()
+
+        let again = makeController()
+        #expect(again.overviewPosition == .off)
+    }
+
+    @Test func stoppingPutsTheOverviewAway() {
+        let lanes = makeController()
+        lanes.start()
+        lanes.scroll(by: 150)
+        #expect(overview.isShowing)
+        lanes.stop()
+        #expect(!overview.isShowing)
     }
 }

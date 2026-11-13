@@ -264,13 +264,12 @@ nonisolated struct LaneBoard {
 
     /// Ends scrolling by hand. The row stays where it was left if the focused window is still
     /// wholly in view; otherwise the window with the most in view takes the focus, and this
-    /// returns it to be brought forward.
+    /// returns it to be brought forward. Either way it's the window `Lane.settlesOn` gives.
     mutating func endScroll(in snapshot: LaneSnapshot) -> Int? {
         var forward: Int?
         for display in snapshot.displays where scrolling.contains(display.key) {
             guard let index = active[display.key] else { continue }
-            if let focus = lanes[index].focus, lanes[index].isWhollyVisible(focus, viewWidth: display.area.width) { continue }
-            guard let next = lanes[index].mostVisible(viewWidth: display.area.width) else { continue }
+            guard let next = lanes[index].settlesOn(viewWidth: display.area.width), next != lanes[index].focus else { continue }
             lanes[index].setFocus(next)
             forward = next
         }

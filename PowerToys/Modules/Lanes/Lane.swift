@@ -227,6 +227,13 @@ nonisolated struct Lane: Equatable {
         return false
     }
 
+    /// The window a row scrolled by hand settles on when let go, on a display `viewWidth` wide:
+    /// the focused one while it's wholly in view, or else the one with the most in view.
+    func settlesOn(viewWidth: CGFloat) -> Int? {
+        if let focus, isWhollyVisible(focus, viewWidth: viewWidth) { return focus }
+        return mostVisible(viewWidth: viewWidth)
+    }
+
     /// Makes the row fit a display `viewWidth` wide: no column is wider than the display, and
     /// the row never scrolls past either end. Unless it's being scrolled by hand, the focused
     /// window is wholly in view after the shortest scroll that gets it there.
