@@ -117,20 +117,8 @@ final class LaneOverviewPanel: LaneOverviewPresenting {
     }
 
     private func makePanel() -> NSPanel {
-        let panel = NSPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
-        panel.isOpaque = false
-        panel.backgroundColor = .clear
-        panel.hasShadow = true
-        panel.level = .statusBar
-        panel.ignoresMouseEvents = true
-        panel.hidesOnDeactivate = false
-        panel.isReleasedWhenClosed = false
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient, .ignoresCycle]
-        let hosting = NSHostingView(rootView: LaneOverviewView(model: model))
-        // The panel's frame is set from the row; the view only fills it.
-        hosting.sizingOptions = []
-        panel.contentView = hosting
-        return panel
+        // The panel's frame is set from the row.
+        .laneOverlay(level: .statusBar, hasShadow: true, content: LaneOverviewView(model: model))
     }
 }
 

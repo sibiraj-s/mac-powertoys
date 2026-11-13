@@ -182,21 +182,45 @@ struct LaneTests {
     }
 
     @Test func droppedWindowGoesBetweenTheColumnsThere() {
+        // Each 400 wide: 1 at 0, 2 at 400, 3 at 800.
         var lane = lane([400, 400, 400])
-        // Let go past the middle of the last window: it goes to the end.
-        let toTheEnd = lane.drop(1, at: 1100)
-        #expect(toTheEnd)
-        #expect(lane.ids == [2, 3, 1])
-        // Before the middle of the first: it goes to the front.
-        lane.drop(1, at: 100)
-        #expect(lane.ids == [1, 2, 3])
-        // Let go about where it already was: nothing changes.
-        let stayed = lane.drop(2, at: 600)
+        // Dragged right until it covers just under half of the next window: it stays.
+        let stayed = lane.drop(1, from: 190, to: 590)
         #expect(!stayed)
+        #expect(lane.ids == [1, 2, 3])
+        // Just over half: it takes that window's place.
+        let passed = lane.drop(1, from: 210, to: 610)
+        #expect(passed)
+        #expect(lane.ids == [2, 1, 3])
+        // Over half of the last one: it goes to the end.
+        lane.drop(1, from: 610, to: 1010)
+        #expect(lane.ids == [2, 3, 1])
+        // Dragged left, its left edge decides: just over half of the window there.
+        lane.drop(1, from: 590, to: 990)
+        #expect(lane.ids == [2, 1, 3])
+        lane.drop(1, from: -20, to: 380)
+        #expect(lane.ids == [1, 2, 3])
+        // Not over half of either neighbour: nothing changes.
+        let still = lane.drop(2, from: 210, to: 610)
+        #expect(!still)
         // Dragged out of a stack, it gets a column of its own.
         lane.stack(2)
-        lane.drop(2, at: 900)
+        lane.drop(2, from: 450, to: 850)
         #expect(lane.columns.map(\.ids) == [[1], [3], [2]])
+    }
+
+    @Test func dropIndexIsWhereADropPutsTheWindow() {
+        let lane = lane([400, 400, 400])
+        for (id, start) in [(1, CGFloat(0)), (2, 400), (3, 800)] {
+            for shift: CGFloat in [-700, -450, -210, -190, -50, 0, 50, 190, 210, 450, 610, 700] {
+                var dropped = lane
+                dropped.drop(id, from: start + shift, to: start + shift + 400)
+                #expect(
+                    lane.dropIndex(of: id, from: start + shift, to: start + shift + 400)
+                        == dropped.columns.firstIndex { $0.ids == [id] })
+            }
+        }
+        #expect(lane.dropIndex(of: 9, from: 0, to: 100) == nil)
     }
 
     @Test func windowGoesBackToTheSeatItLeft() {
@@ -623,6 +647,64 @@ struct LaneBoardTests {
         #expect(frames[1] == CGRect(x: 600, y: 25, width: 300, height: 775))
     }
 
+    @Test func dropTargetIsWhereADraggedWindowLands() {
+        var board = LaneBoard()
+        var frames: [Int: CGRect] = [
+            1: CGRect(x: 0, y: 0, width: 300, height: 300),
+            2: CGRect(x: 350, y: 0, width: 300, height: 300),
+            3: CGRect(x: 700, y: 0, width: 300, height: 300),
+        ]
+        arrange(&board, &frames, focused: 1)
+        let placed = CGRect(x: 0, y: 25, width: 300, height: 775)
+        #expect(frames[1] == placed)
+        // Not far enough yet to count as a drag.
+        #expect(board.dropTarget(of: 1, at: placed.offsetBy(dx: 10, dy: 5), pointer: nil) == nil)
+        // Dragged a little: it would go back to its own place.
+        #expect(board.dropTarget(of: 1, at: placed.offsetBy(dx: 60, dy: 40), pointer: nil) == placed)
+        // Over half of the next window, which sits at 300: it would take that place.
+        #expect(
+            board.dropTarget(of: 1, at: placed.offsetBy(dx: 160, dy: 40), pointer: nil)
+                == CGRect(x: 300, y: 25, width: 300, height: 775))
+        // Past the middle of the last: the end of the row, where letting go puts it.
+        let dragged = CGRect(x: 650, y: 120, width: 300, height: 775)
+        let target = board.dropTarget(of: 1, at: dragged, pointer: CGPoint(x: 700, y: 130))
+        #expect(target == CGRect(x: 600, y: 25, width: 300, height: 775))
+        // The pointer isn't on it, so its app moved it: no drag.
+        #expect(board.dropTarget(of: 1, at: dragged, pointer: CGPoint(x: 100, y: 130)) == nil)
+        // Resized, not dragged.
+        #expect(board.dropTarget(of: 1, at: CGRect(x: 650, y: 120, width: 400, height: 775), pointer: nil) == nil)
+        frames[1] = dragged
+        arrange(&board, &frames, focused: 1, afterDrag: true)
+        #expect(frames[1] == target)
+    }
+
+    @Test func dropTargetCountsAWindowWhoseMoveDidNotGoThrough() {
+        var board = LaneBoard()
+        var frames: [Int: CGRect] = [
+            1: CGRect(x: 0, y: 0, width: 300, height: 300),
+            2: CGRect(x: 350, y: 0, width: 300, height: 300),
+            3: CGRect(x: 700, y: 0, width: 300, height: 300),
+        ]
+        arrange(&board, &frames, focused: 1)
+        // The second window's last move didn't go through: it's still in the row all the same.
+        board.missed(2)
+        // Past the middles of both others: the end of the row, not the middle, as it would be
+        // with the second left out.
+        let dragged = CGRect(x: 460, y: 120, width: 300, height: 775)
+        #expect(board.dropTarget(of: 1, at: dragged, pointer: nil) == CGRect(x: 600, y: 25, width: 300, height: 775))
+    }
+
+    @Test func noDropTargetOnAnotherDisplay() {
+        var board = LaneBoard()
+        var frames: [Int: CGRect] = [
+            1: CGRect(x: 0, y: 0, width: 300, height: 300),
+            2: CGRect(x: 350, y: 0, width: 300, height: 300),
+        ]
+        arrange(&board, &frames, focused: 1, displays: [main, right])
+        #expect(board.dropTarget(of: 1, at: CGRect(x: 1300, y: 100, width: 300, height: 775), pointer: nil) == nil)
+        #expect(board.dropTarget(of: 1, at: CGRect(x: 400, y: 100, width: 300, height: 775), pointer: nil) != nil)
+    }
+
     @Test func minimizedWindowComesBackWhereItWas() {
         var board = LaneBoard()
         var frames: [Int: CGRect] = [
@@ -986,8 +1068,25 @@ final class FakeLaneWindows: LaneWindowSystem {
     private(set) var askedAgain = 0
     var askAgainAt: Date?
 
+    /// How many times the window being dragged was looked at.
+    private(set) var dragReads = 0
+    /// Where each window is said to be before where it really is, one read at a time, as apps
+    /// say where a window is a moment behind the pointer dragging it.
+    var late: [Int: [CGRect]] = [:]
+
     func frame(of id: Int) -> CGRect? {
         stuck.contains(id) ? nil : frames[id]
+    }
+
+    func draggedWindow() -> LaneDrag {
+        dragReads += 1
+        guard let id = focused, !floating.contains(id), let frame = frames[id] else { return .none }
+        if stuck.contains(id) { return .notAnswering }
+        if let said = late[id]?.first {
+            late[id]?.removeFirst()
+            return .window(id: id, frame: said)
+        }
+        return .window(id: id, frame: frame)
     }
 
     func askAgain() {
@@ -1855,6 +1954,139 @@ struct LanesControllerTests {
             try? await Task.sleep(for: .milliseconds(10))
         }
         #expect(windows.frames[1] == CGRect(x: 0, y: 25, width: 600, height: 775))
+    }
+
+    @Test func dragShowsWhereTheWindowWillLandUntilLetGo() async {
+        windows.frames = threeWindows()
+        windows.focused = 1
+        var mouseDown = false
+        let dropZone = FakeLaneDropZone()
+        let lanes = LanesController(
+            defaults: store.defaults, shortcuts: Shortcuts(defaults: store.defaults, center: FakeHotKeys()), windows: windows,
+            dropZone: dropZone, isMouseDown: { mouseDown }, pointer: { nil }, pointerDisplay: { "A" }, slideDuration: .zero)
+        lanes.start()
+        #expect(windows.frames[1] == CGRect(x: 0, y: 25, width: 600, height: 775))
+        // Held and dragged past the middle of the next window.
+        mouseDown = true
+        windows.frames[1] = CGRect(x: 700, y: 100, width: 600, height: 775)
+        windows.onChange()
+        let landing = CGRect(x: 400, y: 25, width: 600, height: 775)
+        for _ in 0..<500 where dropZone.shown.last != landing {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(dropZone.shown.last == landing)
+        #expect(dropZone.isShowing)
+        // Let go: the place goes away and the window lands there.
+        mouseDown = false
+        for _ in 0..<500 where dropZone.isShowing || windows.frames[1] != landing {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(!dropZone.isShowing)
+        #expect(windows.frames[1] == landing)
+    }
+
+    @Test func dragOfAWindowWhoseAppDoesNotAnswerShowsNothingButStillDrops() async {
+        windows.frames = threeWindows()
+        windows.focused = 1
+        var mouseDown = false
+        var point = CGPoint(x: 800, y: 300)
+        let dropZone = FakeLaneDropZone()
+        let lanes = LanesController(
+            defaults: store.defaults, shortcuts: Shortcuts(defaults: store.defaults, center: FakeHotKeys()), windows: windows,
+            dropZone: dropZone, isMouseDown: { mouseDown }, pointer: { point }, pointerDisplay: { "A" }, slideDuration: .zero)
+        lanes.start()
+        mouseDown = true
+        windows.stuck = [1]
+        windows.frames[1] = CGRect(x: 700, y: 100, width: 600, height: 775)
+        windows.onChange()
+        for _ in 0..<500 where windows.dragReads == 0 {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        // Not asked again for the rest of the drag, however the pointer moves.
+        for step in 1...5 {
+            point = CGPoint(x: 800 + CGFloat(step), y: 300)
+            try? await Task.sleep(for: .milliseconds(60))
+        }
+        #expect(windows.dragReads == 1)
+        #expect(dropZone.shown.isEmpty)
+        // It answers again by the time it's let go: dropped where it was let go, as ever.
+        windows.stuck = []
+        let looks = windows.looks
+        mouseDown = false
+        for _ in 0..<500 where windows.looks == looks {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(windows.frames[1] == CGRect(x: 400, y: 25, width: 600, height: 775))
+    }
+
+    @Test func heldMouseLooksForADropTargetOnlyWhenThePointerMovesOverARow() async {
+        windows.frames = threeWindows()
+        windows.focused = 1
+        var mouseDown = false
+        var point = CGPoint(x: 100, y: 100)
+        var display = "A"
+        let dropZone = FakeLaneDropZone()
+        let lanes = LanesController(
+            defaults: store.defaults, shortcuts: Shortcuts(defaults: store.defaults, center: FakeHotKeys()), windows: windows,
+            dropZone: dropZone, isMouseDown: { mouseDown }, pointer: { point }, pointerDisplay: { display },
+            slideDuration: .zero)
+        lanes.start()
+        mouseDown = true
+        // Dragged past half of the next window and stopped there, but its app first says it's
+        // only a little way along, where it would go back to its own place.
+        windows.frames[1] = CGRect(x: 400, y: 100, width: 600, height: 775)
+        windows.late[1] = [CGRect(x: 100, y: 100, width: 600, height: 775)]
+        point = CGPoint(x: 650, y: 300)
+        windows.onChange()
+        // It's asked again once the pointer has stopped, and the place follows.
+        let landing = CGRect(x: 400, y: 25, width: 600, height: 775)
+        for _ in 0..<500 where dropZone.shown.last != landing {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(dropZone.shown.first == CGRect(x: 0, y: 25, width: 600, height: 775))
+        #expect(dropZone.shown.last == landing)
+        // Held still from then on: the window is left be, after a few more looks.
+        try? await Task.sleep(for: .milliseconds(500))
+        let reads = windows.dragReads
+        try? await Task.sleep(for: .milliseconds(200))
+        #expect(windows.dragReads == reads)
+        #expect(dropZone.isShowing)
+        // Moved: it's asked again.
+        point = CGPoint(x: 660, y: 300)
+        for _ in 0..<500 where windows.dragReads == reads {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(windows.dragReads > reads)
+        // Over a display with no row: nothing to show, and nothing asked.
+        display = "B"
+        point = CGPoint(x: 1500, y: 300)
+        let before = windows.dragReads
+        for _ in 0..<500 where dropZone.isShowing {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(!dropZone.isShowing)
+        #expect(windows.dragReads == before)
+        // Let go, and the windows are looked at once more before the test ends.
+        let looks = windows.looks
+        mouseDown = false
+        for _ in 0..<500 where windows.looks == looks {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(windows.frames[1] == landing)
+    }
+}
+
+final class FakeLaneDropZone: LaneDropPresenting {
+    private(set) var shown: [CGRect] = []
+    private(set) var isShowing = false
+
+    func show(at frame: CGRect) {
+        shown.append(frame)
+        isShowing = true
+    }
+
+    func hide() {
+        isShowing = false
     }
 }
 

@@ -11,11 +11,18 @@ struct AXWindow {
     /// up on after that many seconds rather than the default six.
     static func focused(timeout: Float? = nil) -> AXWindow? {
         guard let app = NSWorkspace.shared.frontmostApplication else { return nil }
-        let appElement = AXUIElementCreateApplication(app.processIdentifier)
+        return focused(of: app.processIdentifier, timeout: timeout).window
+    }
+
+    /// An app's focused window, and whether the app answered at all: false when asking ran
+    /// out of time, which isn't the same as its having no focused window.
+    static func focused(of pid: pid_t, timeout: Float? = nil) -> (window: AXWindow?, answered: Bool) {
+        let appElement = AXUIElementCreateApplication(pid)
         if let timeout { AXUIElementSetMessagingTimeout(appElement, timeout) }
-        guard let window: AXUIElement = appElement.value(of: kAXFocusedWindowAttribute) else { return nil }
+        let (window, error): (AXUIElement?, AXError) = appElement.answer(to: kAXFocusedWindowAttribute)
+        guard let window else { return (nil, error != .cannotComplete) }
         if let timeout { AXUIElementSetMessagingTimeout(window, timeout) }
-        return AXWindow(element: window, pid: app.processIdentifier)
+        return (AXWindow(element: window, pid: pid), true)
     }
 
     /// The window under a point, in Accessibility coordinates.
@@ -91,15 +98,19 @@ struct AXWindow {
         return AXUIElementIsAttributeSettable(element, kAXSizeAttribute as CFString, &settable) == .success && settable.boolValue
     }
 
-    var frame: CGRect? {
-        guard let positionValue: AXValue = element.value(of: kAXPositionAttribute),
-            let sizeValue: AXValue = element.value(of: kAXSizeAttribute)
-        else { return nil }
+    var frame: CGRect? { answeredFrame.frame }
+
+    /// The window's frame, and whether its app answered at all: false when asking ran out of time.
+    var answeredFrame: (frame: CGRect?, answered: Bool) {
+        let (positionValue, error): (AXValue?, AXError) = element.answer(to: kAXPositionAttribute)
+        guard let positionValue else { return (nil, error != .cannotComplete) }
+        let (sizeValue, sizeError): (AXValue?, AXError) = element.answer(to: kAXSizeAttribute)
+        guard let sizeValue else { return (nil, sizeError != .cannotComplete) }
         var position = CGPoint.zero
         var size = CGSize.zero
         AXValueGetValue(positionValue, .cgPoint, &position)
         AXValueGetValue(sizeValue, .cgSize, &size)
-        return CGRect(origin: position, size: size)
+        return (CGRect(origin: position, size: size), true)
     }
 
     /// - Parameter appTimeout: How long to wait on the window's app for what's asked of the app
@@ -176,9 +187,15 @@ struct AXWindow {
 
 extension AXUIElement {
     fileprivate func value<T>(of attribute: String) -> T? {
+        answer(to: attribute).value
+    }
+
+    /// An attribute's value, with the error when there's none.
+    fileprivate func answer<T>(to attribute: String) -> (value: T?, error: AXError) {
         var value: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(self, attribute as CFString, &value) == .success else { return nil }
-        return value as? T
+        let error = AXUIElementCopyAttributeValue(self, attribute as CFString, &value)
+        guard error == .success else { return (nil, error) }
+        return (value as? T, .success)
     }
 
     fileprivate var role: String? { value(of: kAXRoleAttribute) }

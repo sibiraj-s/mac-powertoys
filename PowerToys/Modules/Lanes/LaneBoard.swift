@@ -91,6 +91,8 @@ nonisolated struct LaneBoard {
     private var scrolling: Set<String> = []
     /// The displays there were at the last look.
     private var displays: [LaneDisplay] = []
+    /// Where each window on screen was at the last look.
+    private var seen: [Int: CGRect] = [:]
 
     private enum Spot {
         case shown
@@ -118,6 +120,7 @@ nonisolated struct LaneBoard {
     mutating func sync(_ snapshot: LaneSnapshot, afterDrag: Bool = false) {
         displays = snapshot.displays
         let windows = snapshot.windows.filter { !ignored.contains($0.id) }
+        seen = Dictionary(windows.map { ($0.id, $0.frame) }) { first, _ in first }
         let present = Set(windows.map(\.id))
         lanes.removeAll { lane in lane.isEmpty || !snapshot.displays.contains { $0.key == lane.displayKey } }
 
@@ -133,13 +136,12 @@ nonisolated struct LaneBoard {
                 last[window.id] = nil
             } else if abs(window.frame.width - was.width) > 1 {
                 lanes[index].setWidth(window.frame.width, of: window.id)
-            } else if afterDrag, Self.isUnderPointer(window.frame, in: snapshot),
-                hypot(window.frame.minX - was.minX, window.frame.minY - was.minY) >= Self.dragDistance,
-                abs(window.frame.height - was.height) <= 1, case .shown = last[window.id],
-                let display = snapshot.displays.first(where: { $0.key == lanes[index].displayKey })
+            } else if afterDrag,
+                let display = dragDisplay(of: window.id, at: window.frame, in: lanes[index], pointer: snapshot.pointer)
             {
                 // Dragged without being resized: it's dropped into the row where it was let go.
-                lanes[index].drop(window.id, at: window.frame.midX - display.area.minX)
+                lanes[index].drop(
+                    window.id, from: window.frame.minX - display.area.minX, to: window.frame.maxX - display.area.minX)
             }
         }
 
@@ -367,11 +369,8 @@ nonisolated struct LaneBoard {
         var targets: [Target] = []
         for display in snapshot.displays {
             guard let index = active[display.key] else { continue }
-            // A window hanging over an edge would show on a display next to it, so it's hidden instead.
             let others = snapshot.displays.filter { $0.key != display.key }.map(\.frame)
-            let beside = others.filter { $0.minY < display.frame.maxY && $0.maxY > display.frame.minY }
-            let peeksLeft = !beside.contains { $0.midX < display.frame.minX }
-            let peeksRight = !beside.contains { $0.midX > display.frame.maxX }
+            let (peeksLeft, peeksRight) = Self.peeks(of: display.frame, besides: others)
             lanes[index].fit(viewWidth: display.area.width, followsFocus: !scrolling.contains(display.key))
             for place in lanes[index].placements(viewWidth: display.area.width, peeksLeft: peeksLeft, peeksRight: peeksRight) {
                 guard let current = frames[place.id] else { continue }
@@ -437,6 +436,7 @@ nonisolated struct LaneBoard {
         settled[id] = nil
         tries[id] = nil
         last[id] = nil
+        seen[id] = nil
         seats[id] = nil
         insists[id] = nil
         refused[id] = nil
@@ -493,7 +493,57 @@ nonisolated struct LaneBoard {
         if originals[id] == nil { originals[id] = original }
     }
 
+    // MARK: Dragging
+
+    /// The display of `lane`, when its window `id`, found at `frame`, counts as dragged along
+    /// it: it's some way from where it was put, the same size, under the pointer, and was in
+    /// view; and it hasn't gone to another display, which takes it out of the row instead.
+    /// `sync` and `dropTarget` both go by this, so what's shown during a drag is what letting
+    /// go does. The displays are those of the last look.
+    private func dragDisplay(of id: Int, at frame: CGRect, in lane: Lane, pointer: CGPoint?) -> LaneDisplay? {
+        guard let was = settled[id], !Self.near(frame, was), Self.sizeNear(frame.size, was.size),
+            hypot(frame.minX - was.minX, frame.minY - was.minY) >= Self.dragDistance,
+            Self.isUnderPointer(frame, pointer: pointer), case .shown = last[id],
+            Self.home(of: frame, in: displays).map({ $0.key == lane.displayKey }) ?? true
+        else { return nil }
+        return displays.first { $0.key == lane.displayKey }
+    }
+
+    /// The place a window being dragged to `frame` would be sent if let go now, worked out by
+    /// letting go on a copy of the board: every other window where it was put, and this one
+    /// with the keyboard, as it has while dragged. An app that limits its window's size may
+    /// have it come to rest smaller. nil while it doesn't count as dragged along its row.
+    func dropTarget(of id: Int, at frame: CGRect, pointer: CGPoint?) -> CGRect? {
+        guard let index = lanes.firstIndex(where: { $0.contains(id) }),
+            dragDisplay(of: id, at: frame, in: lanes[index], pointer: pointer) != nil
+        else { return nil }
+        // Only the windows of the rows showing now: those of other Spaces' rows would be taken
+        // for windows that came to this one. One left out would be taken for gone, so one whose
+        // move didn't go through is where it was last seen.
+        var frames: [Int: CGRect] = [:]
+        for lane in active.values {
+            for other in lanes[lane].ids {
+                frames[other] = settled[other] ?? seen[other]
+            }
+        }
+        frames[id] = frame
+        let snapshot = LaneSnapshot(
+            displays: displays,
+            windows: frames.sorted { $0.key < $1.key }.map { LaneSnapshot.Window(id: $0.key, frame: $0.value) },
+            focused: id, mainDisplay: nil, pointer: pointer)
+        var board = self
+        board.sync(snapshot, afterDrag: true)
+        return board.targets(in: snapshot, frames: frames).first { $0.id == id && $0.isShown }?.frame
+    }
+
     // MARK: Geometry
+
+    /// Whether windows may hang over a display's left and right edges: only where there's no
+    /// display next to it, among the `others`, which they'd show on.
+    static func peeks(of display: CGRect, besides others: [CGRect]) -> (left: Bool, right: Bool) {
+        let beside = others.filter { $0.minY < display.maxY && $0.maxY > display.minY }
+        return (!beside.contains { $0.midX < display.minX }, !beside.contains { $0.midX > display.maxX })
+    }
 
     /// How far a window has to have gone for it to count as dragged, in points.
     static let dragDistance: CGFloat = 20
@@ -501,7 +551,11 @@ nonisolated struct LaneBoard {
     /// Whether the pointer is on a window, as it is on one just dragged. True when it isn't
     /// known where the pointer is.
     static func isUnderPointer(_ frame: CGRect, in snapshot: LaneSnapshot) -> Bool {
-        snapshot.pointer.map(frame.contains) ?? true
+        isUnderPointer(frame, pointer: snapshot.pointer)
+    }
+
+    static func isUnderPointer(_ frame: CGRect, pointer: CGPoint?) -> Bool {
+        pointer.map(frame.contains) ?? true
     }
 
     /// Whether two frames match to within a point, as frames read back from apps do.

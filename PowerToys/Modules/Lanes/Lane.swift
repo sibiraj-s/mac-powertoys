@@ -175,25 +175,45 @@ nonisolated struct Lane: Equatable {
         return true
     }
 
-    /// Moves a window to where it was dropped, `x` points from the display's left edge, as a
-    /// column of its own: after every other column whose middle is left of there. Says whether
-    /// the row changed.
+    /// Moves a window to where it was dropped, spanning `left` to `right` points from the
+    /// display's left edge, as a column of its own at `dropIndex`. Says whether the row changed.
     @discardableResult
-    mutating func drop(_ id: Int, at x: CGFloat) -> Bool {
-        guard let index = column(of: id) else { return false }
+    mutating func drop(_ id: Int, from left: CGFloat, to right: CGFloat) -> Bool {
+        guard let index = column(of: id), let target = dropIndex(of: id, from: left, to: right) else { return false }
         let before = columns
         let width = columns[index].width
-        var start: CGFloat = 0
-        var target = 0
-        for column in columns {
-            // Its own column counts while anything else is stacked in it.
-            if column.ids != [id], start + column.width / 2 < x + offset { target += 1 }
-            start += column.width
-        }
         columns[index].ids.removeAll { $0 == id }
         if columns[index].ids.isEmpty { columns.remove(at: index) }
         columns.insert(Column(ids: [id], width: width), at: target)
         return columns != before
+    }
+
+    /// Which column a window dropped spanning `left` to `right` points from the display's left
+    /// edge becomes, once it's out of its own. It passes a column once its leading edge is past
+    /// that column's middle: its right edge for one on its right, its left edge for one on its
+    /// left. Between windows of a width, that's once it covers more than half of its neighbour.
+    func dropIndex(of id: Int, from left: CGFloat, to right: CGFloat) -> Int? {
+        guard let own = column(of: id) else { return nil }
+        let left = left + offset
+        let right = right + offset
+        var start: CGFloat = 0
+        var target = 0
+        for (index, column) in columns.enumerated() {
+            let middle = start + column.width / 2
+            start += column.width
+            let staysBefore =
+                if index < own {
+                    middle <= left
+                } else if index > own {
+                    middle < right
+                } else {
+                    // Its own column counts while anything else is stacked in it: the window
+                    // pulled out goes to whichever side of it its middle is.
+                    column.ids != [id] && middle < (left + right) / 2
+                }
+            if staysBefore { target += 1 }
+        }
+        return target
     }
 
     // MARK: Layout

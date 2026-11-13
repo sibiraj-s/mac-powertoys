@@ -8,8 +8,8 @@
 
 /* Begin PBXBuildFile section */
 		A30000000000000000000010 /* FinderExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A30000000000000000000001 /* FinderExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
-		A60000000000000000000010 /* AwakeHelper in Embed Awake Helper */ = {isa = PBXBuildFile; fileRef = A60000000000000000000001 /* AwakeHelper */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		A50000000000000000000001 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = A50000000000000000000003 /* Sparkle */; };
+		A60000000000000000000010 /* AwakeHelper in Embed Awake Helper */ = {isa = PBXBuildFile; fileRef = A60000000000000000000001 /* AwakeHelper */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -65,8 +65,8 @@
 		A10000000000000000000001 /* PowerToys Dev.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "PowerToys Dev.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		A10000000000000000000030 /* Signing.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Signing.xcconfig; sourceTree = "<group>"; };
 		A20000000000000000000001 /* PowerToysTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PowerToysTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		A60000000000000000000001 /* AwakeHelper */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = AwakeHelper; sourceTree = BUILT_PRODUCTS_DIR; };
 		A30000000000000000000001 /* FinderExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = FinderExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		A60000000000000000000001 /* AwakeHelper */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = AwakeHelper; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -102,18 +102,18 @@
 			path = FinderExtension;
 			sourceTree = "<group>";
 		};
-		A60000000000000000000002 /* AwakeHelper */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = AwakeHelper;
-			sourceTree = "<group>";
-		};
 		A40000000000000000000002 /* Shared */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
-				A60000000000000000000030 /* Exceptions for "Shared" folder in "AwakeHelper" target */,
 				A60000000000000000000031 /* Exceptions for "Shared" folder in "FinderExtension" target */,
+				A60000000000000000000030 /* Exceptions for "Shared" folder in "AwakeHelper" target */,
 			);
 			path = Shared;
+			sourceTree = "<group>";
+		};
+		A60000000000000000000002 /* AwakeHelper */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = AwakeHelper;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -265,8 +265,8 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				A60000000000000000000002 /* AwakeHelper */,
 				A40000000000000000000002 /* Shared */,
+				A60000000000000000000002 /* AwakeHelper */,
 			);
 			name = AwakeHelper;
 			packageProductDependencies = (
@@ -352,7 +352,6 @@
 /* Begin PBXShellScriptBuildPhase section */
 		A60000000000000000000012 /* Write Awake Helper Daemon Plist */ = {
 			isa = PBXShellScriptBuildPhase;
-			alwaysOutOfDate = 0;
 			buildActionMask = 2147483647;
 			files = (
 			);

@@ -126,6 +126,16 @@ final class LanesController {
     @ObservationIgnored private let pointerDisplay: () -> String?
     @ObservationIgnored private var scrollTap: LaneScrollTap?
     @ObservationIgnored private let overview: (any LaneOverviewPresenting)?
+    /// Shows where a window being dragged along its row would land.
+    @ObservationIgnored private let dropZone: (any LaneDropPresenting)?
+    @ObservationIgnored private let pointer: () -> CGPoint?
+    /// Where the pointer was at the last look for a drop target, while the mouse is held, and
+    /// how many looks since it stopped there.
+    @ObservationIgnored private var dragPointer: CGPoint?
+    @ObservationIgnored private var looksSinceStill = 0
+    /// The app of the window being dragged didn't answer in time, and isn't asked again until
+    /// the drag ends.
+    @ObservationIgnored private var dragGaveUp = false
     /// Waiting to put the overview away once scrolling has stopped.
     @ObservationIgnored private var overviewHide: Task<Void, Never>?
     /// The row being scrolled by hand, with the windows as they are now. Looking them all up
@@ -169,10 +179,10 @@ final class LanesController {
     init(
         defaults: UserDefaults = .standard, shortcuts: Shortcuts, windows: any LaneWindowSystem = LiveLaneWindows(),
         isTrusted: @escaping () -> Bool = { false }, overview: (any LaneOverviewPresenting)? = nil,
+        dropZone: (any LaneDropPresenting)? = nil,
         isMouseDown: @escaping () -> Bool = { NSEvent.pressedMouseButtons & 1 != 0 },
-        pointerDisplay: @escaping () -> String? = {
-            Displays.screen(at: Displays.flip(NSEvent.mouseLocation)).map { Displays.key(for: $0) }
-        },
+        pointer: @escaping () -> CGPoint? = { Displays.flip(NSEvent.mouseLocation) },
+        pointerDisplay: (() -> String?)? = nil,
         startTime: @escaping (pid_t) -> Date? = { ProcessStart.read($0) },
         slideDuration: Duration = .milliseconds(220), displayGrace: TimeInterval = 3, wakeGrace: TimeInterval = 20,
         now: @escaping () -> Date = { .now }
@@ -182,8 +192,14 @@ final class LanesController {
         self.windows = windows
         self.isTrusted = isTrusted
         self.overview = overview
+        self.dropZone = dropZone
         self.isMouseDown = isMouseDown
-        self.pointerDisplay = pointerDisplay
+        self.pointer = pointer
+        // The display under the pointer, unless told otherwise.
+        self.pointerDisplay =
+            pointerDisplay ?? {
+                pointer().flatMap { Displays.screen(at: $0) }.map { Displays.key(for: $0) }
+            }
         self.startTime = startTime
         self.slideDuration = slideDuration
         self.displayGrace = displayGrace
@@ -242,6 +258,7 @@ final class LanesController {
         swipe = nil
         swipeIsIdle = false
         hideOverview()
+        endDrag()
         slideTask?.cancel()
         slideTask = nil
         sliding = []
@@ -345,13 +362,74 @@ final class LanesController {
         pendingRefresh = Task { [weak self] in
             repeat {
                 try? await Task.sleep(for: .milliseconds(50))
-                if self?.isMouseDown() == true { self?.wasDragging = true }
+                if self?.isMouseDown() == true {
+                    self?.wasDragging = true
+                    self?.showDropTarget()
+                } else {
+                    // Let go: the place goes at once, though a slide may keep the windows waiting.
+                    self?.endDrag()
+                }
             } while !Task.isCancelled && self?.isBusy == true
             guard !Task.isCancelled, let self else { return }
             pendingRefresh = nil
+            endDrag()
             refresh()
         }
     }
+
+    /// Shows where the window being dragged would land if let go now, or puts the place away
+    /// when no window is being dragged along its row. The window being dragged has the keyboard.
+    /// The mouse is held for all sorts besides, so its app is asked only while the pointer is
+    /// moving, and only over a display with a row. Apps say where a window is a moment behind
+    /// the pointer, so it's asked a few more times once the pointer stops. One that doesn't
+    /// answer in time isn't asked again during the drag, which then shows no place.
+    private func showDropTarget() {
+        guard let dropZone else { return }
+        // What can be told without asking any app is seen to at every look.
+        guard isRunning, !isAsleep, !dragGaveUp, swipe == nil, slideTask == nil, let display = pointerDisplay(),
+            board.lane(on: display) != nil
+        else {
+            hideDropTarget()
+            return
+        }
+        let point = pointer()
+        if let point, point == dragPointer {
+            guard looksSinceStill < Self.looksOnceStill else { return }
+            looksSinceStill += 1
+        } else {
+            looksSinceStill = 0
+        }
+        dragPointer = point
+        switch windows.draggedWindow() {
+        case .window(let id, let frame):
+            if let target = board.dropTarget(of: id, at: frame, pointer: point) {
+                dropZone.show(at: target)
+            } else {
+                dropZone.hide()
+            }
+        case .none:
+            dropZone.hide()
+        case .notAnswering:
+            dragGaveUp = true
+            dropZone.hide()
+        }
+    }
+
+    private func hideDropTarget() {
+        dragPointer = nil
+        looksSinceStill = 0
+        dropZone?.hide()
+    }
+
+    /// The mouse is up, or Lanes is stopping or sleeping: the next drag starts afresh.
+    private func endDrag() {
+        dragGaveUp = false
+        hideDropTarget()
+    }
+
+    /// How many times the window being dragged is looked at after the pointer stops, 50ms
+    /// apart: long enough for an app slow to say where the window went.
+    private static let looksOnceStill = 6
 
     /// Whether windows are being moved by hand or are on their way somewhere, when they aren't
     /// to be looked at or moved from here.
@@ -414,6 +492,7 @@ final class LanesController {
         endScroll()
         finishSlide()
         hideOverview()
+        endDrag()
         isAsleep = true
         // Where windows are found now isn't where their apps would have them.
         widthCheck?.cancel()

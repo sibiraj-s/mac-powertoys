@@ -80,7 +80,8 @@ final class AppState {
         let isTrusted = { permissions.currentStatus(.accessibility) == .granted }
         lanes = LanesController(
             defaults: defaults, shortcuts: shortcuts, windows: laneWindows ?? LiveLaneWindows(isTrusted: isTrusted),
-            isTrusted: isTrusted, overview: laneWindows == nil ? LaneOverviewPanel() : nil)
+            isTrusted: isTrusted, overview: laneWindows == nil ? LaneOverviewPanel() : nil,
+            dropZone: laneWindows == nil ? LaneDropPanel() : nil)
         textExtractor = TextExtractorController(
             defaults: defaults, capturer: regionCapture, reader: textReader, pasteboard: pasteboard,
             access: ScreenAccess(for: .textExtractor, permissions: permissions)

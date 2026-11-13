@@ -21,6 +21,10 @@ protocol LaneWindowSystem: AnyObject {
     func snapshot() -> LaneSnapshot
     /// Where one window is now, without looking at the rest.
     func frame(of id: Int) -> CGRect?
+    /// The window with the keyboard and where it is, if it's a known one, without looking at the
+    /// rest: the one being dragged, while the mouse is held. It's asked over and over during a
+    /// drag, so its app is given only a moment to answer.
+    func draggedWindow() -> LaneDrag
     /// Gives apps that weren't answering another chance at once, for when every window has to be reached.
     func askAgain()
     /// When an app that isn't answering is next due to be asked, if any is being left alone.
@@ -41,6 +45,15 @@ protocol LaneWindowSystem: AnyObject {
     /// Leaves the focused window out of the lanes, or lets it back in. Returns its number when
     /// it's now left out.
     func toggleFloating() -> Int?
+}
+
+/// What's found of the window being dragged.
+enum LaneDrag: Equatable {
+    case window(id: Int, frame: CGRect)
+    /// No known window has the keyboard.
+    case none
+    /// The frontmost app didn't answer in time.
+    case notAnswering
 }
 
 /// Other apps' windows through Accessibility, which also says when they change.
@@ -242,10 +255,19 @@ final class LiveLaneWindows: LaneWindowSystem {
         min(30, pow(2, Double(max(times, 1) - 1)))
     }
 
+    /// The frontmost app, unless it's this one, whose windows aren't arranged, and which can't
+    /// answer questions put from its own main thread; or one that isn't answering.
+    private var frontmostOther: pid_t? {
+        guard let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier,
+            pid != ProcessInfo.processInfo.processIdentifier, silent[pid] == nil
+        else { return nil }
+        return pid
+    }
+
     /// The frontmost app's focused window, if it's a known one and its app is answering.
     private func focusedID() -> Int? {
-        guard let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier, silent[pid] == nil else { return nil }
-        return AXWindow.focused(timeout: Self.patience).flatMap { ids[Element(element: $0.element)] }
+        guard let pid = frontmostOther else { return nil }
+        return AXWindow.focused(of: pid, timeout: Self.patience).window.flatMap { ids[Element(element: $0.element)] }
     }
 
     func apply(_ move: LaneMove) -> CGRect? {
@@ -283,6 +305,23 @@ final class LiveLaneWindows: LaneWindowSystem {
         return frame
     }
 
+    func draggedWindow() -> LaneDrag {
+        guard let pid = frontmostOther else { return .none }
+        // A slow answer isn't held against the app, as at a look: its windows are about to be
+        // looked at for the drop, which mustn't pass them over.
+        let focused = AXWindow.focused(of: pid, timeout: Self.dragPatience)
+        guard focused.answered else { return .notAnswering }
+        guard let window = focused.window, let id = ids[Element(element: window.element)], !floating.contains(id) else {
+            return .none
+        }
+        // Asked through the element just found, which has the drag's shorter wait.
+        let read = window.answeredFrame
+        guard read.answered else { return .notAnswering }
+        guard let frame = read.frame else { return .none }
+        remember(frame, of: id, in: pid)
+        return .window(id: id, frame: frame)
+    }
+
     func askAgain() {
         silent = [:]
         allStale = true
@@ -299,6 +338,8 @@ final class LiveLaneWindows: LaneWindowSystem {
     /// How long to wait on an app, in seconds: one that's hung stops holding things up after
     /// this, not the six seconds Accessibility waits by default.
     private static let patience: Float = 0.5
+    /// How long to wait on the app of a window being dragged, asked every 50ms.
+    private static let dragPatience: Float = 0.2
 
     /// Keeps what's known of a window's frame up with a move made here, which isn't looked into again.
     private func remember(_ frame: CGRect, of id: Int, in pid: pid_t) {
@@ -348,7 +389,9 @@ final class LiveLaneWindows: LaneWindowSystem {
     }
 
     func toggleFloating() -> Int? {
-        guard let focused = AXWindow.focused(timeout: Self.patience), let id = id(for: focused) else { return nil }
+        guard let pid = frontmostOther, let focused = AXWindow.focused(of: pid, timeout: Self.patience).window,
+            let id = id(for: focused)
+        else { return nil }
         // In or out, its app's windows are counted afresh.
         stale.insert(focused.pid)
         if floating.remove(id) != nil { return nil }
