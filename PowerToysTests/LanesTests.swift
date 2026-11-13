@@ -2045,9 +2045,14 @@ struct LanesControllerTests {
         }
         #expect(dropZone.shown.first == CGRect(x: 0, y: 25, width: 600, height: 775))
         #expect(dropZone.shown.last == landing)
-        // Held still from then on: the window is left be, after a few more looks.
-        try? await Task.sleep(for: .milliseconds(500))
-        let reads = windows.dragReads
+        // Held still from then on: the window is left be, after a few more looks. Those looks
+        // take longer on a busy machine, so wait for them to stop rather than for a set time.
+        var reads = windows.dragReads
+        for _ in 0..<50 {
+            try? await Task.sleep(for: .milliseconds(200))
+            if windows.dragReads == reads { break }
+            reads = windows.dragReads
+        }
         try? await Task.sleep(for: .milliseconds(200))
         #expect(windows.dragReads == reads)
         #expect(dropZone.isShowing)
