@@ -5,5 +5,8 @@
 	<!-- Distributed outside the Mac App Store: the sandbox blocks Accessibility and event taps. -->
 	<key>com.apple.security.automation.apple-events</key>
 	<true/>
+	<!-- The hardened runtime blocks Location without it; only the Wi‑Fi network's name needs it. -->
+	<key>com.apple.security.personal-information.location</key>
+	<true/>
 </dict>
 </plist>

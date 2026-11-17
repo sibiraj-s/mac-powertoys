@@ -541,7 +541,7 @@ struct AwakeLidClosedTests {
         let awake = makeAwake(lid)
         awake.setKeepsAwakeWithLidClosed(true)
         #expect(!awake.keepsAwakeWithLidClosed)
-        #expect(awake.lidClosedProblem == LidSleepNeedsApproval().errorDescription)
+        #expect(awake.lidClosedProblem == HelperNeedsApproval().errorDescription)
     }
 
     @Test func turningOffUnregistersTheHelper() {
@@ -617,6 +617,32 @@ struct AwakeLidClosedTests {
     }
 
     @Test func serviceNameFollowsTheBundleID() {
-        #expect(AwakeHelperService.name(appBundleID: "dev.sibiraj.powertoys") == "dev.sibiraj.powertoys.AwakeHelper")
+        #expect(HelperService.name(appBundleID: "dev.sibiraj.powertoys") == "dev.sibiraj.powertoys.Helper")
+        #expect(HelperService.retiredName(appBundleID: "dev.sibiraj.powertoys") == "dev.sibiraj.powertoys.AwakeHelper")
+    }
+
+    @Test func aRetiredHelperTurnsTheSettingOffAndSaysWhy() {
+        store.defaults.set(true, forKey: AwakeController.keepsAwakeWithLidClosedKey)
+        let lid = FakeLidSleep()
+        lid.replacedOldHelper = true
+        let awake = makeAwake(lid)
+        #expect(!awake.keepsAwakeWithLidClosed)
+        #expect(awake.lidClosedProblem == AwakeController.helperRenamedProblem)
+    }
+
+    @Test func turningOnTellsAnAlreadyAllowedHelperItsUsed() {
+        let lid = FakeLidSleep()
+        lid.isAllowed = true
+        let awake = makeAwake(lid)
+        awake.setKeepsAwakeWithLidClosed(true)
+        #expect(lid.allowed == 1)
+        #expect(awake.keepsAwakeWithLidClosed)
+    }
+
+    @Test func aMissingHelperTurnsTheSettingOffQuietly() {
+        store.defaults.set(true, forKey: AwakeController.keepsAwakeWithLidClosedKey)
+        let awake = makeAwake(FakeLidSleep())
+        #expect(!awake.keepsAwakeWithLidClosed)
+        #expect(awake.lidClosedProblem == nil)
     }
 }

@@ -26,6 +26,7 @@ enum ShortcutCatalog {
             + [PinCropController.pinShortcut]
             + [WindowSwitcherController.switchShortcut]
             + FinderExtrasController.Action.allCases.map(\.shortcut)
+            + [NetworkController.toggleThrottleShortcut, NetworkController.flushDNSShortcut, NetworkController.toggleProxyShortcut]
             + [
                 DisplaysAudioController.muteShortcut, DisplaysAudioController.nextOutputShortcut,
                 DisplaysAudioController.brightnessUpShortcut, DisplaysAudioController.brightnessDownShortcut,

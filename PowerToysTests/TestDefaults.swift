@@ -22,7 +22,7 @@ extension AppState {
     static func testing(
         defaults: UserDefaults, hotKeys: any HotKeyRegistering, system: any SystemSettingsAccess, pinCrop: PinCropController? = nil,
         displaysAudio: DisplaysAudioController? = nil, screenRuler: ScreenRulerController? = nil,
-        laneWindows: any LaneWindowSystem = FakeLaneWindows()
+        laneWindows: any LaneWindowSystem = FakeLaneWindows(), networkReader: FakeNetworkReader = FakeNetworkReader()
     ) -> AppState {
         AppState(
             defaults: defaults,
@@ -37,7 +37,10 @@ extension AppState {
             displaysAudio: displaysAudio ?? .testing(defaults: defaults),
             finder: FakeFinder(),
             screenRuler: screenRuler,
-            laneWindows: laneWindows
+            laneWindows: laneWindows,
+            networkHelper: FakeNetworkHelper(),
+            networkReader: networkReader,
+            networkInfo: NetworkInfoController(reader: networkReader, makeLocation: nil)
         )
     }
 }
@@ -82,14 +85,17 @@ nonisolated func stall(seconds: Double) async {
 final class FakeLidSleep: LidSleepControl {
     var onInterrupted: (() -> Void)?
     var isAllowed = false
+    var replacedOldHelper = false
     var needsApproval = false
     var works = true
     private(set) var calls: [Bool] = []
+    private(set) var allowed = 0
     private(set) var disallowed = 0
 
     func allow() throws {
-        if needsApproval { throw LidSleepNeedsApproval() }
+        if needsApproval { throw HelperNeedsApproval() }
         isAllowed = true
+        allowed += 1
     }
 
     /// Like the real one, does nothing when it isn't registered.

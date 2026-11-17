@@ -9,7 +9,7 @@
 /* Begin PBXBuildFile section */
 		A30000000000000000000010 /* FinderExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A30000000000000000000001 /* FinderExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		A50000000000000000000001 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = A50000000000000000000003 /* Sparkle */; };
-		A60000000000000000000010 /* AwakeHelper in Embed Awake Helper */ = {isa = PBXBuildFile; fileRef = A60000000000000000000001 /* AwakeHelper */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		A60000000000000000000010 /* PowerToysHelper in Embed Helper */ = {isa = PBXBuildFile; fileRef = A60000000000000000000001 /* PowerToysHelper */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -32,7 +32,7 @@
 			containerPortal = A10000000000000000000009 /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = A60000000000000000000006;
-			remoteInfo = AwakeHelper;
+			remoteInfo = PowerToysHelper;
 		};
 /* End PBXContainerItemProxy section */
 
@@ -48,15 +48,15 @@
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		A60000000000000000000011 /* Embed Awake Helper */ = {
+		A60000000000000000000011 /* Embed Helper */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
 			dstPath = "";
 			dstSubfolderSpec = 6;
 			files = (
-				A60000000000000000000010 /* AwakeHelper in Embed Awake Helper */,
+				A60000000000000000000010 /* PowerToysHelper in Embed Helper */,
 			);
-			name = "Embed Awake Helper";
+			name = "Embed Helper";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXCopyFilesBuildPhase section */
@@ -66,21 +66,22 @@
 		A10000000000000000000030 /* Signing.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Signing.xcconfig; sourceTree = "<group>"; };
 		A20000000000000000000001 /* PowerToysTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PowerToysTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A30000000000000000000001 /* FinderExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = FinderExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
-		A60000000000000000000001 /* AwakeHelper */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = AwakeHelper; sourceTree = BUILT_PRODUCTS_DIR; };
+		A60000000000000000000001 /* PowerToysHelper */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = PowerToysHelper; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		A60000000000000000000030 /* Exceptions for "Shared" folder in "AwakeHelper" target */ = {
+		A60000000000000000000030 /* Exceptions for "Shared" folder in "PowerToysHelper" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				FinderMenuRequest.swift,
 			);
-			target = A60000000000000000000006 /* AwakeHelper */;
+			target = A60000000000000000000006 /* PowerToysHelper */;
 		};
 		A60000000000000000000031 /* Exceptions for "Shared" folder in "FinderExtension" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				AwakeHelperProtocol.swift,
+				HelperProtocol.swift,
+				NetworkRules.swift,
 			);
 			target = A30000000000000000000006 /* FinderExtension */;
 		};
@@ -106,14 +107,14 @@
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
 				A60000000000000000000031 /* Exceptions for "Shared" folder in "FinderExtension" target */,
-				A60000000000000000000030 /* Exceptions for "Shared" folder in "AwakeHelper" target */,
+				A60000000000000000000030 /* Exceptions for "Shared" folder in "PowerToysHelper" target */,
 			);
 			path = Shared;
 			sourceTree = "<group>";
 		};
-		A60000000000000000000002 /* AwakeHelper */ = {
+		A60000000000000000000002 /* PowerToysHelper */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = AwakeHelper;
+			path = PowerToysHelper;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -158,7 +159,7 @@
 				A10000000000000000000002 /* PowerToys */,
 				A20000000000000000000002 /* PowerToysTests */,
 				A30000000000000000000002 /* FinderExtension */,
-				A60000000000000000000002 /* AwakeHelper */,
+				A60000000000000000000002 /* PowerToysHelper */,
 				A40000000000000000000002 /* Shared */,
 				A10000000000000000000005 /* Products */,
 			);
@@ -170,7 +171,7 @@
 				A10000000000000000000001 /* PowerToys Dev.app */,
 				A20000000000000000000001 /* PowerToysTests.xctest */,
 				A30000000000000000000001 /* FinderExtension.appex */,
-				A60000000000000000000001 /* AwakeHelper */,
+				A60000000000000000000001 /* PowerToysHelper */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -186,8 +187,8 @@
 				A10000000000000000000003 /* Frameworks */,
 				A10000000000000000000008 /* Resources */,
 				A30000000000000000000011 /* Embed Foundation Extensions */,
-				A60000000000000000000011 /* Embed Awake Helper */,
-				A60000000000000000000012 /* Write Awake Helper Daemon Plist */,
+				A60000000000000000000011 /* Embed Helper */,
+				A60000000000000000000012 /* Write Helper Daemon Plists */,
 			);
 			buildRules = (
 			);
@@ -253,9 +254,9 @@
 			productReference = A30000000000000000000001 /* FinderExtension.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
-		A60000000000000000000006 /* AwakeHelper */ = {
+		A60000000000000000000006 /* PowerToysHelper */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = A6000000000000000000000A /* Build configuration list for PBXNativeTarget "AwakeHelper" */;
+			buildConfigurationList = A6000000000000000000000A /* Build configuration list for PBXNativeTarget "PowerToysHelper" */;
 			buildPhases = (
 				A60000000000000000000007 /* Sources */,
 				A60000000000000000000003 /* Frameworks */,
@@ -266,13 +267,13 @@
 			);
 			fileSystemSynchronizedGroups = (
 				A40000000000000000000002 /* Shared */,
-				A60000000000000000000002 /* AwakeHelper */,
+				A60000000000000000000002 /* PowerToysHelper */,
 			);
-			name = AwakeHelper;
+			name = PowerToysHelper;
 			packageProductDependencies = (
 			);
-			productName = AwakeHelper;
-			productReference = A60000000000000000000001 /* AwakeHelper */;
+			productName = PowerToysHelper;
+			productReference = A60000000000000000000001 /* PowerToysHelper */;
 			productType = "com.apple.product-type.tool";
 		};
 /* End PBXNativeTarget section */
@@ -320,7 +321,7 @@
 				A10000000000000000000006 /* PowerToys */,
 				A20000000000000000000006 /* PowerToysTests */,
 				A30000000000000000000006 /* FinderExtension */,
-				A60000000000000000000006 /* AwakeHelper */,
+				A60000000000000000000006 /* PowerToysHelper */,
 			);
 		};
 /* End PBXProject section */
@@ -350,7 +351,7 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
-		A60000000000000000000012 /* Write Awake Helper Daemon Plist */ = {
+		A60000000000000000000012 /* Write Helper Daemon Plists */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -359,15 +360,16 @@
 			);
 			inputPaths = (
 			);
-			name = "Write Awake Helper Daemon Plist";
+			name = "Write Helper Daemon Plists";
 			outputFileListPaths = (
 			);
 			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Library/LaunchDaemons/$(APP_BUNDLE_ID).Helper.plist",
 				"$(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Library/LaunchDaemons/$(APP_BUNDLE_ID).AwakeHelper.plist",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "# The daemon's label, Mach service and argument all carry the bundle ID, so the Debug and\n# installed apps each register their own helper. RunAtLoad starts it at boot, where it turns\n# sleep back on in case the Mac went down while it was off.\nset -e\nplist=\"$SCRIPT_OUTPUT_FILE_0\"\nmkdir -p \"$(dirname \"$plist\")\"\nname=\"$APP_BUNDLE_ID.AwakeHelper\"\ncat > \"$plist\" <<EOF\n<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\">\n<dict>\n\t<key>Label</key>\n\t<string>$name</string>\n\t<key>BundleProgram</key>\n\t<string>Contents/MacOS/AwakeHelper</string>\n\t<key>ProgramArguments</key>\n\t<array>\n\t\t<string>AwakeHelper</string>\n\t\t<string>$APP_BUNDLE_ID</string>\n\t</array>\n\t<key>MachServices</key>\n\t<dict>\n\t\t<key>$name</key>\n\t\t<true/>\n\t</dict>\n\t<key>RunAtLoad</key>\n\t<true/>\n\t<key>AssociatedBundleIdentifiers</key>\n\t<array>\n\t\t<string>$APP_BUNDLE_ID</string>\n\t</array>\n</dict>\n</plist>\nEOF\n/usr/bin/plutil -lint \"$plist\" >/dev/null\n";
+			shellScript = "# The daemon's label, Mach service and argument all carry the bundle ID, so the Debug and\n# installed apps each register their own helper. RunAtLoad starts it at boot, where it undoes\n# anything it changed in case the Mac went down while it was on. ExitTimeOut gives it time to\n# undo a throttle when it's stopped, before launchd kills it, and KeepAlive starts it again after\n# a crash, so it clears a throttle the crashed one left.\n#\n# The second plist carries the old Awake helper's name, so an updated app can unregister a helper\n# approved under it. Until then it runs at boot only to turn sleep back on, which the old helper\n# did, in case it left sleep off.\nset -e\ndir=\"$(dirname \"$SCRIPT_OUTPUT_FILE_0\")\"\nmkdir -p \"$dir\"\nname=\"$APP_BUNDLE_ID.Helper\"\ncat > \"$SCRIPT_OUTPUT_FILE_0\" <<EOF\n<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\">\n<dict>\n\t<key>Label</key>\n\t<string>$name</string>\n\t<key>BundleProgram</key>\n\t<string>Contents/MacOS/PowerToysHelper</string>\n\t<key>ProgramArguments</key>\n\t<array>\n\t\t<string>PowerToysHelper</string>\n\t\t<string>$APP_BUNDLE_ID</string>\n\t</array>\n\t<key>MachServices</key>\n\t<dict>\n\t\t<key>$name</key>\n\t\t<true/>\n\t</dict>\n\t<key>RunAtLoad</key>\n\t<true/>\n\t<key>KeepAlive</key>\n\t<dict>\n\t\t<key>SuccessfulExit</key>\n\t\t<false/>\n\t</dict>\n\t<key>ExitTimeOut</key>\n\t<integer>90</integer>\n\t<key>AssociatedBundleIdentifiers</key>\n\t<array>\n\t\t<string>$APP_BUNDLE_ID</string>\n\t</array>\n</dict>\n</plist>\nEOF\ncat > \"$SCRIPT_OUTPUT_FILE_1\" <<EOF\n<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\">\n<dict>\n\t<key>Label</key>\n\t<string>$APP_BUNDLE_ID.AwakeHelper</string>\n\t<key>BundleProgram</key>\n\t<string>Contents/MacOS/PowerToysHelper</string>\n\t<key>ProgramArguments</key>\n\t<array>\n\t\t<string>PowerToysHelper</string>\n\t\t<string>--retired</string>\n\t</array>\n\t<key>RunAtLoad</key>\n\t<true/>\n\t<key>AssociatedBundleIdentifiers</key>\n\t<array>\n\t\t<string>$APP_BUNDLE_ID</string>\n\t</array>\n</dict>\n</plist>\nEOF\n/usr/bin/plutil -lint \"$SCRIPT_OUTPUT_FILE_0\" \"$SCRIPT_OUTPUT_FILE_1\" >/dev/null\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -415,7 +417,7 @@
 		};
 		A60000000000000000000021 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = A60000000000000000000006 /* AwakeHelper */;
+			target = A60000000000000000000006 /* PowerToysHelper */;
 			targetProxy = A60000000000000000000020 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
@@ -708,8 +710,8 @@
 				DEAD_CODE_STRIPPING = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_ID).AwakeHelper";
-				PRODUCT_NAME = AwakeHelper;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_ID).Helper";
+				PRODUCT_NAME = PowerToysHelper;
 				SKIP_INSTALL = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_VERSION = 6.0;
@@ -723,8 +725,8 @@
 				DEAD_CODE_STRIPPING = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_ID).AwakeHelper";
-				PRODUCT_NAME = AwakeHelper;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_ID).Helper";
+				PRODUCT_NAME = PowerToysHelper;
 				SKIP_INSTALL = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_VERSION = 6.0;
@@ -770,7 +772,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		A6000000000000000000000A /* Build configuration list for PBXNativeTarget "AwakeHelper" */ = {
+		A6000000000000000000000A /* Build configuration list for PBXNativeTarget "PowerToysHelper" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				A6000000000000000000000E /* Debug */,

@@ -50,7 +50,12 @@ struct PowerToysApp: App {
             }
         }
 
-        MenuBarExtra(isInserted: $showsMenuBarIcon) {
+        // Writes only a real change. AppKit reports the item's visibility every time SwiftUI
+        // updates the scenes, and a write, even of the same value, counts as a change to
+        // UserDefaults that updates them again: the app would spin at launch and never open.
+        MenuBarExtra(
+            isInserted: Binding(get: { showsMenuBarIcon }, set: { if $0 != showsMenuBarIcon { showsMenuBarIcon = $0 } })
+        ) {
             MenuBarView()
                 .environment(appDelegate.state)
         } label: {
@@ -64,6 +69,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Made here rather than in a view, so requests from Finder's menu that launch the app have
     /// somewhere to go before any window opens.
     let state = AppState()
+    private lazy var speedItem = NetworkSpeedItem(state: state)
 
     /// Closing the window keeps modules running; the app quits only from the menu or ⌘Q.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -85,6 +91,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         installURLHandler()
         installStatusItemMenu()
+        speedItem.start()
         DockIcon.start()
         Updater.shared.start()
     }
@@ -176,6 +183,38 @@ nonisolated enum AppInfo {
 
 enum MainWindow {
     static let id = "main"
+
+    /// Posted with a `Pane.storageValue` to switch the open window to that pane.
+    static let showPaneNotification = Notification.Name("PowerToys.showPane")
+
+    /// SwiftUI's action for opening windows, kept from the first of the app's views to appear,
+    /// for AppKit code such as the speed item, which has none of its own.
+    @MainActor static var openAction: OpenWindowAction?
+
+    /// Opens the main window from AppKit code: with SwiftUI's action once a view has handed it
+    /// over, and before that through the app menu's Settings… item, which opens it.
+    @MainActor static func open() {
+        if let openAction {
+            openAction(id: id)
+            return
+        }
+        guard let menu = NSApp.mainMenu?.items.first?.submenu,
+            let index = menu.items.firstIndex(where: { $0.keyEquivalent == "," && $0.keyEquivalentModifierMask == .command })
+        else { return }
+        menu.performActionForItem(at: index)
+    }
+
+    /// A pane asked for before the window was there to hear of it, for the window to open on.
+    @MainActor static var requestedPane: Pane?
+
+    /// Shows `pane` in the main window, whether it's open yet or not.
+    @MainActor static func show(_ pane: Pane, open: () -> Void) {
+        UserDefaults.standard.set(pane.storageValue, forKey: Pane.lastKey)
+        requestedPane = pane
+        open()
+        NotificationCenter.default.post(name: showPaneNotification, object: pane.storageValue)
+        NSApp.activate()
+    }
 
     /// Closes the app's windows, leaving its modules running from the menu bar. Goes through
     /// the close button's path, so a window can still refuse or tidy up first.

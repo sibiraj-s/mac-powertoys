@@ -31,6 +31,10 @@ final class AppState {
     let locksmith: LocksmithController
     let finderExtras: FinderExtrasController
     let screenRuler: ScreenRulerController
+    let network: NetworkController
+    let networkInfo: NetworkInfoController
+    let bandwidth: BandwidthController
+    let networkSpeed: NetworkSpeedMonitor
 
     private(set) var enabledModules: Set<ModuleID>
 
@@ -39,7 +43,7 @@ final class AppState {
 
     init(
         defaults: UserDefaults = .standard,
-        lidSleep: any LidSleepControl = AwakeHelperClient(),
+        lidSleep: any LidSleepControl = LidSleepClient(),
         permissions: PermissionsService? = nil,
         clipboardStore: URL? = ClipboardController.defaultStoreDirectory,
         hotKeys: any HotKeyRegistering = HotKeyCenter.shared,
@@ -62,7 +66,10 @@ final class AppState {
         finder: any FinderAccess = LiveFinder(),
         locksmith: LocksmithController? = nil,
         screenRuler: ScreenRulerController? = nil,
-        laneWindows: (any LaneWindowSystem)? = nil
+        laneWindows: (any LaneWindowSystem)? = nil,
+        networkHelper: (any NetworkPrivileges)? = nil,
+        networkReader: (any NetworkReading)? = nil,
+        networkInfo: NetworkInfoController? = nil
     ) {
         self.defaults = defaults
         self.permissions = permissions ?? PermissionsService(defaults: defaults)
@@ -104,6 +111,11 @@ final class AppState {
             screenRuler
             ?? ScreenRulerController(
                 defaults: defaults, pasteboard: pasteboard, access: ScreenAccess(for: .screenRuler, permissions: permissions))
+        let networkReader = networkReader ?? LiveNetworkReader()
+        network = NetworkController(defaults: defaults, helper: networkHelper ?? NetworkHelperClient(), reader: networkReader)
+        self.networkInfo = networkInfo ?? NetworkInfoController(reader: networkReader)
+        bandwidth = BandwidthController(reader: networkReader)
+        networkSpeed = NetworkSpeedMonitor(defaults: defaults)
         if let stored = defaults.stringArray(forKey: Self.enabledModulesKey) {
             enabledModules = Set(stored.compactMap(ModuleID.init(rawValue:)))
         } else {
@@ -122,10 +134,13 @@ final class AppState {
         if enabledModules.contains(.scrollMouse) { scrollMouse.start() }
         if enabledModules.contains(.keys) { keys.start() }
         if enabledModules.contains(.displaysAudio) { self.displaysAudio.start() }
+        // Turned off with the helper still held, as when the app quit before letting go of it.
+        if !enabledModules.contains(.network) { network.stop() }
+        updateNetworkSpeed()
         updateModuleShortcuts()
     }
 
-    /// Awake, System Toggles, Color Picker, Text Extractor, Pin & Crop, Screen Ruler, Window Switcher, Displays & Audio and Finder Extras register no shortcuts of their own, so their shortcuts
+    /// Awake, System Toggles, Color Picker, Text Extractor, Pin & Crop, Screen Ruler, Window Switcher, Displays & Audio, Finder Extras and Network register no shortcuts of their own, so their shortcuts
     /// follow the module switch here.
     private func updateModuleShortcuts() {
         var simple: [(ModuleID, ShortcutDefinition, () -> Void)] = [
@@ -136,6 +151,9 @@ final class AppState {
             (.screenRuler, ScreenRulerController.measureShortcut, { [weak self] in Task { await self?.screenRuler.measure() } }),
             (.windowSwitcher, WindowSwitcherController.switchShortcut, { [weak self] in self?.windowSwitcher.trigger() }),
             (.displaysAudio, DisplaysAudioController.muteShortcut, { [weak self] in self?.displaysAudio.toggleMicMute() }),
+            (.network, NetworkController.toggleThrottleShortcut, { [weak self] in Task { await self?.network.toggleThrottle() } }),
+            (.network, NetworkController.flushDNSShortcut, { [weak self] in Task { await self?.network.flushDNS() } }),
+            (.network, NetworkController.toggleProxyShortcut, { [weak self] in Task { await self?.network.toggleProxy() } }),
             (.displaysAudio, DisplaysAudioController.nextOutputShortcut, { [weak self] in self?.displaysAudio.selectNextOutput() }),
             (
                 .displaysAudio, DisplaysAudioController.brightnessUpShortcut,
@@ -216,10 +234,33 @@ final class AppState {
         case .scrollMouse: enabled ? scrollMouse.start() : scrollMouse.stop()
         case .keys: enabled ? keys.start() : keys.stop()
         case .displaysAudio: enabled ? displaysAudio.start() : displaysAudio.stop()
+        case .network:
+            if enabled {
+                Task { await network.refresh() }
+            } else {
+                network.stop()
+                networkInfo.cancelSpeedTest()
+            }
+            updateNetworkSpeed()
         default: break
         }
         updateModuleShortcuts()
         defaults.set(enabledModules.map(\.rawValue).sorted(), forKey: Self.enabledModulesKey)
+    }
+
+    // MARK: Network speed in the menu bar
+
+    /// The speed item is in the menu bar while its setting and the Network module are both on.
+    var showsNetworkSpeed: Bool { isEnabled(.network) && networkSpeed.showsInMenuBar }
+
+    func setShowsNetworkSpeed(_ on: Bool) {
+        networkSpeed.showsInMenuBar = on
+        updateNetworkSpeed()
+    }
+
+    /// Samples only while the item is shown. The item itself follows `showsNetworkSpeed`.
+    private func updateNetworkSpeed() {
+        if showsNetworkSpeed { networkSpeed.start() } else { networkSpeed.stop() }
     }
 
     func binding(for id: ModuleID) -> Binding<Bool> {

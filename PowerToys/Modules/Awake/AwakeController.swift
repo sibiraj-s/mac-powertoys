@@ -92,6 +92,8 @@ final class AwakeController {
     static let keepsDisplayOnKey = "awake.keepsDisplayOn"
     static let whileDisplayConnectedKey = "awake.whileDisplayConnected"
     static let keepsAwakeWithLidClosedKey = "awake.keepsAwakeWithLidClosed"
+    static let helperRenamedProblem =
+        "\(AppInfo.name)'s helper has a new name in this version, so it needs allowing once more. Turn this on again and allow \(AppInfo.name) under Login Items & Extensions in System Settings."
 
     @ObservationIgnored private let hasExternalDisplay: () -> Bool
     /// A desktop Mac's screens are all external, so holding for them would mean never sleeping.
@@ -141,6 +143,8 @@ final class AwakeController {
         if keepsAwakeWithLidClosed, !lidSleep.isAllowed {
             keepsAwakeWithLidClosed = false
             defaults.set(false, forKey: Self.keepsAwakeWithLidClosedKey)
+            // Allowed before, under the helper's old name: say why it's off.
+            if lidSleep.replacedOldHelper { lidClosedProblem = Self.helperRenamedProblem }
         }
         // With the switch off, no root helper stays registered, such as one approved in System Settings
         // without the switch being turned on again afterwards.
@@ -152,7 +156,8 @@ final class AwakeController {
     /// turning it off unregisters it. The helper itself turns sleep back on if the app quits or crashes.
     func setKeepsAwakeWithLidClosed(_ on: Bool) {
         lidClosedProblem = nil
-        if on, !lidSleep.isAllowed {
+        // Always, so the helper knows lid sleep uses it even when another feature registered it.
+        if on {
             do {
                 try lidSleep.allow()
             } catch {

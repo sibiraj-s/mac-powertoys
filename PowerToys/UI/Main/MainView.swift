@@ -42,6 +42,7 @@ enum Pane: Hashable {
 
 struct MainView: View {
     @Environment(AppState.self) private var state
+    @Environment(\.openWindow) private var openWindow
     @State private var selection = Pane.initial(defaults: .standard)
     @State private var search = ""
 
@@ -62,6 +63,16 @@ struct MainView: View {
         .frame(minWidth: 760, minHeight: 520)
         .onChange(of: selection) { _, pane in
             UserDefaults.standard.set(pane.storageValue, forKey: Pane.lastKey)
+        }
+        .onAppear {
+            MainWindow.openAction = openWindow
+            // Asked for while the window was closed, so the notification found no one.
+            if let pane = MainWindow.requestedPane { selection = pane }
+            MainWindow.requestedPane = nil
+        }
+        .onReceive(NotificationCenter.default.publisher(for: MainWindow.showPaneNotification)) { notification in
+            MainWindow.requestedPane = nil
+            if let value = notification.object as? String, let pane = Pane(storageValue: value) { selection = pane }
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             // Grants happen in System Settings; pick them up when the user comes back.

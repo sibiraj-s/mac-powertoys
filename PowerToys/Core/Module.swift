@@ -6,7 +6,7 @@ enum ModuleID: String, CaseIterable, Identifiable, Codable, Sendable {
     // Tier 2 — power utilities
     case colorPicker, textExtractor, pinCrop, batchRename, fileLocksmith, finderExtras, displaysAudio, cleaner, apps, lanes
     // Tier 3 — developer
-    case portsProcesses, hostsEnv, launchAgents, defaultsBrowser, screenRuler
+    case portsProcesses, hostsEnv, launchAgents, defaultsBrowser, screenRuler, network
 
     var id: Self { self }
 }
@@ -174,6 +174,13 @@ enum ModuleCatalog {
                 "Browse and change the settings apps keep, hidden ones included, with a copy saved before the first change. Copy any key as a defaults command.",
             symbol: "list.bullet.rectangle", category: .developer, tier: .pro,
             permissions: [], replaces: "defaults CLI", isImplemented: true, offByDefault: true),
+        .init(
+            id: .network, name: "Network",
+            summary:
+                "Throttle the whole Mac like a slow or lossy connection, switch DNS servers, send domains to their own resolver, flip a debugging proxy on, and see speed and what each app is using.",
+            symbol: "antenna.radiowaves.left.and.right", category: .developer, tier: .pro,
+            // The helper is asked for the first time something is changed, not when the module is turned on.
+            permissions: [], replaces: "Network Link Conditioner, networksetup", isImplemented: true, offByDefault: true),
         .init(
             id: .screenRuler, name: "Screen Ruler",
             summary: "Measure the space between edges on screen, or drag over an area, and copy its size in points or pixels.",

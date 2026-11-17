@@ -78,6 +78,7 @@ struct ModuleDetailView: View {
         case .fileLocksmith: FileLocksmithSettingsView()
         case .finderExtras: FinderExtrasSettingsView()
         case .screenRuler: ScreenRulerSettingsView()
+        case .network: NetworkSettingsView()
         }
     }
 }

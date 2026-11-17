@@ -16,6 +16,12 @@
 	     generate it from an INFOPLIST_KEY_ build setting. -->
 	<key>NSAudioCaptureUsageDescription</key>
 	<string>$(APP_DISPLAY_NAME) plays each app's sound through at the volume you set for it.</string>
+	<!-- macOS only shows the Wi‑Fi network's name to apps allowed to use Location. Asked for only
+	     from the Network module's Info tab. -->
+	<key>NSLocationUsageDescription</key>
+	<string>$(APP_DISPLAY_NAME) shows the name of the Wi‑Fi network you're on. It doesn't use or keep your location.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>$(APP_DISPLAY_NAME) shows the name of the Wi‑Fi network you're on. It doesn't use or keep your location.</string>
 	<!-- Merged with the generated Info.plist. Finder's menu extension sends its actions here. -->
 	<key>CFBundleURLTypes</key>
 	<array>

@@ -130,6 +130,12 @@ export const moduleGroups: ModuleGroup[] = [
           'Edit /etc/hosts with groups you switch on and off together, and see PATH and the environment each shell and apps start with.',
       },
       {
+        id: 'network',
+        name: 'Network',
+        summary:
+          'Throttle the whole Mac like a slow or lossy connection, switch DNS servers, send domains to their own resolver, flip a debugging proxy on, and see speed and what each app is using.',
+      },
+      {
         id: 'launch-agents',
         name: 'Launch Agents',
         summary:

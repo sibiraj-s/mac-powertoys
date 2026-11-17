@@ -130,6 +130,29 @@ struct MenuBarView: View {
                         }
                     }
                 }
+                if state.isEnabled(.network) {
+                    NetworkTiles()
+                }
+            }
+
+            if state.isEnabled(.network), let message = state.network.message, message.isError {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Label(message.text, systemImage: "exclamationmark.triangle")
+                        .foregroundStyle(.orange)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Button {
+                        state.network.dismissMessage()
+                    } label: {
+                        Image(systemName: "xmark").font(.system(size: 9, weight: .semibold))
+                    }
+                    .buttonStyle(.borderless)
+                    .foregroundStyle(.secondary)
+                    .help("Dismiss")
+                    .accessibilityLabel("Dismiss")
+                }
+                .font(.caption)
+                .padding(.horizontal, 6)
             }
 
             // macOS's own slider is off for the multi-output device, which has no volume of its own.
@@ -157,6 +180,7 @@ struct MenuBarView: View {
         // Settings can change elsewhere. The menu's window stays alive between openings, so
         // read them again each time it becomes key, not only on first appearance.
         .background(WindowReader { window = $0 })
+        .onAppear { MainWindow.openAction = openWindow }
         .onAppear { refresh() }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { notification in
             guard let window, notification.object as? NSWindow === window else { return }
@@ -169,6 +193,9 @@ struct MenuBarView: View {
         state.displaysAudio.refresh()
         if state.isEnabled(.portsProcesses), state.ports.showsInMenuBar {
             Task { await state.ports.refresh() }
+        }
+        if state.isEnabled(.network) {
+            Task { await state.network.refreshForMenu() }
         }
     }
 
@@ -225,6 +252,62 @@ struct MenuBarView: View {
         openWindow(id: MainWindow.id)
         // Clicking the menu bar icon doesn't activate the app; bring the window forward.
         NSApp.activate()
+    }
+}
+
+/// Throttle, DNS and proxy tiles, each with a menu of choices on right-click.
+private struct NetworkTiles: View {
+    @Environment(AppState.self) private var state
+
+    var body: some View {
+        let network = state.network
+        QuickToggle(title: "Throttle", subtitle: throttleSubtitle, symbol: "tortoise", isOn: network.activeThrottle != nil) {
+            Task { await network.toggleThrottle() }
+        }
+        .disabled(network.isBusy)
+        .contextMenu {
+            ForEach(network.profiles) { profile in
+                Button(profile.name) { Task { await network.startThrottle(profile) } }
+            }
+            if network.activeThrottle != nil {
+                Divider()
+                Button("Stop") { Task { await network.stopThrottle() } }
+            }
+        }
+        QuickToggle(title: "Flush DNS", subtitle: network.dnsPreset?.name ?? "Custom DNS", symbol: "arrow.clockwise", isOn: false) {
+            Task { await network.flushDNS() }
+        }
+        .disabled(network.isBusy)
+        .contextMenu {
+            ForEach(DNSPreset.all) { preset in
+                Button(network.dnsPreset == preset ? "✓ \(preset.name)" : preset.name) {
+                    Task { await network.setDNSServers(preset.servers) }
+                }
+            }
+        }
+        QuickToggle(title: "Proxy", subtitle: proxySubtitle, symbol: "arrow.triangle.branch", isOn: network.proxies.isAnyOn) {
+            Task { await network.toggleProxy() }
+        }
+        .disabled(network.isBusy)
+        .contextMenu {
+            ForEach(ProxyPreset.all) { preset in
+                Button("Use \(preset.name)") { Task { await network.useProxyPreset(preset) } }
+            }
+        }
+    }
+
+    private var throttleSubtitle: String {
+        guard let active = state.network.activeThrottle else {
+            return state.shortcuts.hotKey(for: NetworkController.toggleThrottleShortcut)?.keyCaps.joined() ?? "Off"
+        }
+        guard let endsAt = active.endsAt else { return active.profile.name }
+        return "\(active.profile.name) · \(endsAt.formatted(date: .omitted, time: .shortened))"
+    }
+
+    private var proxySubtitle: String {
+        let on = state.network.proxies.configured.filter(\.isOn)
+        guard let first = on.first else { return "Off" }
+        return "\(first.host):\(first.port)"
     }
 }
 
