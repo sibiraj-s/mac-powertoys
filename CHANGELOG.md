@@ -1,5 +1,18 @@
 # powertoys
 
+## 1.8.0
+
+### Minor Changes
+
+- 13c00ba: New Network module, off until you turn it on. Throttle the whole Mac with presets such as 3G, Edge or lossy Wi‑Fi, or your own speeds, delay and packet loss, for all traffic, DNS lookups only, chosen hosts or ports, stopping on a timer or when the app quits. Switch DNS servers, flush the DNS cache, add per-domain resolvers, turn a proxy on and off, see connection and Wi‑Fi details, run Apple's speed test, watch each app's network use, and show upload and download speed as its own menu bar item. Changes go through PowerToys' helper, which you allow once in System Settings. A throttle, and a proxy pointing at this Mac, end when PowerToys quits; DNS and other proxy settings stay.
+
+  Awake's root helper is now that same PowerToys helper, shared by both modules. If you had Keep awake with the lid closed on, it's off after updating and Awake says why: turn it on again and allow PowerToys once more under Login Items & Extensions in System Settings. The old helper is removed from there.
+
+### Patch Changes
+
+- b9a88a4: Apps no longer shows updates for an up-to-date Android Studio or Claude. Android Studio and JetBrains IDEs such as IntelliJ IDEA and PyCharm are now checked against the list of releases they update from, on the channel they're on, and show their full version, such as 2026.2.2 Patch 1. Claude is checked with its own update service. Both used to be estimated from Homebrew's list, which can be ahead of what an app offers. Apps that share an update list, such as several JetBrains IDEs, download it once per check.
+- 481751e: Swiping a Lanes row on the trackpad now steps it one window at a time, sliding smoothly like the mouse wheel, instead of dragging every window along with your fingers and snapping back. A short flick moves one window; keep swiping for more. The overview follows your fingers, and the coasting after you lift no longer moves the row. Switching tabs in an app with native tabs, such as Ghostty, no longer rearranges the row: the tab you switch to takes the place of the one before.
+
 ## 1.7.1
 
 ### Patch Changes
