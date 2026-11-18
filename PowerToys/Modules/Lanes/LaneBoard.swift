@@ -13,6 +13,8 @@ nonisolated struct LaneSnapshot {
     struct Window: Equatable {
         let id: Int
         let frame: CGRect
+        /// The process it belongs to, when that's known.
+        var owner: pid_t? = nil
     }
 
     var displays: [LaneDisplay]
@@ -87,12 +89,11 @@ nonisolated struct LaneBoard {
     /// The size a window took when asked for another: what was asked and what it took.
     private var refused: [Int: (asked: CGSize, took: CGSize)] = [:]
 
-    /// Displays whose row is being scrolled by hand, and so doesn't follow the focused window.
-    private var scrolling: Set<String> = []
     /// The displays there were at the last look.
     private var displays: [LaneDisplay] = []
-    /// Where each window on screen was at the last look.
+    /// Where each window on screen was at the last look, and whose it was.
     private var seen: [Int: CGRect] = [:]
+    private var owners: [Int: pid_t] = [:]
 
     private enum Spot {
         case shown
@@ -120,7 +121,10 @@ nonisolated struct LaneBoard {
     mutating func sync(_ snapshot: LaneSnapshot, afterDrag: Bool = false) {
         displays = snapshot.displays
         let windows = snapshot.windows.filter { !ignored.contains($0.id) }
+        let seenBefore = seen
+        let ownersBefore = owners
         seen = Dictionary(windows.map { ($0.id, $0.frame) }) { first, _ in first }
+        owners = Dictionary(windows.compactMap { window in window.owner.map { (window.id, $0) } }) { first, _ in first }
         let present = Set(windows.map(\.id))
         lanes.removeAll { lane in lane.isEmpty || !snapshot.displays.contains { $0.key == lane.displayKey } }
 
@@ -160,11 +164,21 @@ nonisolated struct LaneBoard {
         }
         // A showing lane loses windows that left the screen; another Space's lane loses any that came to this one.
         let showing = Set(active.values)
+        var unplaced = windows.filter { window in !lanes.contains { $0.contains(window.id) } }
         for index in lanes.indices {
             let leaving = lanes[index].ids.filter { present.contains($0) != showing.contains(index) }
             if showing.contains(index) {
-                // Minimized, or hidden with its app: its place is kept for when it's back.
                 for id in leaving {
+                    // A tab is a window of its own, and the one switched to shows just where the
+                    // one before it was: it takes that one's place in the row, and nothing moves.
+                    let places = [settled[id], seenBefore[id]].compactMap(\.self)
+                    if let tab = unplaced.firstIndex(where: { window in
+                        window.owner == ownersBefore[id] && places.contains { Self.near(window.frame, $0) }
+                    }) {
+                        hand(id, to: unplaced.remove(at: tab), in: index)
+                        continue
+                    }
+                    // Minimized, or hidden with its app: its place is kept for when it's back.
                     seats[id] = lanes[index].seat(of: id)
                 }
             }
@@ -254,29 +268,6 @@ nonisolated struct LaneBoard {
         else { return nil }
         lanes[index].setFocus(next)
         return next
-    }
-
-    /// Scrolls a display's row by hand. Says whether there's a row there to scroll.
-    mutating func scroll(on displayKey: String, by distance: CGFloat) -> Bool {
-        guard let index = active[displayKey] else { return false }
-        scrolling.insert(displayKey)
-        lanes[index].scroll(by: distance)
-        return true
-    }
-
-    /// Ends scrolling by hand. The row stays where it was left if the focused window is still
-    /// wholly in view; otherwise the window with the most in view takes the focus, and this
-    /// returns it to be brought forward. Either way it's the window `Lane.settlesOn` gives.
-    mutating func endScroll(in snapshot: LaneSnapshot) -> Int? {
-        var forward: Int?
-        for display in snapshot.displays where scrolling.contains(display.key) {
-            guard let index = active[display.key] else { continue }
-            guard let next = lanes[index].settlesOn(viewWidth: display.area.width), next != lanes[index].focus else { continue }
-            lanes[index].setFocus(next)
-            forward = next
-        }
-        scrolling = []
-        return forward
     }
 
     // MARK: Placing windows
@@ -371,7 +362,7 @@ nonisolated struct LaneBoard {
             guard let index = active[display.key] else { continue }
             let others = snapshot.displays.filter { $0.key != display.key }.map(\.frame)
             let (peeksLeft, peeksRight) = Self.peeks(of: display.frame, besides: others)
-            lanes[index].fit(viewWidth: display.area.width, followsFocus: !scrolling.contains(display.key))
+            lanes[index].fit(viewWidth: display.area.width)
             for place in lanes[index].placements(viewWidth: display.area.width, peeksLeft: peeksLeft, peeksRight: peeksRight) {
                 guard let current = frames[place.id] else { continue }
                 // Stacked windows share the height evenly; the bottom one takes what's left over.
@@ -427,6 +418,20 @@ nonisolated struct LaneBoard {
     }
 
     /// Drops everything known about a window that has closed.
+    /// Gives a window's place in a lane, and what's known of how it takes being moved, to the
+    /// tab of the same app shown instead of it; the window itself is forgotten. Its tab, shown
+    /// again later, is handed the place back the same way.
+    private mutating func hand(_ id: Int, to tab: LaneSnapshot.Window, in index: Int) {
+        lanes[index].replace(id, with: tab.id)
+        settled[tab.id] = settled[id] ?? tab.frame
+        requested[tab.id] = requested[id] ?? tab.frame
+        if originals[tab.id] == nil { originals[tab.id] = originals[id] }
+        insists[tab.id] = insists[id]
+        refused[tab.id] = refused[id]
+        last[tab.id] = last[id]
+        forget(id)
+    }
+
     mutating func forget(_ id: Int) {
         for index in lanes.indices {
             lanes[index].remove(id)
@@ -437,6 +442,7 @@ nonisolated struct LaneBoard {
         tries[id] = nil
         last[id] = nil
         seen[id] = nil
+        owners[id] = nil
         seats[id] = nil
         insists[id] = nil
         refused[id] = nil

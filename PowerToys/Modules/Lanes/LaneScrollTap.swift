@@ -3,9 +3,10 @@ import Synchronization
 
 /// Sideways two-finger swipes on the trackpad, and turns of a mouse wheel, made while certain
 /// modifier keys are held. They're kept from the app under the pointer. A swipe goes to
-/// `onScroll` as points moved, and keeps coming while it coasts after the fingers lift, even
-/// once the keys are let go; `onLift` says the fingers lifted and `onFinish` that any coasting
-/// is over. Some devices don't say where a swipe starts and ends, which `onScroll` is told.
+/// `onScroll` as points moved, and `onLift` says the fingers lifted. The coasting after is
+/// still kept from the app, even once the keys are let go, but goes nowhere: a swipe is
+/// taken for how far the fingers moved. Some devices don't say where a swipe starts and
+/// ends, which `onScroll` is told.
 /// The wheel goes to `onNotch` as -1 or 1, a few times a second at most. Listens while
 /// Accessibility is allowed.
 final class LaneScrollTap {
@@ -14,7 +15,7 @@ final class LaneScrollTap {
     init(
         flags: CGEventFlags, isTrusted: @escaping () -> Bool,
         onScroll: @escaping @MainActor (_ distance: CGFloat, _ saysWhenItEnds: Bool) -> Void,
-        onLift: @escaping @MainActor () -> Void, onFinish: @escaping @MainActor () -> Void,
+        onLift: @escaping @MainActor () -> Void,
         onNotch: @escaping @MainActor (Int) -> Void
     ) {
         // The tap answers on its own thread without waiting, so scrolling everywhere else never
@@ -27,7 +28,6 @@ final class LaneScrollTap {
                         let distance = take()
                         if distance != 0 { onScroll(distance, saysWhenItEnds) }
                     case .lifted: onLift()
-                    case .finished: onFinish()
                     case .notch(let direction): onNotch(direction)
                     }
                 }
@@ -54,10 +54,8 @@ private nonisolated enum LaneScroll: Sendable {
     /// A swipe moved. The closure gives how far since it was last asked, so that when swipes
     /// come faster than they're handled, one answer covers all that's waiting.
     case swipe(@Sendable () -> CGFloat, saysWhenItEnds: Bool)
-    /// The fingers lifted; the swipe may coast on.
+    /// The fingers lifted.
     case lifted
-    /// The coasting is over.
-    case finished
     case notch(Int)
 }
 
@@ -80,8 +78,6 @@ private nonisolated final class LaneScrollListener: @unchecked Sendable {
     private static let ended: Int64 = 4
     private static let cancelled: Int64 = 8
     private static let mayBegin: Int64 = 128
-    /// The last phase of coasting.
-    private static let coastingEnded: Int64 = 3
     /// When the wheel last counted, in seconds since startup. Only touched on the tap's thread.
     private var lastNotch: Double = 0
     /// How far swipes have moved that hasn't been handed over yet, and whether a handover is on its way.
@@ -114,8 +110,7 @@ private nonisolated final class LaneScrollListener: @unchecked Sendable {
             let distance = event.getDoubleValueField(.scrollWheelEventPointDeltaAxis2)
             let upOrDown = event.getDoubleValueField(.scrollWheelEventPointDeltaAxis1)
             let phase = event.getIntegerValueField(.scrollWheelEventScrollPhase)
-            let coasting = event.getIntegerValueField(.scrollWheelEventMomentumPhase)
-            let isCoasting = coasting != 0
+            let isCoasting = event.getIntegerValueField(.scrollWheelEventMomentumPhase) != 0
             // A swipe is taken or left as a whole, coasting and all, so an app never gets half
             // of one. It's decided by the first of it that moves: taken if the keys are held and
             // it goes more sideways than up or down, which stays the app's, to zoom with for one.
@@ -131,6 +126,7 @@ private nonisolated final class LaneScrollListener: @unchecked Sendable {
                 if swipe == .undecided, phase != 0 { appSawStart = true }
                 return true
             }
+            guard !isCoasting else { return false }
             let asks = waiting.withLock { waiting in
                 waiting.distance += distance
                 defer { waiting.isAsked = true }
@@ -144,7 +140,7 @@ private nonisolated final class LaneScrollListener: @unchecked Sendable {
                                 defer { waiting = (0, false) }
                                 return waiting.distance
                             }
-                        }, saysWhenItEnds: phase != 0 || isCoasting))
+                        }, saysWhenItEnds: phase != 0))
             }
             if phase == Self.ended || phase == Self.cancelled {
                 deliver(.lifted)
@@ -157,7 +153,6 @@ private nonisolated final class LaneScrollListener: @unchecked Sendable {
                     return true
                 }
             }
-            if coasting == Self.coastingEnded { deliver(.finished) }
             return false
         default:
             return true

@@ -138,9 +138,8 @@ final class LanesController {
     @ObservationIgnored private var dragGaveUp = false
     /// Waiting to put the overview away once scrolling has stopped.
     @ObservationIgnored private var overviewHide: Task<Void, Never>?
-    /// The row being scrolled by hand, with the windows as they are now. Looking them all up
-    /// again for every bit of a swipe would be too slow, so their frames are kept up here.
-    @ObservationIgnored private var swipe: (display: String, snapshot: LaneSnapshot)?
+    /// The swipe under way, if it's over a row.
+    @ObservationIgnored private var flick: Flick?
     @ObservationIgnored private var swipeEnd: Task<Void, Never>?
     /// Windows that weren't where they were sent when last moved: what was asked, where they
     /// were when last looked at, and how many looks so far. An app that animates is still on
@@ -255,7 +254,7 @@ final class LanesController {
         // A swipe or slide under way is dropped where it is: every window is about to move anyway.
         swipeEnd?.cancel()
         swipeEnd = nil
-        swipe = nil
+        flick = nil
         swipeIsIdle = false
         hideOverview()
         endDrag()
@@ -324,7 +323,7 @@ final class LanesController {
         finishSlide()
         guard let snapshot = change({ board, _ in board.stepFocus(by: places, on: display) }) else { return }
         // There's no telling when the wheel has stopped, so the overview stays a moment after each notch.
-        showOverview(on: display, in: snapshot, settling: false, animated: true)
+        showOverview(on: display, displays: snapshot.displays, animated: true)
         hideOverview(after: .milliseconds(900))
     }
 
@@ -386,7 +385,7 @@ final class LanesController {
     private func showDropTarget() {
         guard let dropZone else { return }
         // What can be told without asking any app is seen to at every look.
-        guard isRunning, !isAsleep, !dragGaveUp, swipe == nil, slideTask == nil, let display = pointerDisplay(),
+        guard isRunning, !isAsleep, !dragGaveUp, flick == nil, slideTask == nil, let display = pointerDisplay(),
             board.lane(on: display) != nil
         else {
             hideDropTarget()
@@ -433,7 +432,7 @@ final class LanesController {
 
     /// Whether windows are being moved by hand or are on their way somewhere, when they aren't
     /// to be looked at or moved from here.
-    private var isBusy: Bool { isMouseDown() || slideTask != nil || swipe != nil }
+    private var isBusy: Bool { isMouseDown() || slideTask != nil || flick != nil }
 
     /// Brings the lanes in line with the screen, and the windows in line with their lanes.
     func refresh() {
@@ -686,68 +685,147 @@ final class LanesController {
             flags: flags, isTrusted: isTrusted,
             onScroll: { [weak self] distance, saysWhenItEnds in self?.scroll(by: -distance, saysWhenItEnds: saysWhenItEnds) },
             onLift: { [weak self] in self?.swipeLifted() },
-            onFinish: { [weak self] in self?.endScroll() },
             // Turning the wheel towards you goes on along the row, as it goes on down a page.
             onNotch: { [weak self] notch in self?.stepFocus(by: notch < 0 ? 1 : -1) })
         scrollTap?.start()
     }
 
-    /// Scrolls the row under the pointer along by `distance`, its windows following at once.
-    /// A swipe that says when it ends goes on, through any pause with the fingers down, until
-    /// it does. One that doesn't is over when nothing more comes for a moment.
+    /// How far a swipe goes to step the row one window along. The first step comes soon, so a
+    /// short flick is enough; each further step the same way takes a good deal more, and one
+    /// back the other way somewhat more, so a finger that wavers doesn't flick back and forth.
+    static let firstStep: CGFloat = 40
+    static let nextStep: CGFloat = 240
+    static let backStep: CGFloat = 120
+
+    /// A swipe over a row.
+    private struct Flick {
+        let display: String
+        /// The displays at the last look, for the overview.
+        var displays: [LaneDisplay]
+        /// The look taken as the swipe started, for its first step to go by.
+        var start: LaneSnapshot?
+        /// How far the swipe has gone since the row last stepped, and which way that step went.
+        var distance: CGFloat = 0
+        var lastStep = 0
+        /// Whether the end of the row was found by a fresh look since the last step, rather
+        /// than by the row as it was: the focus may have moved since.
+        var endChecked = false
+
+        func need(towards direction: Int) -> CGFloat {
+            switch lastStep {
+            case 0: LanesController.firstStep
+            case direction: LanesController.nextStep
+            default: LanesController.backStep
+            }
+        }
+    }
+
+    /// Takes a swipe along the row under the pointer by `distance`. The windows don't follow
+    /// the fingers, as moving other apps' windows can't keep up with them: once the swipe has
+    /// gone far enough, the row slides one window along, as it does for the wheel, and on
+    /// again for each further stretch. The overview follows the fingers. A swipe that says
+    /// when it ends goes on, through any pause with the fingers down, until it does. One that
+    /// doesn't is over when nothing more comes for a moment.
     func scroll(by distance: CGFloat, saysWhenItEnds: Bool = false) {
         guard isRunning, windows.isReady, !wokeByHand() else { return }
         // Even one that says when it ends is given up on in time, should its end go missing.
         endSwipe(after: saysWhenItEnds ? .seconds(3) : .milliseconds(150))
         guard !swipeIsIdle else { return }
-        if swipe == nil {
-            finishSlide()
+        if flick == nil {
             // Looking at every window is slow, so it's done once a swipe, even one over a
             // display with no row, which is then let go by until it ends.
             guard let display = pointerDisplay() else {
                 swipeIsIdle = true
                 return
             }
-            var snapshot = current()
+            let snapshot = current()
             guard !waitsForADisplay(snapshot) else {
                 swipeIsIdle = true
                 return
             }
             // A window dragged just before the swipe is dropped where it was let go first.
-            board.sync(snapshot, afterDrag: wasDragging)
-            wasDragging = false
-            // During a swipe every window in the row is moved by hand, wherever the pointer is.
-            snapshot.pointer = nil
-            swipe = (display, snapshot)
-        }
-        guard var swipe, board.scroll(on: swipe.display, by: distance) else {
-            self.swipe = nil
-            swipeIsIdle = true
-            return
-        }
-        for move in board.layout(swipe.snapshot, afterDrag: true) {
-            // A window only changing place is sent on its way without waiting to hear back.
-            let actual: CGRect
-            if move.resizes {
-                guard let applied = windows.apply(move) else { continue }
-                actual = applied
-            } else {
-                windows.slide(move.id, to: move.frame.origin)
-                actual = move.frame
+            let dragged = wasDragging
+            board.sync(snapshot, afterDrag: dragged)
+            guard board.lane(on: display) != nil else {
+                swipeIsIdle = true
+                return
             }
-            board.settle(move.id, at: actual)
-            if let index = swipe.snapshot.windows.firstIndex(where: { $0.id == move.id }) {
-                swipe.snapshot.windows[index] = LaneSnapshot.Window(id: move.id, frame: actual)
-            }
+            if dragged { arrange(snapshot) }
+            flick = Flick(display: display, displays: snapshot.displays, start: dragged ? nil : snapshot)
         }
-        self.swipe = swipe
-        showOverview(on: swipe.display, in: swipe.snapshot, settling: true, animated: false)
+        guard var flick else { return }
+        flick.distance += distance
+        let places = plan(&flick)
+        if places != 0 {
+            if let snapshot = step(by: places, on: flick.display, using: flick.start) {
+                flick.displays = snapshot.displays
+            }
+            flick.start = nil
+            flick.endChecked = false
+        }
+        self.flick = flick
+        showOverview(on: flick.display, displays: flick.displays, shift: flick.distance, animated: places != 0)
     }
 
-    /// The fingers lifted. The swipe is over unless it coasts on, which it starts to at once.
+    /// How many places the row steps for the distance a swipe has built up, which is used up.
+    /// At the end of the row there's nowhere to go: the distance is let go of, so swiping on
+    /// towards it builds up nothing to undo on the way back.
+    private func plan(_ flick: inout Flick) -> Int {
+        var places = 0
+        while flick.distance != 0 {
+            let direction = flick.distance > 0 ? 1 : -1
+            let need = flick.need(towards: direction)
+            guard abs(flick.distance) >= need else { break }
+            guard canStep(places + direction, on: flick.display) else {
+                // The row may be out of date, the focus having moved since the last look: one
+                // more look, before taking this for the end.
+                if !flick.endChecked, places == 0 {
+                    flick.endChecked = true
+                    let snapshot = current()
+                    if !waitsForADisplay(snapshot) {
+                        board.sync(snapshot)
+                        flick.start = snapshot
+                        if canStep(direction, on: flick.display) { continue }
+                    }
+                }
+                flick.distance = 0
+                break
+            }
+            places += direction
+            flick.distance -= CGFloat(direction) * need
+            flick.lastStep = direction
+        }
+        return places
+    }
+
+    /// Whether the row on a display has a window `places` along from the focused one.
+    /// Told without looking at any window.
+    private func canStep(_ places: Int, on display: String) -> Bool {
+        guard let lane = board.lane(on: display), let focus = lane.focus else { return false }
+        return lane.neighbor(of: focus, step: places) != nil
+    }
+
+    /// Steps the focus `places` along a display's row and arranges the windows to match,
+    /// going by `start` if it's a look just taken, or else looking again. Windows still on
+    /// their way from the last step set off from where they've got to. Returns the windows as
+    /// they were found, or nil if there's no window there to step to.
+    private func step(by places: Int, on display: String, using start: LaneSnapshot?) -> LaneSnapshot? {
+        stopSlide()
+        let snapshot = start ?? current()
+        guard !waitsForADisplay(snapshot) else { return nil }
+        if start == nil { board.sync(snapshot) }
+        guard let next = board.stepFocus(by: places, on: display) else {
+            arrange(snapshot)
+            return nil
+        }
+        arrange(snapshot, bringing: next)
+        return snapshot
+    }
+
+    /// The fingers lifted, which ends the swipe: any coasting after is let go by.
     func swipeLifted() {
-        guard swipe != nil || swipeIsIdle else { return }
-        endSwipe(after: .milliseconds(80))
+        guard flick != nil || swipeIsIdle else { return }
+        endScroll()
     }
 
     private func endSwipe(after wait: Duration) {
@@ -759,43 +837,36 @@ final class LanesController {
         }
     }
 
-    /// Ends a swipe: the row settles on whichever window it was left on, which gets the keyboard.
+    /// Ends a swipe. The row stays where its steps left it; the overview lets go of the rest
+    /// of the swipe, and goes a moment later.
     func endScroll() {
         swipeEnd?.cancel()
         swipeEnd = nil
         swipeIsIdle = false
-        guard let display = swipe?.display else { return }
-        swipe = nil
+        guard let flick else { return }
+        self.flick = nil
+        showOverview(on: flick.display, displays: flick.displays, animated: true)
         hideOverview(after: .milliseconds(600))
-        // Windows were sent on their way without hearing back; now they're looked at, and any
-        // that didn't end up where it was sent is put right.
-        let snapshot = current()
-        guard !waitsForADisplay(snapshot) else { return }
-        board.sync(snapshot)
-        arrange(snapshot, bringing: board.endScroll(in: snapshot))
-        // The row settled on a window; the overview shows which, on its way out.
-        showOverview(on: display, in: snapshot, settling: false, animated: true, staying: true)
         // Anything that changed during the swipe is caught up on.
         setNeedsRefresh()
     }
 
     // MARK: Overview
 
-    /// Shows the picture of a display's row as it is now, picking out the focused window, or
-    /// while `settling` the one the row would settle on if let go. Unless `staying`, a wait to
-    /// put it away is called off.
-    private func showOverview(on displayKey: String, in snapshot: LaneSnapshot, settling: Bool, animated: Bool, staying: Bool = false) {
-        guard overviewPosition != .off, let overview, let lane = board.lane(on: displayKey),
-            let display = snapshot.displays.first(where: { $0.key == displayKey })
+    /// Shows the picture of a display's row as it is now, picking out the focused window, with
+    /// the part on screen moved `shift` along to follow a swipe. A wait to put it away is called off.
+    private func showOverview(on displayKey: String, displays: [LaneDisplay], shift: CGFloat = 0, animated: Bool) {
+        guard overviewPosition != .off, let overview, var lane = board.lane(on: displayKey),
+            let display = displays.first(where: { $0.key == displayKey })
         else { return }
-        if !staying {
-            overviewHide?.cancel()
-            overviewHide = nil
+        overviewHide?.cancel()
+        overviewHide = nil
+        if shift != 0 {
+            lane.scroll(by: shift)
+            lane.fit(viewWidth: display.area.width, followsFocus: false)
         }
-        let width = display.area.width
         let picture = LaneOverview(
-            lane: lane, area: display.area.size, current: settling ? lane.settlesOn(viewWidth: width) : lane.focus,
-            fitting: LaneOverview.bounds(in: display.area))
+            lane: lane, area: display.area.size, current: lane.focus, fitting: LaneOverview.bounds(in: display.area))
         let sources = lane.ids.compactMap { id in
             windows.owner(of: id).map { LaneOverview.Window(id: id, pid: $0, number: windows.number(of: id)) }
         }
@@ -859,6 +930,13 @@ final class LanesController {
 
     /// Puts sliding windows where they were headed at once: the slide is over, or something
     /// else is about to move them.
+    /// Stops the windows sliding where they've got to, for a new slide to take them on from there.
+    private func stopSlide() {
+        slideTask?.cancel()
+        slideTask = nil
+        sliding = []
+    }
+
     private func finishSlide() {
         guard slideTask != nil else { return }
         slideTask?.cancel()

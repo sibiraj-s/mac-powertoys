@@ -227,7 +227,7 @@ final class LiveLaneWindows: LaneWindowSystem {
                     continue
                 }
                 guard !floating.contains(id), !window.isMinimized, !window.isFullScreen, let frame = window.frame else { continue }
-                seen.append(LaneSnapshot.Window(id: id, frame: frame))
+                seen.append(LaneSnapshot.Window(id: id, frame: frame, owner: pid))
             }
             passedOver[pid] = stillPassedOver
             lastSeen[pid] = seen

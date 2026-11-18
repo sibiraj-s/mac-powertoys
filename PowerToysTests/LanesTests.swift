@@ -107,14 +107,11 @@ struct LaneTests {
         #expect(lane.placements(viewWidth: 1000, peeksLeft: true, peeksRight: false).map(\.placement) == [.shown(x: 0), .hidden(.right)])
     }
 
-    @Test func scrollingByHandLeavesTheFocusedWindowBehind() {
+    @Test func scrollingWithoutFollowingTheFocusLeavesItBehind() {
         var lane = lane([600, 600, 600], focus: 1)
         lane.scroll(by: 500)
         lane.fit(viewWidth: 1000, followsFocus: false)
         #expect(lane.offset == 500)
-        #expect(!lane.isWhollyVisible(1, viewWidth: 1000))
-        #expect(lane.isWhollyVisible(2, viewWidth: 1000))
-        #expect(lane.mostVisible(viewWidth: 1000) == 2)
         // Never past either end.
         lane.scroll(by: 5000)
         lane.fit(viewWidth: 1000, followsFocus: false)
@@ -581,6 +578,111 @@ struct LaneBoardTests {
         #expect(slides[3] == LaneMove.Slide(from: CGPoint(x: 1200, y: 25), to: CGPoint(x: 400, y: 25)))
     }
 
+    @Test func switchingTabsLeavesTheRowAsItIs() {
+        var board = LaneBoard()
+        var frames: [Int: CGRect] = [
+            1: CGRect(x: 0, y: 0, width: 300, height: 300),
+            2: CGRect(x: 350, y: 0, width: 300, height: 300),
+            3: CGRect(x: 700, y: 0, width: 300, height: 300),
+        ]
+        arrange(&board, &frames, focused: 2)
+        let arranged = frames
+        // The second window's app shows another tab: a window of its own, just where it was.
+        frames[4] = frames[2]
+        frames[2] = nil
+        let switched = snapshot(frames, focused: 4)
+        board.sync(switched)
+        #expect(board.lane(on: "A")?.ids == [1, 4, 3])
+        #expect(board.lane(on: "A")?.focus == 4)
+        let moves = board.layout(switched)
+        #expect(moves.isEmpty)
+        // And back.
+        frames[2] = frames[4]
+        frames[4] = nil
+        let back = snapshot(frames, focused: 2)
+        board.sync(back)
+        #expect(board.lane(on: "A")?.ids == [1, 2, 3])
+        #expect(board.layout(back).isEmpty)
+        #expect(frames == arranged)
+    }
+
+    @Test func onlyATabOfTheSameAppTakesAWindowsPlace() {
+        var board = LaneBoard()
+        let frames: [Int: CGRect] = [
+            1: CGRect(x: 0, y: 25, width: 300, height: 775),
+            2: CGRect(x: 300, y: 25, width: 300, height: 775),
+        ]
+        func look(_ windows: [LaneSnapshot.Window], focused: Int) -> LaneSnapshot {
+            LaneSnapshot(displays: [main], windows: windows, focused: focused, mainDisplay: "A")
+        }
+        let start = look(
+            [.init(id: 1, frame: frames[1]!, owner: 10), .init(id: 2, frame: frames[2]!, owner: 20)], focused: 2)
+        board.sync(start)
+        for move in board.layout(start) { _ = board.settle(move.id, at: move.frame) }
+        // The second window is minimized as another app opens one just where it was.
+        let other = look(
+            [.init(id: 1, frame: frames[1]!, owner: 10), .init(id: 3, frame: frames[2]!, owner: 30)], focused: 3)
+        board.sync(other)
+        #expect(board.lane(on: "A")?.ids == [1, 3])
+        // Back from the Dock, it takes its own place again, not the new window's.
+        let back = look(
+            [
+                .init(id: 1, frame: frames[1]!, owner: 10), .init(id: 3, frame: frames[2]!, owner: 30),
+                .init(id: 2, frame: frames[2]!, owner: 20),
+            ], focused: 2)
+        board.sync(back)
+        #expect(board.lane(on: "A")?.ids == [1, 2, 3])
+    }
+
+    @Test func tabTakesOverWhatItsWindowWasFoundToDo() throws {
+        var board = LaneBoard()
+        var frames: [Int: CGRect] = [
+            1: CGRect(x: 100, y: 0, width: 300, height: 300),
+            3: CGRect(x: 500, y: 0, width: 300, height: 300),
+        ]
+        let first = snapshot(frames, focused: 1)
+        board.sync(first)
+        let moves = board.layout(first)
+        #expect(try #require(moves.first { $0.id == 1 }).resizes)
+        for move in moves {
+            frames[move.id] = move.frame
+            _ = board.settle(move.id, at: move.frame)
+        }
+        // A terminal takes a height a few points short, in whole lines, then shows another tab.
+        frames[1] = CGRect(x: 0, y: 25, width: 300, height: 770)
+        _ = board.settle(1, at: frames[1]!)
+        frames[2] = frames[1]
+        frames[1] = nil
+        let switched = snapshot(frames, focused: 2)
+        board.sync(switched)
+        #expect(board.lane(on: "A")?.ids == [2, 3])
+        #expect(board.layout(switched).isEmpty)
+        // Its window is forgotten: the tab is what's put back on the way out.
+        #expect(board.originals.keys.sorted() == [2, 3])
+        // Moved along the row, it isn't asked again for the height its window wouldn't take.
+        _ = board.perform(.move(1), in: switched)
+        let moved = try #require(board.layout(switched).first { $0.id == 2 })
+        #expect(moved.frame.minX == 300)
+        #expect(!moved.resizes)
+    }
+
+    @Test func tabFoundWhereItsWindowWasNudgedStillTakesItsPlace() {
+        var board = LaneBoard()
+        var frames: [Int: CGRect] = [
+            1: CGRect(x: 0, y: 0, width: 300, height: 300),
+            2: CGRect(x: 350, y: 0, width: 300, height: 300),
+            3: CGRect(x: 700, y: 0, width: 300, height: 300),
+        ]
+        arrange(&board, &frames, focused: 2)
+        // Its app nudged the second window a little; before it's put right, another tab shows there.
+        frames[2]?.origin.x += 6
+        board.sync(snapshot(frames, focused: 2))
+        frames[4] = frames[2]
+        frames[2] = nil
+        board.sync(snapshot(frames, focused: 4))
+        #expect(board.lane(on: "A")?.ids == [1, 4, 3])
+    }
+
     @Test func newWindowSlidesFromWhereItOpened() {
         var board = LaneBoard()
         var frames: [Int: CGRect] = [1: CGRect(x: 0, y: 0, width: 300, height: 300)]
@@ -914,23 +1016,30 @@ struct LaneBoardTests {
         #expect(frames[2]?.width == 600)
     }
 
-    @Test func refusedHeightIsNotAskedForAgainOnEveryMove() {
+    @Test func refusedHeightIsNotAskedForAgainOnEveryMove() throws {
         var board = LaneBoard()
-        let frames: [Int: CGRect] = [1: CGRect(x: 100, y: 0, width: 300, height: 300)]
+        var frames: [Int: CGRect] = [
+            1: CGRect(x: 100, y: 0, width: 300, height: 300),
+            2: CGRect(x: 500, y: 0, width: 300, height: 300),
+        ]
         let first = snapshot(frames, focused: 1)
         board.sync(first)
         let moves = board.layout(first)
-        #expect(moves.first?.resizes == true)
+        #expect(moves.first { $0.id == 1 }?.resizes == true)
+        for move in moves {
+            frames[move.id] = move.frame
+            _ = board.settle(move.id, at: move.frame)
+        }
         // A terminal takes a height a few points short, in whole lines.
-        let took = CGRect(x: 0, y: 25, width: 300, height: 770)
-        board.settle(1, at: took)
-        _ = board.scroll(on: "A", by: 0)
-        var next = self.snapshot([1: took, 2: CGRect(x: 0, y: 0, width: 900, height: 300)], focused: 2)
-        next.pointer = nil
+        frames[1] = CGRect(x: 0, y: 25, width: 300, height: 770)
+        _ = board.settle(1, at: frames[1]!)
+        // Moved along the row, past the second window, it isn't resized again.
+        let next = snapshot(frames, focused: 1)
         board.sync(next)
-        // A second window joins and the first moves along; it isn't resized again.
-        let again = board.layout(next)
-        #expect(again.first { $0.id == 1 }.map(\.resizes) != true)
+        _ = board.perform(.move(1), in: next)
+        let again = try #require(board.layout(next).first { $0.id == 1 })
+        #expect(again.frame.minX == 300)
+        #expect(!again.resizes)
     }
 
     @Test func hiddenWindowBelongsToTheDisplayItIsTuckedAt() {
@@ -1273,10 +1382,11 @@ struct LanesControllerTests {
         let lanes = makeController()
         lanes.start()
         lanes.scroll(by: 500)
+        let raised = windows.raised
         lanes.stop()
         #expect(windows.frames == threeWindows())
         // No window was brought forward on the way out.
-        #expect(windows.raised.isEmpty)
+        #expect(windows.raised == raised)
     }
 
     @Test func recoveryOutlastsAStopBeforeTheWindowIsSeen() {
@@ -1356,37 +1466,104 @@ struct LanesControllerTests {
         #expect(windows.frames[3]?.minX == 600)
     }
 
-    @Test func swipeScrollsTheRowAndSettlesOnTheWindowLeftInView() {
+    @Test func swipeStepsTheRowAWindowAtATime() {
         windows.frames = threeWindows()
         windows.focused = 1
         let lanes = makeController()
         lanes.start()
-        lanes.scroll(by: 150)
-        #expect(windows.frames[1]?.minX == -150)
-        #expect(windows.frames[2]?.minX == 450)
-        lanes.scroll(by: 350)
-        // The third window has come in from its corner.
-        #expect(windows.frames[2]?.minX == 100)
-        #expect(windows.frames[3]?.minX == 700)
-        lanes.endScroll()
-        // The second window has the most in view: it takes the keyboard and the row settles on it.
+        // The windows don't follow the fingers.
+        lanes.scroll(by: 30)
+        #expect(windows.frames[1]?.minX == 0)
+        #expect(windows.raised.isEmpty)
+        // A short way further, the row steps along to the second window.
+        lanes.scroll(by: 10)
         #expect(windows.raised == [2])
-        #expect(windows.frames[2] == CGRect(x: 100, y: 25, width: 600, height: 775))
+        #expect(windows.frames[2]?.minX == 400)
+        // The next step the same way takes a good deal more.
+        lanes.scroll(by: 230)
+        #expect(windows.raised == [2])
+        lanes.scroll(by: 10)
+        #expect(windows.raised == [2, 3])
+        #expect(windows.frames[3]?.minX == 400)
+        lanes.endScroll()
+        #expect(windows.raised == [2, 3])
+        #expect(windows.frames[3]?.minX == 400)
+        lanes.stop()
     }
 
     @Test func shortSwipeLeavesTheRowWhereItIs() {
-        windows.frames = [1: CGRect(x: 0, y: 0, width: 300, height: 300), 2: CGRect(x: 400, y: 0, width: 900, height: 300)]
+        windows.frames = threeWindows()
         windows.focused = 1
         let lanes = makeController()
         lanes.start()
-        lanes.scroll(by: 100)  // the row is 1200 long on a display 1000 wide
-        lanes.scroll(by: 500)  // stops at the end
-        #expect(windows.frames[2]?.minX == 100)
-        lanes.scroll(by: -200)
+        let arranged = windows.frames
+        lanes.scroll(by: 30)
+        lanes.scroll(by: -20)
         lanes.endScroll()
-        // The focused window is wholly in view again, so nothing else happens.
-        #expect(windows.frames[1]?.minX == 0)
+        #expect(windows.frames == arranged)
         #expect(windows.raised.isEmpty)
+        lanes.stop()
+    }
+
+    @Test func swipingBackTakesMoreThanAWaver() {
+        windows.frames = threeWindows()
+        windows.focused = 1
+        let lanes = makeController()
+        lanes.start()
+        lanes.scroll(by: 40)
+        #expect(windows.raised == [2])
+        lanes.scroll(by: -60)
+        #expect(windows.raised == [2])
+        lanes.scroll(by: -60)
+        #expect(windows.raised == [2, 1])
+        #expect(windows.frames[1]?.minX == 0)
+        lanes.stop()
+    }
+
+    @Test func longSwipeArrivingAllAtOnceStepsOnceToWhereItGoes() {
+        windows.frames = threeWindows()
+        windows.focused = 1
+        let lanes = makeController()
+        lanes.start()
+        let looks = windows.looks
+        // Swiping came faster than it was handled: both steps' worth in one go.
+        lanes.scroll(by: 300)
+        // Only the window it ends on is brought forward, and every window is looked at only
+        // once, as the swipe started.
+        #expect(windows.raised == [3])
+        #expect(windows.frames[3]?.minX == 400)
+        #expect(windows.looks == looks + 1)
+        lanes.stop()
+    }
+
+    @Test func swipeGoesFromTheWindowWithTheKeyboardNow() {
+        windows.frames = threeWindows()
+        windows.focused = 1
+        let lanes = makeController()
+        lanes.start()
+        lanes.scroll(by: 10)
+        // Mid-swipe the user clicks the last window, which the row hasn't seen yet.
+        windows.focused = 3
+        lanes.scroll(by: -150)
+        // From there, back is the second window, not the end of the row it seemed.
+        #expect(windows.raised == [2])
+        lanes.stop()
+    }
+
+    @Test func swipingOnAtTheEndOfTheRowBuildsNothingUp() {
+        windows.frames = threeWindows()
+        windows.focused = 3
+        let lanes = makeController()
+        lanes.start()
+        let looks = windows.looks
+        for _ in 0..<20 { lanes.scroll(by: 100) }
+        #expect(windows.raised.isEmpty)
+        // Looked at as the swipe started, and once more in case the keyboard had moved; not again.
+        #expect(windows.looks == looks + 2)
+        // Turning back steps back as soon as it would anywhere else.
+        lanes.scroll(by: -40)
+        #expect(windows.raised == [2])
+        lanes.stop()
     }
 
     @Test func widthStillOnItsWayIsNotTakenForARefusal() {
@@ -1496,16 +1673,14 @@ struct LanesControllerTests {
         windows.focused = 1
         let lanes = makeController()
         lanes.start()
-        lanes.scroll(by: 500, saysWhenItEnds: true)
+        lanes.scroll(by: 30, saysWhenItEnds: true)
         try? await Task.sleep(for: .milliseconds(400))  // fingers resting
-        #expect(windows.raised.isEmpty)
-        #expect(windows.frames[2]?.minX == 100)
-        lanes.scroll(by: 100, saysWhenItEnds: true)
-        #expect(windows.frames[2]?.minX == 0)
+        // Still the same swipe: the distance before the pause counts.
+        lanes.scroll(by: 10, saysWhenItEnds: true)
+        #expect(windows.raised == [2])
+        // Lifting ends it; the next swipe starts from nothing.
         lanes.swipeLifted()
-        for _ in 0..<300 where windows.raised.isEmpty {
-            try? await Task.sleep(for: .milliseconds(10))
-        }
+        lanes.scroll(by: 30, saysWhenItEnds: true)
         #expect(windows.raised == [2])
         lanes.stop()
     }
@@ -1564,28 +1739,6 @@ struct LanesControllerTests {
         later.stop()
         // Shown windows stay where they were found; a hidden one is brought into view.
         #expect(windows.frames == broughtIntoView(arranged))
-    }
-
-    @Test func windowThatDidNotLandWhereASwipePutItIsPutRightAfterwards() {
-        windows.frames = [
-            1: CGRect(x: 0, y: 0, width: 300, height: 300),
-            2: CGRect(x: 310, y: 0, width: 300, height: 300),
-            3: CGRect(x: 620, y: 0, width: 300, height: 300),
-            4: CGRect(x: 930, y: 0, width: 300, height: 300),
-        ]
-        windows.focused = 2
-        let lanes = makeController()
-        lanes.start()
-        lanes.scroll(by: 100)
-        #expect(windows.frames[3]?.minX == 500)
-        // Its app left the third window short of where it was sent.
-        windows.frames[3]?.origin.x = 560
-        lanes.endScroll()
-        // The focused window is still wholly in view, so the row stays; only that window is put right.
-        #expect(windows.frames[2]?.minX == 200)
-        #expect(windows.frames[3]?.minX == 500)
-        #expect(windows.raised.isEmpty)
-        lanes.stop()
     }
 
     @Test func confirmingAPlaceWaitsForADragToEnd() {
@@ -2159,14 +2312,6 @@ struct LaneOverviewTests {
         #expect(bottom.maxY == area.maxY - LaneOverview.margin)
         #expect(Set([top.minX, middle.minX, bottom.minX]) == [350])
     }
-
-    @Test func rowSettlesOnTheFocusedWindowWhileItIsWhollyInView() {
-        var lane = lane([[1], [2], [3]], widths: [600, 600, 600])
-        lane.setFocus(1)
-        #expect(lane.settlesOn(viewWidth: 1000) == 1)
-        lane.scroll(by: 150)
-        #expect(lane.settlesOn(viewWidth: 1000) == 2)
-    }
 }
 
 final class FakeLaneOverview: LaneOverviewPresenting {
@@ -2207,17 +2352,19 @@ struct LaneOverviewControllerTests {
             overview: overview, isMouseDown: { false }, pointerDisplay: { "A" }, slideDuration: .zero)
     }
 
-    @Test func swipeShowsTheWholeRowAndWhereItWillSettle() async throws {
+    @Test func swipeShowsTheRowFollowingTheFingersAndSteppingAlong() async throws {
         let lanes = makeController()
         lanes.start()
         #expect(overview.shown.isEmpty)
-        lanes.scroll(by: 150)
+        lanes.scroll(by: 20)
         let showing = try #require(overview.shown.last)
         #expect(overview.isShowing)
         #expect(!showing.animated)
         #expect(showing.overview.tiles.map(\.id) == [1, 2, 3])
-        // The second window has the most in view, so the row would settle on it.
-        #expect(showing.overview.current == 2)
+        #expect(showing.overview.current == 1)
+        // The part on screen has moved along with the fingers.
+        let scale = showing.overview.size.height / 775
+        #expect(abs(showing.overview.view.minX - 20 * scale) < 0.01)
         #expect(showing.windows.map(\.id) == [1, 2, 3])
         #expect(showing.windows.map(\.pid) == [101, 102, 103])
         #expect(showing.windows.map(\.number) == [1001, 1002, 1003])
@@ -2225,9 +2372,19 @@ struct LaneOverviewControllerTests {
         #expect(showing.frame.maxY == 800 - LaneOverview.margin)
         #expect(abs(showing.frame.midX - 500) <= 1)
 
+        // Far enough: the row steps to the second window, and the picture jumps with it.
+        lanes.scroll(by: 30)
+        let stepped = try #require(overview.shown.last)
+        #expect(stepped.animated)
+        #expect(stepped.overview.current == 2)
+        #expect(abs(stepped.overview.view.minX - 210 * scale) < 0.01)
+
         lanes.endScroll()
-        #expect(overview.shown.last?.overview.current == 2)
-        #expect(overview.shown.last?.animated == true)
+        let ended = try #require(overview.shown.last)
+        #expect(ended.overview.current == 2)
+        #expect(ended.animated)
+        // The rest of the swipe is let go of.
+        #expect(abs(ended.overview.view.minX - 200 * scale) < 0.01)
         // It stays a moment, then goes.
         #expect(overview.isShowing)
         await waitUntil { !overview.isShowing }

@@ -109,6 +109,13 @@ nonisolated struct Lane: Equatable {
         if focus == nil { focus = id }
     }
 
+    /// Puts `other` where `id` is, in its column and row, with the focus if `id` had it.
+    mutating func replace(_ id: Int, with other: Int) {
+        guard !contains(other), let index = column(of: id), let row = columns[index].ids.firstIndex(of: id) else { return }
+        columns[index].ids[row] = other
+        if focus == id { focus = other }
+    }
+
     /// Takes a window out. If it had the focus, that goes to the window that takes its place in
     /// its stack, or else to the column on its left, or else to the new first window.
     mutating func remove(_ id: Int) {
@@ -223,40 +230,9 @@ nonisolated struct Lane: Equatable {
         offset += distance
     }
 
-    /// The window to settle on in the column with the most of itself in view on a display
-    /// `viewWidth` wide: the focused one if it's there, or else the column's top. The leftmost of equals.
-    func mostVisible(viewWidth: CGFloat) -> Int? {
-        var start: CGFloat = 0
-        var best: (column: Column, visible: CGFloat)?
-        for column in columns {
-            let visible = min(start + column.width, offset + viewWidth) - max(start, offset)
-            if visible > (best?.visible ?? 0) { best = (column, visible) }
-            start += column.width
-        }
-        guard let column = best?.column else { return nil }
-        return focus.flatMap { column.ids.contains($0) ? $0 : nil } ?? column.ids.first
-    }
-
-    /// Whether all of a window is in view on a display `viewWidth` wide.
-    func isWhollyVisible(_ id: Int, viewWidth: CGFloat) -> Bool {
-        var start: CGFloat = 0
-        for column in columns {
-            if column.ids.contains(id) { return start >= offset - 1 && start + column.width <= offset + viewWidth + 1 }
-            start += column.width
-        }
-        return false
-    }
-
-    /// The window a row scrolled by hand settles on when let go, on a display `viewWidth` wide:
-    /// the focused one while it's wholly in view, or else the one with the most in view.
-    func settlesOn(viewWidth: CGFloat) -> Int? {
-        if let focus, isWhollyVisible(focus, viewWidth: viewWidth) { return focus }
-        return mostVisible(viewWidth: viewWidth)
-    }
-
     /// Makes the row fit a display `viewWidth` wide: no column is wider than the display, and
-    /// the row never scrolls past either end. Unless it's being scrolled by hand, the focused
-    /// window is wholly in view after the shortest scroll that gets it there.
+    /// the row never scrolls past either end. Unless `followsFocus` is off, as for the overview
+    /// following a swipe, the focused window is wholly in view after the shortest scroll that gets it there.
     mutating func fit(viewWidth: CGFloat, followsFocus: Bool = true) {
         for index in columns.indices {
             columns[index].width = min(columns[index].width, viewWidth)
