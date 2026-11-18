@@ -20,14 +20,11 @@ nonisolated struct Lane: Equatable {
         case hidden(Side)
     }
 
-    /// Where a window goes: `x` points from the display's left edge, on screen or off, and
-    /// which of its column's `rows` it takes, counting from the top.
+    /// Where a window goes across: `x` points from the display's left edge, on screen or off.
     struct Place: Equatable {
         let id: Int
         let width: CGFloat
         let x: CGFloat
-        let row: Int
-        let rows: Int
         let placement: Placement
     }
 
@@ -139,6 +136,13 @@ nonisolated struct Lane: Equatable {
     mutating func setWidth(_ width: CGFloat, of id: Int) {
         guard let index = column(of: id) else { return }
         columns[index].width = width
+    }
+
+    /// Makes every column `factor` times as wide, to the nearest point.
+    mutating func scaleWidths(by factor: CGFloat) {
+        for index in columns.indices {
+            columns[index].width = (columns[index].width * factor).rounded()
+        }
     }
 
     /// The top window of the column `step` places along from `id`'s; nil past either end of the row.
@@ -267,8 +271,8 @@ nonisolated struct Lane: Equatable {
                 } else {
                     .shown(x: x)
                 }
-            return column.ids.enumerated().map { row, id in
-                Place(id: id, width: column.width, x: x, row: row, rows: column.ids.count, placement: placement)
+            return column.ids.map { id in
+                Place(id: id, width: column.width, x: x, placement: placement)
             }
         }
     }

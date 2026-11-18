@@ -95,6 +95,33 @@ final class LanesController {
     }
 
     static let overviewPositionKey = "lanes.overview"
+
+    /// Whether windows are made as tall as the display allows. Off, each keeps its own
+    /// height, at the top of the display, with a stack's windows one below the other.
+    var fillsHeight: Bool {
+        didSet {
+            guard fillsHeight != oldValue else { return }
+            defaults.set(fillsHeight, forKey: Self.fillsHeightKey)
+            board.fillsHeight = fillsHeight
+            refresh()
+        }
+    }
+
+    static let fillsHeightKey = "lanes.fillsHeight"
+
+    /// The space around and between windows, in points: one of `gaps`.
+    var gap: Int {
+        didSet {
+            guard gap != oldValue else { return }
+            defaults.set(gap, forKey: Self.gapKey)
+            board.setGap(CGFloat(gap))
+            refresh()
+        }
+    }
+
+    static let gapKey = "lanes.gap"
+    /// Even, so each window keeps a whole number of points of it on every side.
+    static let gaps = [0, 4, 8, 12, 16, 24]
     static let placesKey = "lanes.places"
 
     /// Where a window was put and where it was before, kept on disk while Lanes runs. If the
@@ -207,6 +234,10 @@ final class LanesController {
         scrollModifier = defaults.string(forKey: Self.scrollModifierKey).flatMap(ScrollModifier.init(rawValue:)) ?? .off
         overviewPosition =
             defaults.string(forKey: Self.overviewPositionKey).flatMap(LaneOverview.Position.init(rawValue:)) ?? .bottom
+        fillsHeight = defaults.object(forKey: Self.fillsHeightKey) as? Bool ?? true
+        gap = (defaults.object(forKey: Self.gapKey) as? Int).flatMap { Self.gaps.contains($0) ? $0 : nil } ?? 0
+        board.fillsHeight = fillsHeight
+        board.setGap(CGFloat(gap))
     }
 
     // MARK: Lifecycle
@@ -861,12 +892,14 @@ final class LanesController {
         else { return }
         overviewHide?.cancel()
         overviewHide = nil
+        let area = board.rowArea(of: display)
         if shift != 0 {
             lane.scroll(by: shift)
-            lane.fit(viewWidth: display.area.width, followsFocus: false)
+            lane.fit(viewWidth: area.width, followsFocus: false)
         }
         let picture = LaneOverview(
-            lane: lane, area: display.area.size, current: lane.focus, fitting: LaneOverview.bounds(in: display.area))
+            lane: lane, area: area.size, current: lane.focus, fitting: LaneOverview.bounds(in: display.area), gap: board.gap,
+            spans: board.spans(of: lane, on: display))
         let sources = lane.ids.compactMap { id in
             windows.owner(of: id).map { LaneOverview.Window(id: id, pid: $0, number: windows.number(of: id)) }
         }

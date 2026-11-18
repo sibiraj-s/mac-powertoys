@@ -46,9 +46,13 @@ nonisolated struct LaneOverview: Equatable {
     /// Between the picture and the edge of the panel it sits on.
     static let padding: CGFloat = 8
 
-    /// The picture of `lane` on a display whose usable area is `area` big, as large as fits in
-    /// `bounds`. A row narrower than the display is drawn on a display-wide picture.
-    init(lane: Lane, area: CGSize, current: Int?, fitting bounds: CGSize) {
+    /// The picture of `lane` on a display whose row is laid out in an area `area` big, as large
+    /// as fits in `bounds`. A row narrower than the display is drawn on a display-wide picture.
+    /// Each window is drawn as tall as `spans` says, from the top of that area, and `gap` narrower
+    /// than its column; one without a span shares its column's height evenly.
+    init(
+        lane: Lane, area: CGSize, current: Int?, fitting bounds: CGSize, gap: CGFloat = 0, spans: [Int: LaneSpan] = [:]
+    ) {
         let rowWidth = lane.columns.reduce(0) { $0 + $1.width }
         let width = max(rowWidth, area.width, 1)
         let scale = min(bounds.width / width, bounds.height / max(area.height, 1))
@@ -56,12 +60,15 @@ nonisolated struct LaneOverview: Equatable {
         var start: CGFloat = 0
         var tiles: [Tile] = []
         for column in lane.columns {
-            let rowHeight = height / CGFloat(column.ids.count)
+            let share = area.height / CGFloat(column.ids.count)
             for (row, id) in column.ids.enumerated() {
+                let span = spans[id] ?? LaneSpan(top: CGFloat(row) * share + gap / 2, height: share - gap)
                 tiles.append(
                     Tile(
                         id: id,
-                        frame: CGRect(x: start * scale, y: CGFloat(row) * rowHeight, width: column.width * scale, height: rowHeight)))
+                        frame: CGRect(
+                            x: (start + gap / 2) * scale, y: span.top * scale, width: max(column.width - gap, 1) * scale,
+                            height: max(span.height, 1) * scale)))
             }
             start += column.width
         }

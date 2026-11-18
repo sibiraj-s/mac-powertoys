@@ -6,6 +6,29 @@ struct LanesSettingsView: View {
     var body: some View {
         @Bindable var lanes = state.lanes
 
+        CardSection("Layout") {
+            CardRow(
+                "Fill the display's height",
+                hint:
+                    "Makes each window as tall as the display allows. Off, a window keeps its own height at the top of the display, and you can drag its edge to change it. Windows stacked in a column go one below the other at their own heights when they fit, and share the height when they don't."
+            ) {
+                Toggle("Fill the display's height", isOn: $lanes.fillsHeight)
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .controlSize(.mini)
+            }
+            CardRow("Space between windows", hint: "Leaves this much room between windows, and between them and the edges of the display.")
+            {
+                Picker("Space between windows", selection: $lanes.gap) {
+                    ForEach(LanesController.gaps, id: \.self) { gap in
+                        Text(gap == 0 ? "None" : "\(gap) pt").tag(gap)
+                    }
+                }
+                .labelsHidden()
+                .fixedSize()
+            }
+        }
+
         CardSection("Scrolling") {
             CardRow(
                 "Scroll a row with a swipe or the wheel",

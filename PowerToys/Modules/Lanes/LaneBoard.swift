@@ -28,6 +28,12 @@ nonisolated struct LaneSnapshot {
     var pointer: CGPoint?
 }
 
+/// Where a window goes down its display: its top, and how tall it is.
+nonisolated struct LaneSpan: Equatable {
+    let top: CGFloat
+    let height: CGFloat
+}
+
 /// A window to move, and whether its size changes too.
 nonisolated struct LaneMove: Equatable {
     /// The way a window's top left travels as the row scrolls, which can start or end off screen.
@@ -63,6 +69,11 @@ nonisolated struct LaneBoard {
     }
 
     private(set) var lanes: [Lane] = []
+    /// Whether windows are made as tall as the display allows. Off, each keeps a height of
+    /// its own, at the top of the display, and a stack's windows go one below the other.
+    var fillsHeight = true
+    /// The space around and between windows, in points. Set with `setGap`.
+    private(set) var gap: CGFloat = 0
     /// Where each window was before it joined a lane, to put it back.
     private(set) var originals: [Int: CGRect] = [:]
     /// Windows that kept going back to where they were, and are left alone.
@@ -88,6 +99,9 @@ nonisolated struct LaneBoard {
     private var insists: [Int: CGFloat] = [:]
     /// The size a window took when asked for another: what was asked and what it took.
     private var refused: [Int: (asked: CGSize, took: CGSize)] = [:]
+    /// The height a window was given by hand while `fillsHeight` is off. Until then its own
+    /// height is the one it had before it joined a lane.
+    private var heights: [Int: CGFloat] = [:]
 
     /// The displays there were at the last look.
     private var displays: [LaneDisplay] = []
@@ -102,6 +116,13 @@ nonisolated struct LaneBoard {
 
     func lane(on displayKey: String) -> Lane? {
         active[displayKey].map { lanes[$0] }
+    }
+
+    /// The part of a display a row is laid out in: its usable area less half the gap all
+    /// round. Each window keeps the other half inside its own place, so there's a whole gap
+    /// between windows and at the edges. Column widths include the gap.
+    func rowArea(of display: LaneDisplay) -> CGRect {
+        display.area.insetBy(dx: gap / 2, dy: gap / 2)
     }
 
     // MARK: Following the screen
@@ -138,14 +159,16 @@ nonisolated struct LaneBoard {
                 requested[window.id] = nil
                 settled[window.id] = nil
                 last[window.id] = nil
-            } else if abs(window.frame.width - was.width) > 1 {
-                lanes[index].setWidth(window.frame.width, of: window.id)
+            } else if case (let wider, let taller) = (wider(window, than: was), taller(window, than: was)), wider || taller {
+                if wider { lanes[index].setWidth(window.frame.width + gap, of: window.id) }
+                if taller { heights[window.id] = window.frame.height }
             } else if afterDrag,
                 let display = dragDisplay(of: window.id, at: window.frame, in: lanes[index], pointer: snapshot.pointer)
             {
                 // Dragged without being resized: it's dropped into the row where it was let go.
+                let area = rowArea(of: display)
                 lanes[index].drop(
-                    window.id, from: window.frame.minX - display.area.minX, to: window.frame.maxX - display.area.minX)
+                    window.id, from: window.frame.minX - gap / 2 - area.minX, to: window.frame.maxX + gap / 2 - area.minX)
             }
         }
 
@@ -218,7 +241,8 @@ nonisolated struct LaneBoard {
                 lanes[index].insert(window.id, at: seat, orAfter: anchors[index] ?? lanes[index].focus)
             } else {
                 lanes[index].insert(
-                    window.id, width: min(window.frame.width, display.area.width), after: anchors[index] ?? lanes[index].focus)
+                    window.id, width: min(window.frame.width + gap, rowArea(of: display).width),
+                    after: anchors[index] ?? lanes[index].focus)
                 anchors[index] = window.id
             }
         }
@@ -226,6 +250,17 @@ nonisolated struct LaneBoard {
         if let focused = snapshot.focused, let index = lanes.firstIndex(where: { $0.contains(focused) }) {
             lanes[index].setFocus(focused)
         }
+    }
+
+    /// Whether a window was made wider or narrower than where it was put.
+    private func wider(_ window: LaneSnapshot.Window, than was: CGRect) -> Bool {
+        abs(window.frame.width - was.width) > 1
+    }
+
+    /// Whether a window keeping its own height was given another one. One in a stack sharing
+    /// the height takes it too: made short enough, the stack fits with each at its own.
+    private func taller(_ window: LaneSnapshot.Window, than was: CGRect) -> Bool {
+        !fillsHeight && abs(window.frame.height - was.height) > 1
     }
 
     /// Changes the lane with the keyboard. Returns the window to bring forward, when the step
@@ -255,7 +290,7 @@ nonisolated struct LaneBoard {
             guard let width = lanes[index].width(of: focused),
                 let display = snapshot.displays.first(where: { $0.key == lanes[index].displayKey })
             else { return nil }
-            lanes[index].setWidth(Lane.nextWidth(after: width, viewWidth: display.area.width), of: focused)
+            lanes[index].setWidth(Lane.nextWidth(after: width, viewWidth: rowArea(of: display).width), of: focused)
         }
         return nil
     }
@@ -362,16 +397,18 @@ nonisolated struct LaneBoard {
             guard let index = active[display.key] else { continue }
             let others = snapshot.displays.filter { $0.key != display.key }.map(\.frame)
             let (peeksLeft, peeksRight) = Self.peeks(of: display.frame, besides: others)
-            lanes[index].fit(viewWidth: display.area.width)
-            for place in lanes[index].placements(viewWidth: display.area.width, peeksLeft: peeksLeft, peeksRight: peeksRight) {
-                guard let current = frames[place.id] else { continue }
-                // Stacked windows share the height evenly; the bottom one takes what's left over.
-                let height = (display.area.height / CGFloat(place.rows)).rounded(.down)
-                let y = display.area.minY + CGFloat(place.row) * height
-                let row = CGPoint(x: display.area.minX + place.x, y: y)
+            let area = rowArea(of: display)
+            lanes[index].fit(viewWidth: area.width)
+            var spans: [Int: LaneSpan] = [:]
+            for column in lanes[index].columns {
+                place(column.ids, in: area, frames: frames, into: &spans)
+            }
+            for place in lanes[index].placements(viewWidth: area.width, peeksLeft: peeksLeft, peeksRight: peeksRight) {
+                guard let current = frames[place.id], let span = spans[place.id] else { continue }
+                let row = CGPoint(x: area.minX + place.x + gap / 2, y: span.top)
                 switch place.placement {
                 case .shown:
-                    let size = CGSize(width: place.width, height: place.row == place.rows - 1 ? display.area.maxY - y : height)
+                    let size = CGSize(width: max(place.width - gap, 1), height: max(span.height, 1))
                     targets.append(
                         Target(
                             id: place.id, frame: CGRect(origin: row, size: size), current: current, row: row, isShown: true, slides: true))
@@ -386,6 +423,60 @@ nonisolated struct LaneBoard {
             }
         }
         return targets
+    }
+
+    /// Where a window goes down its display: its top, and how tall it is.
+    /// Where each window of a column, top to bottom, goes down a row laid out in `area`. When
+    /// the display's height isn't filled, they keep their own heights, one below the other
+    /// from the top; if they don't all fit, they're made shorter in proportion. Filling it, or
+    /// with a height not known, they share the height evenly. Made to fit, the bottom one
+    /// takes what's left over.
+    private func place(_ ids: [Int], in area: CGRect, frames: [Int: CGRect], into spans: inout [Int: LaneSpan]) {
+        guard !ids.isEmpty else { return }
+        let room = area.height - gap * CGFloat(ids.count)
+        let own = fillsHeight ? [] : ids.compactMap { ownHeight(of: $0, now: frames[$0]) }
+        let wanted = own.count == ids.count ? own : Array(repeating: room / CGFloat(ids.count), count: ids.count)
+        let total = wanted.reduce(0, +)
+        // Shared evenly, they're made to fit too, for whole points.
+        let fits = own.count == ids.count && total <= room
+        var top = area.minY
+        for (row, (id, height)) in zip(ids, wanted).enumerated() {
+            let height =
+                fits ? height : row == ids.count - 1 ? area.maxY - top - gap : (height * room / max(total, 1)).rounded(.down)
+            spans[id] = LaneSpan(top: top + gap / 2, height: height)
+            top += height + gap
+        }
+    }
+
+    /// Where each window of `lane` goes down `display`, from the top of the part the row is
+    /// laid out in, for a picture of the row.
+    func spans(of lane: Lane, on display: LaneDisplay) -> [Int: LaneSpan] {
+        let area = rowArea(of: display)
+        var spans: [Int: LaneSpan] = [:]
+        for column in lane.columns {
+            place(column.ids, in: area, frames: seen, into: &spans)
+        }
+        return spans.mapValues { LaneSpan(top: $0.top - area.minY, height: $0.height) }
+    }
+
+    /// Changes the space around and between windows. Columns keep their share of the row,
+    /// so windows set to half the display's width still are, and still fit side by side.
+    mutating func setGap(_ gap: CGFloat) {
+        let old = self.gap
+        self.gap = gap
+        guard old != gap else { return }
+        for index in lanes.indices {
+            guard let display = displays.first(where: { $0.key == lanes[index].displayKey }) else { continue }
+            let before = display.area.width - old
+            let after = display.area.width - gap
+            guard before > 0, after > 0 else { continue }
+            lanes[index].scaleWidths(by: after / before)
+        }
+    }
+
+    /// The height a window keeps when it doesn't fill its display's, if it's known.
+    private func ownHeight(of id: Int, now current: CGRect?) -> CGFloat? {
+        heights[id] ?? originals[id]?.height ?? current?.height
     }
 
     /// Takes back a move that couldn't be made, so the window is sent there again at the next layout.
@@ -404,6 +495,9 @@ nonisolated struct LaneBoard {
         guard let asked = requested[id] else { return false }
         settled[id] = actual
         refused[id] = Self.sizeNear(actual.size, asked.size) ? nil : (asked.size, actual.size)
+        // Keeping its own height, one that won't take the height asked has the one it took, so
+        // a window stacked below it goes below that and not over it.
+        if !fillsHeight, abs(actual.height - asked.height) > 1 { heights[id] = actual.height }
         guard abs(actual.width - asked.width) > 1, let index = lanes.firstIndex(where: { $0.contains(id) }) else {
             insists[id] = nil
             return false
@@ -413,7 +507,7 @@ nonisolated struct LaneBoard {
         if mates.contains(where: { mate in insists[mate].map { abs($0 - actual.width) > 1 } ?? false }) {
             lanes[index].unstack(id)
         }
-        lanes[index].setWidth(actual.width, of: id)
+        lanes[index].setWidth(actual.width + gap, of: id)
         return true
     }
 
@@ -428,6 +522,7 @@ nonisolated struct LaneBoard {
         if originals[tab.id] == nil { originals[tab.id] = originals[id] }
         insists[tab.id] = insists[id]
         refused[tab.id] = refused[id]
+        heights[tab.id] = heights[id]
         last[tab.id] = last[id]
         forget(id)
     }
@@ -446,6 +541,7 @@ nonisolated struct LaneBoard {
         seats[id] = nil
         insists[id] = nil
         refused[id] = nil
+        heights[id] = nil
         ignored.remove(id)
     }
 

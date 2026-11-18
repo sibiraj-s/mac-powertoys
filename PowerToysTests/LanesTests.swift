@@ -137,8 +137,8 @@ struct LaneTests {
         lane.stack(3)
         #expect(lane.columns.map(\.ids) == [[1, 2, 3]])
         let places = lane.placements(viewWidth: 1000, peeksLeft: true, peeksRight: true)
-        #expect(places.map(\.row) == [0, 1, 2])
-        #expect(places.allSatisfy { $0.rows == 3 && $0.x == 0 })
+        #expect(places.map(\.id) == [1, 2, 3])
+        #expect(places.allSatisfy { $0.x == 0 })
     }
 
     @Test func unstackingGivesAWindowItsOwnColumnOnTheRight() {
@@ -302,6 +302,193 @@ struct LaneBoardTests {
         #expect(frames[2] == CGRect(x: 0, y: 25, width: 300, height: 775))
         #expect(frames[1] == CGRect(x: 300, y: 25, width: 400, height: 775))
         #expect(board.originals == before)
+    }
+
+    @Test func windowKeepsItsOwnHeightAtTheTopWhenNotFillingTheDisplay() {
+        var board = LaneBoard()
+        board.fillsHeight = false
+        var frames: [Int: CGRect] = [
+            1: CGRect(x: 500, y: 100, width: 400, height: 300),
+            2: CGRect(x: 50, y: 200, width: 300, height: 900),
+        ]
+        arrange(&board, &frames, focused: 2)
+        #expect(frames[2] == CGRect(x: 0, y: 25, width: 300, height: 775))
+        #expect(frames[1] == CGRect(x: 300, y: 25, width: 400, height: 300))
+    }
+
+    @Test func heightGivenByHandIsKeptUntilTheDisplayIsFilledAgain() {
+        var board = LaneBoard()
+        board.fillsHeight = false
+        var frames: [Int: CGRect] = [1: CGRect(x: 0, y: 25, width: 400, height: 300), 2: CGRect(x: 500, y: 25, width: 400, height: 300)]
+        arrange(&board, &frames, focused: 1)
+        // Dragged from its top edge: taller, and no longer at the top.
+        frames[1] = CGRect(x: 0, y: 125, width: 400, height: 500)
+        arrange(&board, &frames, focused: 1)
+        #expect(frames[1] == CGRect(x: 0, y: 25, width: 400, height: 500))
+        #expect(frames[2] == CGRect(x: 400, y: 25, width: 400, height: 300))
+        board.fillsHeight = true
+        arrange(&board, &frames, focused: 1)
+        #expect(frames[1]?.height == 775)
+        #expect(frames[2]?.height == 775)
+        board.fillsHeight = false
+        arrange(&board, &frames, focused: 1)
+        #expect(frames[1]?.height == 500)
+        #expect(frames[2]?.height == 300)
+    }
+
+    @Test func stackedWindowsGoOneBelowTheOtherAtTheirOwnHeightsWhenTheyFit() {
+        var board = LaneBoard()
+        board.fillsHeight = false
+        var frames: [Int: CGRect] = [1: CGRect(x: 0, y: 25, width: 400, height: 200), 2: CGRect(x: 500, y: 25, width: 400, height: 300)]
+        arrange(&board, &frames, focused: 1)
+        _ = board.perform(.stack, in: snapshot(frames, focused: 2))
+        arrange(&board, &frames, focused: 2)
+        #expect(frames[1] == CGRect(x: 0, y: 25, width: 400, height: 200))
+        #expect(frames[2] == CGRect(x: 0, y: 225, width: 400, height: 300))
+    }
+
+    @Test func stackedWindowsTooTallTogetherShareTheHeight() {
+        var board = LaneBoard()
+        board.fillsHeight = false
+        var frames: [Int: CGRect] = [1: CGRect(x: 0, y: 25, width: 400, height: 500), 2: CGRect(x: 500, y: 25, width: 400, height: 500)]
+        arrange(&board, &frames, focused: 1)
+        _ = board.perform(.stack, in: snapshot(frames, focused: 2))
+        arrange(&board, &frames, focused: 2)
+        #expect(frames[1] == CGRect(x: 0, y: 25, width: 400, height: 387))
+        #expect(frames[2] == CGRect(x: 0, y: 412, width: 400, height: 388))
+        // Made short enough by hand, the other keeps its own height below it.
+        frames[1] = CGRect(x: 0, y: 25, width: 400, height: 250)
+        arrange(&board, &frames, focused: 1)
+        #expect(frames[1] == CGRect(x: 0, y: 25, width: 400, height: 250))
+        #expect(frames[2] == CGRect(x: 0, y: 275, width: 400, height: 500))
+    }
+
+    @Test func stackTooTallForTheDisplayIsMadeShorterInProportion() {
+        var board = LaneBoard()
+        board.fillsHeight = false
+        var frames: [Int: CGRect] = [1: CGRect(x: 0, y: 25, width: 400, height: 200), 2: CGRect(x: 500, y: 25, width: 400, height: 300)]
+        arrange(&board, &frames, focused: 1)
+        _ = board.perform(.stack, in: snapshot(frames, focused: 2))
+        arrange(&board, &frames, focused: 2)
+        // Made twice as tall as the one below it, it stays twice as tall.
+        frames[1] = CGRect(x: 0, y: 25, width: 400, height: 600)
+        arrange(&board, &frames, focused: 1)
+        #expect(frames[1] == CGRect(x: 0, y: 25, width: 400, height: 516))
+        #expect(frames[2] == CGRect(x: 0, y: 541, width: 400, height: 259))
+    }
+
+    @Test func stackedWindowThatWontBeAsShortAsAskedHasTheOneBelowItMovedDown() {
+        var board = LaneBoard()
+        board.fillsHeight = false
+        var frames: [Int: CGRect] = [1: CGRect(x: 0, y: 25, width: 400, height: 100), 2: CGRect(x: 500, y: 25, width: 400, height: 300)]
+        arrange(&board, &frames, focused: 1)
+        _ = board.perform(.stack, in: snapshot(frames, focused: 2))
+        // Its app won't make the top one shorter than 300, though it's asked for 100.
+        frames[1] = CGRect(x: 0, y: 25, width: 400, height: 300)
+        _ = board.settle(1, at: frames[1]!)
+        for _ in 0..<2 {
+            let snapshot = snapshot(frames, focused: 2)
+            board.sync(snapshot)
+            for move in board.layout(snapshot) {
+                var frame = move.frame
+                if move.id == 1 { frame.size.height = max(frame.height, 300) }
+                frames[move.id] = frame
+                _ = board.settle(move.id, at: frame)
+            }
+        }
+        #expect(frames[1] == CGRect(x: 0, y: 25, width: 400, height: 300))
+        #expect(frames[2] == CGRect(x: 0, y: 325, width: 400, height: 300))
+    }
+
+    @Test func changingTheGapKeepsHalfWidthWindowsSideBySide() {
+        var board = LaneBoard()
+        var frames: [Int: CGRect] = [1: CGRect(x: 0, y: 25, width: 300, height: 300), 2: CGRect(x: 500, y: 25, width: 300, height: 300)]
+        arrange(&board, &frames, focused: 1)
+        // A third, then a half.
+        for id in [1, 1, 2, 2] {
+            _ = board.perform(.cycleWidth, in: snapshot(frames, focused: id))
+        }
+        arrange(&board, &frames, focused: 1)
+        #expect(frames[2] == CGRect(x: 500, y: 25, width: 500, height: 775))
+        board.setGap(8)
+        arrange(&board, &frames, focused: 1)
+        #expect(frames[1] == CGRect(x: 8, y: 33, width: 488, height: 759))
+        #expect(frames[2] == CGRect(x: 504, y: 33, width: 488, height: 759))
+    }
+
+    @Test func stackedWindowsAtTheirOwnHeightsKeepTheGapBetweenThem() {
+        var board = LaneBoard()
+        board.fillsHeight = false
+        board.setGap(8)
+        var frames: [Int: CGRect] = [1: CGRect(x: 0, y: 25, width: 400, height: 200), 2: CGRect(x: 500, y: 25, width: 400, height: 300)]
+        arrange(&board, &frames, focused: 1)
+        _ = board.perform(.stack, in: snapshot(frames, focused: 2))
+        arrange(&board, &frames, focused: 2)
+        #expect(frames[1] == CGRect(x: 8, y: 33, width: 400, height: 200))
+        #expect(frames[2] == CGRect(x: 8, y: 241, width: 400, height: 300))
+    }
+
+    @Test func fillingTheDisplayStackedWindowsShareTheHeightHoweverShort() {
+        var board = LaneBoard()
+        var frames: [Int: CGRect] = [1: CGRect(x: 0, y: 25, width: 400, height: 200), 2: CGRect(x: 500, y: 25, width: 400, height: 300)]
+        arrange(&board, &frames, focused: 1)
+        _ = board.perform(.stack, in: snapshot(frames, focused: 2))
+        arrange(&board, &frames, focused: 2)
+        #expect(frames[1] == CGRect(x: 0, y: 25, width: 400, height: 387))
+        #expect(frames[2] == CGRect(x: 0, y: 412, width: 400, height: 388))
+    }
+
+    @Test func gapGoesAroundAndBetweenWindows() {
+        var board = LaneBoard()
+        board.setGap(8)
+        var frames: [Int: CGRect] = [
+            1: CGRect(x: 500, y: 100, width: 400, height: 300),
+            2: CGRect(x: 50, y: 200, width: 300, height: 500),
+        ]
+        arrange(&board, &frames, focused: 2)
+        // Eight points from the top of the usable area and from the display's left and bottom edges.
+        #expect(frames[2] == CGRect(x: 8, y: 33, width: 300, height: 759))
+        #expect(frames[1] == CGRect(x: 316, y: 33, width: 400, height: 759))
+        // Widths are kept as they are, not shrunk by the gap each time.
+        let snapshot = snapshot(frames, focused: 2)
+        board.sync(snapshot)
+        #expect(board.layout(snapshot).isEmpty)
+    }
+
+    @Test func gapGoesBetweenStackedWindows() {
+        var board = LaneBoard()
+        board.setGap(8)
+        var frames: [Int: CGRect] = [1: CGRect(x: 0, y: 25, width: 400, height: 300), 2: CGRect(x: 500, y: 25, width: 400, height: 300)]
+        arrange(&board, &frames, focused: 1)
+        _ = board.perform(.stack, in: snapshot(frames, focused: 2))
+        arrange(&board, &frames, focused: 2)
+        #expect(frames[1] == CGRect(x: 8, y: 33, width: 400, height: 375))
+        #expect(frames[2] == CGRect(x: 8, y: 416, width: 400, height: 376))
+    }
+
+    @Test func widthGivenByHandIsKeptWithAGap() {
+        var board = LaneBoard()
+        board.setGap(8)
+        var frames: [Int: CGRect] = [1: CGRect(x: 0, y: 25, width: 400, height: 300), 2: CGRect(x: 500, y: 25, width: 400, height: 300)]
+        arrange(&board, &frames, focused: 1)
+        frames[1] = CGRect(x: 8, y: 33, width: 500, height: 759)
+        arrange(&board, &frames, focused: 1)
+        #expect(frames[1] == CGRect(x: 8, y: 33, width: 500, height: 759))
+        #expect(frames[2]?.minX == 516)
+    }
+
+    @Test func halfWidthWindowsFitSideBySideWithAGap() {
+        var board = LaneBoard()
+        board.setGap(8)
+        var frames: [Int: CGRect] = [1: CGRect(x: 0, y: 25, width: 300, height: 300), 2: CGRect(x: 500, y: 25, width: 300, height: 300)]
+        arrange(&board, &frames, focused: 1)
+        // A third, then a half.
+        for id in [1, 1, 2, 2] {
+            _ = board.perform(.cycleWidth, in: snapshot(frames, focused: id))
+        }
+        arrange(&board, &frames, focused: 1)
+        #expect(frames[1] == CGRect(x: 8, y: 33, width: 488, height: 759))
+        #expect(frames[2] == CGRect(x: 504, y: 33, width: 488, height: 759))
     }
 
     @Test func settledWindowsAreNotMovedAgain() {
@@ -1807,6 +1994,31 @@ struct LanesControllerTests {
         lanes.stop()
     }
 
+    @Test func layoutSettingsAreKeptAndRearrangeTheWindows() {
+        windows.frames = threeWindows()
+        windows.focused = 1
+        let lanes = makeController()
+        #expect(lanes.fillsHeight)
+        #expect(lanes.gap == 0)
+        lanes.start()
+        #expect(windows.frames[1] == CGRect(x: 0, y: 25, width: 600, height: 775))
+        lanes.fillsHeight = false
+        #expect(windows.frames[1] == CGRect(x: 0, y: 25, width: 600, height: 300))
+        // The column keeps its share of the row, less the gap.
+        lanes.gap = 8
+        #expect(windows.frames[1] == CGRect(x: 8, y: 33, width: 587, height: 300))
+        let relaunched = makeController()
+        #expect(!relaunched.fillsHeight)
+        #expect(relaunched.gap == 8)
+        lanes.stop()
+        #expect(windows.frames == threeWindows())
+    }
+
+    @Test func gapNotOnTheListIsNone() {
+        store.defaults.set(5, forKey: LanesController.gapKey)
+        #expect(makeController().gap == 0)
+    }
+
     private func makeController(
         displayGrace: TimeInterval, wakeGrace: TimeInterval, now: @escaping () -> Date = { .now }
     ) -> LanesController {
@@ -2290,6 +2502,18 @@ struct LaneOverviewTests {
         #expect(overview.tiles[0].frame == CGRect(x: 0, y: 0, width: 62.5, height: 50))
         #expect(overview.tiles[1].frame == CGRect(x: 0, y: 50, width: 62.5, height: 50))
         #expect(overview.tiles[2].frame == CGRect(x: 62.5, y: 0, width: 62.5, height: 100))
+    }
+
+    @Test func windowsAreDrawnAsTallAsTheyAreWithTheGapBetweenThem() {
+        let lane = lane([[1], [2, 3]], widths: [500, 500])
+        let spans = [1: LaneSpan(top: 4, height: 300), 2: LaneSpan(top: 4, height: 200), 3: LaneSpan(top: 212, height: 100)]
+        let overview = LaneOverview(
+            lane: lane, area: CGSize(width: 1000, height: 800), current: nil, fitting: CGSize(width: 1000, height: 100), gap: 8,
+            spans: spans)
+        // An eighth of the size: the 8-point gap is a point across.
+        #expect(overview.tiles[0].frame == CGRect(x: 0.5, y: 0.5, width: 61.5, height: 37.5))
+        #expect(overview.tiles[1].frame == CGRect(x: 63, y: 0.5, width: 61.5, height: 25))
+        #expect(overview.tiles[2].frame == CGRect(x: 63, y: 26.5, width: 61.5, height: 12.5))
     }
 
     @Test func rowNarrowerThanTheDisplayIsDrawnDisplayWide() {
