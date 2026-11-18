@@ -5,35 +5,63 @@ import SQLite3
 /// Sparkle apps name in their Info.plist, the update services Chrome and VS Code use, or Homebrew's
 /// casks. It only reads: nothing is downloaded or installed.
 nonisolated enum AppUpdates {
-    enum Source: Hashable, Sendable {
-        case appStore(page: URL)
-        /// A Sparkle appcast, which the app itself installs from.
-        case feed
-        /// Google's update service, or one built like it as Brave's is, which apps such as Chrome
-        /// install from themselves.
-        case googleUpdate
-        /// The update service VS Code and apps built from it name in their product.json.
-        case vsCodeUpdate
-        /// A cask Homebrew installed, which `brew upgrade` updates.
-        case homebrew(cask: String)
-        /// Homebrew's public list of casks, for an app it didn't install: matched by the app's name,
-        /// and the cask's version can be ahead of or behind what the app offers itself.
-        case homebrewCatalog(cask: String)
+    /// Where a version came from, and how the app is updated from there. A new source is one more
+    /// value here; the page offering updates only follows `update`.
+    struct Source: Hashable, Sendable {
+        /// Where the version came from; each source's is its own.
+        let name: String
+        let update: Update
+        /// Whether the version comes from where the app itself updates from, rather than an estimate.
+        let isExact: Bool
 
-        var name: String {
-            switch self {
-            case .appStore: "App Store"
-            case .feed: "Update feed"
-            case .googleUpdate, .vsCodeUpdate: "Update service"
-            case .homebrew: "Homebrew"
-            case .homebrewCatalog: "Homebrew’s list"
+        init(name: String, update: Update, isExact: Bool = true) {
+            self.name = name
+            self.update = update
+            self.isExact = isExact
+        }
+
+        enum Update: Hashable, Sendable {
+            /// Opens a page, such as the app's in the App Store, named by where it opens.
+            case page(URL, in: String)
+            /// Opens the app, which updates itself; `then` says how, when there's a way to say.
+            case app(then: String?)
+            /// Copies a command to run in Terminal.
+            case command(String)
+
+            /// How to update, for the app called `name`.
+            func help(for name: String) -> String {
+                switch self {
+                case .page(_, let place): "Open \(name) in \(place)"
+                case .app(let then?): "Open \(name), then \(then)"
+                case .app(nil): "Open \(name) to update it"
+                case .command(let command): "Copy \(command)"
+                }
             }
         }
 
-        /// Whether the version comes from where the app itself updates from, rather than an estimate.
-        var isExact: Bool {
-            if case .homebrewCatalog = self { false } else { true }
+        static func appStore(page: URL) -> Source { Source(name: "App Store", update: .page(page, in: "the App Store")) }
+        /// A Sparkle appcast, which the app itself installs from.
+        static let feed = Source(name: "Update feed", update: .app(then: checkForUpdates))
+        /// Google's update service, or one built like it as Brave's is, which apps such as Chrome
+        /// install from themselves.
+        static let googleUpdate = Source(name: "Google’s update service", update: .app(then: "its About window to update"))
+        /// The update service VS Code and apps built from it name in their product.json.
+        static let vsCodeUpdate = Source(name: "VS Code’s update service", update: .app(then: checkForUpdates))
+        /// The list of releases IDEs built on IntelliJ, such as Android Studio, check.
+        static let intelliJUpdate = Source(name: "IntelliJ’s list of releases", update: .app(then: checkForUpdates))
+        /// The update service an Electron app's own updater asks, such as Claude's.
+        static let squirrelFeed = Source(name: "Squirrel update service", update: .app(then: checkForUpdates))
+        /// A cask Homebrew installed, which `brew upgrade` updates.
+        static func homebrew(cask: String) -> Source {
+            Source(name: "Homebrew", update: .command("brew upgrade --cask \(cask)"))
         }
+        /// Homebrew's public list of casks, for an app it didn't install: matched by the app's name,
+        /// and the cask's version can be ahead of or behind what the app offers itself.
+        static func homebrewCatalog(cask: String) -> Source {
+            Source(name: "Homebrew’s list, as \(cask)", update: .app(then: nil), isExact: false)
+        }
+
+        private static let checkForUpdates = "use its Check for Updates"
     }
 
     struct Found: Hashable, Sendable {
@@ -65,18 +93,24 @@ nonisolated enum AppUpdates {
         let feed: URL?
         let googleUpdate: GoogleUpdate?
         let vsCodeUpdate: VSCodeUpdate?
+        let intelliJUpdate: IntelliJUpdate?
+        /// The update service the app asks, for an app that doesn't name it in its bundle.
+        let squirrelFeed: URL?
         /// The App Store release installed, which an update the App Store lists may already be.
         let storeVersionID: Int64?
 
         init(
             shortVersion: String?, build: String?, feed: URL?, googleUpdate: GoogleUpdate? = nil,
-            vsCodeUpdate: VSCodeUpdate? = nil, storeVersionID: Int64? = nil
+            vsCodeUpdate: VSCodeUpdate? = nil, intelliJUpdate: IntelliJUpdate? = nil, squirrelFeed: URL? = nil,
+            storeVersionID: Int64? = nil
         ) {
             self.shortVersion = shortVersion
             self.build = build
             self.feed = feed
             self.googleUpdate = googleUpdate
             self.vsCodeUpdate = vsCodeUpdate
+            self.intelliJUpdate = intelliJUpdate
+            self.squirrelFeed = squirrelFeed
             self.storeVersionID = storeVersionID
         }
 
@@ -97,6 +131,12 @@ nonisolated enum AppUpdates {
                     }
             }
             vsCodeUpdate = VSCodeUpdate(product: app.appending(path: "Contents/Resources/app/product.json"))
+            intelliJUpdate = IntelliJUpdate(productInfo: app.appending(path: "Contents/Resources/product-info.json"))
+            if let id = info?["CFBundleIdentifier"] as? String, let version = info?["CFBundleShortVersionString"] as? String {
+                squirrelFeed = squirrelFeedURL(bundleID: id, version: version)
+            } else {
+                squirrelFeed = nil
+            }
             let item = MDItemCreateWithURL(nil, app as CFURL)
             let versionID = item.flatMap { MDItemCopyAttribute($0, "kMDItemAppStoreInstallerVersionID" as CFString) }
             storeVersionID = (versionID as? String).flatMap { Int64($0) } ?? (versionID as? NSNumber)?.int64Value
@@ -137,7 +177,36 @@ nonisolated enum AppUpdates {
 
     // MARK: Checking
 
-    /// The App Store for its apps, then the app's own feed, then Homebrew.
+    /// Asks one of the app's own update services: nil when the app doesn't name it.
+    typealias Service = @Sendable (AppInfo, Fetch) async -> Status?
+
+    /// The app's own update services, asked in order until one answers. One that can't is passed
+    /// over, and why is what's said when Homebrew doesn't know the app either. A new service is
+    /// one more entry here.
+    static let services: [Service] = [
+        { info, fetch in
+            guard let feed = info.feed else { return nil }
+            return await feedStatus(feed, build: info.build, installed: info.shortVersion, fetch: fetch)
+        },
+        { info, fetch in
+            guard let google = info.googleUpdate else { return nil }
+            return await googleUpdateStatus(google, installed: info.shortVersion, fetch: fetch)
+        },
+        { info, fetch in
+            guard let vsCode = info.vsCodeUpdate else { return nil }
+            return await vsCodeUpdateStatus(vsCode, installed: info.shortVersion, fetch: fetch)
+        },
+        { info, fetch in
+            guard let ide = info.intelliJUpdate else { return nil }
+            return await intelliJUpdateStatus(ide, installed: info.shortVersion, fetch: fetch)
+        },
+        { info, fetch in
+            guard let feed = info.squirrelFeed else { return nil }
+            return await squirrelFeedStatus(feed, installed: info.shortVersion, fetch: fetch)
+        },
+    ]
+
+    /// The App Store for its apps, then the app's own update services, then Homebrew.
     static func status(of app: InstalledApp, info: AppInfo, catalog: Catalog, fetch: Fetch) async -> Status {
         if app.isAppStore {
             // What the App Store itself offers: its listing's version can be one this Mac isn't
@@ -159,28 +228,8 @@ nonisolated enum AppUpdates {
             return compare(entry.version, with: info.shortVersion, source: .appStore(page: entry.page))
         }
         var problem: String?
-        if let feed = info.feed {
-            do {
-                if let newest = newestItem(inAppcast: try await fetch(URLRequest(url: feed))) {
-                    let found = Found(source: .feed, latest: newest.shortVersion ?? newest.version, installed: info.shortVersion)
-                    if let build = info.build {
-                        return compareVersions(newest.version, build) == .orderedDescending ? .available(found) : .upToDate(found)
-                    }
-                    problem = "No version in the app"
-                } else {
-                    problem = "Its update feed lists no versions"
-                }
-            } catch {
-                problem = "Couldn't read its update feed"
-            }
-        }
-        if let google = info.googleUpdate {
-            let status = await googleUpdateStatus(google, installed: info.shortVersion, fetch: fetch)
-            guard case .unknown(let why) = status else { return status }
-            problem = why
-        }
-        if let vsCode = info.vsCodeUpdate {
-            let status = await vsCodeUpdateStatus(vsCode, installed: info.shortVersion, fetch: fetch)
+        for service in services {
+            guard let status = await service(info, fetch) else { continue }
             guard case .unknown(let why) = status else { return status }
             problem = why
         }
@@ -443,19 +492,27 @@ nonisolated enum AppUpdates {
 
     /// Asks the service, as VS Code does, for a release newer than the build installed.
     static func vsCodeUpdateStatus(_ vsCode: VSCodeUpdate, installed: String?, fetch: Fetch) async -> Status {
+        await jsonServiceStatus(vsCodeUpdateURL(vsCode), installed: installed, source: .vsCodeUpdate, fetch: fetch) {
+            parseVSCodeUpdate($0, installed: $1)
+        }
+    }
+
+    /// Asks an update service that answers 204, with nothing, when there's no update, and otherwise
+    /// with JSON `parse` reads the newest version from.
+    private static func jsonServiceStatus(
+        _ url: URL, installed: String?, source: Source, fetch: Fetch, parse: (Data, String) -> String?
+    ) async -> Status {
         guard let installed else { return .unknown("No version in the app") }
         let data: Data?
         do {
-            data = try await fetch(URLRequest(url: vsCodeUpdateURL(vsCode)))
+            data = try await fetch(URLRequest(url: url))
         } catch URLError.zeroByteResource {
-            // The service answers 204, with nothing, when there's no update.
             data = Data()
         } catch {
             data = nil
         }
-        guard let data, let latest = parseVSCodeUpdate(data, installed: installed)
-        else { return .unknown("Couldn't read its update service") }
-        return compare(latest, with: installed, source: .vsCodeUpdate)
+        guard let data, let latest = parse(data, installed) else { return .unknown("Couldn't read its update service") }
+        return compare(latest, with: installed, source: source)
     }
 
     static func vsCodeUpdateURL(_ vsCode: VSCodeUpdate) -> URL {
@@ -473,6 +530,187 @@ nonisolated enum AppUpdates {
         if data.isEmpty { return installed }
         let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         return (json?["productVersion"] ?? json?["name"]) as? String
+    }
+
+    // MARK: IntelliJ
+
+    /// What an IDE built on IntelliJ names in its product-info.json. Its version people see, such
+    /// as Android Studio's 2026.2, is too coarse to compare, so its build is what's compared, as
+    /// the IDE itself does.
+    struct IntelliJUpdate: Equatable, Sendable {
+        /// The list of releases, which the IDE names only inside its code, so it's picked by vendor.
+        let list: URL
+        /// Its product code, such as AI for Android Studio or IU for IntelliJ IDEA.
+        let product: String
+        let build: String
+
+        static let lists = [
+            "Google": URL(string: "https://dl.google.com/android/studio/patches/updates.xml")!,
+            "JetBrains": URL(string: "https://www.jetbrains.com/updates/updates.xml")!,
+        ]
+    }
+
+    /// A channel in an IntelliJ update list, such as release or eap, and its builds.
+    struct IntelliJChannel: Equatable, Sendable {
+        let status: String
+        var builds: [IntelliJBuild]
+    }
+
+    /// A release in an IntelliJ update list.
+    struct IntelliJBuild: Equatable, Sendable {
+        /// Its build, without the product code some lists put first.
+        let build: String
+        /// Its version as people see it, such as "2026.2.2 Patch 1".
+        let version: String
+    }
+
+    /// IntelliJ's channels, least to most stable. An IDE on one is offered builds from it and from
+    /// every channel more stable than it, as the IDE itself does.
+    static let intelliJChannels = ["eap", "milestone", "beta", "release"]
+
+    /// Asks the IDE's list of releases for a build newer than the one installed, on the channel the
+    /// installed build came from and the more stable ones; nil when the list doesn't have the IDE,
+    /// so Homebrew's list can still be asked.
+    static func intelliJUpdateStatus(_ ide: IntelliJUpdate, installed: String?, fetch: Fetch) async -> Status? {
+        guard let data = try? await fetch(URLRequest(url: ide.list)) else { return .unknown("Couldn't read its update service") }
+        let products = parseIntelliJUpdates(data)
+        guard !products.isEmpty else { return .unknown("Couldn't read its update service") }
+        guard let channels = products[ide.product.uppercased()] else { return nil }
+        func rank(_ channel: IntelliJChannel) -> Int? { intelliJChannels.firstIndex(of: channel.status) }
+        let release = intelliJChannels.count - 1
+        let listed = channels.compactMap { channel in
+            channel.builds.first { isBuild(ide.build, listedAs: $0.build) }.map { (channel, $0) }
+        }
+        // A build listed in several channels is taken as the most stable one's. One no longer
+        // listed is a preview when it's newer than every release, and a release otherwise.
+        let own: Int
+        if let most = listed.compactMap({ rank($0.0) }).max() {
+            own = most
+        } else {
+            let newestRelease = channels.filter { rank($0) == release }.flatMap(\.builds).map(\.build)
+                .max { compareVersions($0, $1) == .orderedAscending }
+            own = newestRelease.map { compareVersions(ide.build, $0) == .orderedDescending } == true ? 0 : release
+        }
+        let current = listed.first?.1.version ?? installed ?? ide.build
+        let newest = channels.filter { rank($0).map { $0 >= own } ?? false }
+            .flatMap(\.builds)
+            .max { compareVersions($0.build, $1.build) == .orderedAscending }
+        guard let newest, compareVersions(newest.build, ide.build) == .orderedDescending else {
+            return .upToDate(Found(source: .intelliJUpdate, latest: current, installed: current))
+        }
+        return .available(Found(source: .intelliJUpdate, latest: newest.version, installed: current))
+    }
+
+    /// A build without the product code some lists and IDEs put first, such as the AI in AI-262.10968.63.
+    static func intelliJBuild(_ number: String) -> String {
+        guard let dash = number.firstIndex(of: "-"), !number[..<dash].isEmpty, number[..<dash].allSatisfy(\.isLetter)
+        else { return number }
+        return String(number[number.index(after: dash)...])
+    }
+
+    /// Whether an installed build is a listed one, which some lists give without its last part,
+    /// such as 231.9423 for 231.9423.10.
+    static func isBuild(_ installed: String, listedAs listed: String) -> Bool {
+        installed == listed || installed.hasPrefix(listed + ".")
+    }
+
+    /// Each product's channels, by each of its codes uppercased; nothing when the list can't be read.
+    static func parseIntelliJUpdates(_ data: Data) -> [String: [IntelliJChannel]] {
+        let parser = XMLParser(data: data)
+        let reader = IntelliJReader()
+        parser.delegate = reader
+        guard parser.parse() else { return [:] }
+        var found: [String: [IntelliJChannel]] = [:]
+        for product in reader.products {
+            for code in product.codes { found[code.uppercased(), default: []] += product.channels }
+        }
+        return found
+    }
+
+    private final class IntelliJReader: NSObject, XMLParserDelegate {
+        struct Product {
+            var codes: [String] = []
+            var channels: [IntelliJChannel] = []
+        }
+
+        var products: [Product] = []
+        private var path: [String] = []
+        private var text = ""
+
+        func parser(
+            _ parser: XMLParser, didStartElement name: String, namespaceURI: String?, qualifiedName: String?,
+            attributes: [String: String] = [:]
+        ) {
+            let parent = path.last
+            path.append(name)
+            text = ""
+            switch (parent, name) {
+            case ("products", "product"):
+                products.append(Product())
+            case ("product", "channel"):
+                guard !products.isEmpty else { return }
+                products[products.count - 1].channels.append(IntelliJChannel(status: attributes["status"]?.lowercased() ?? "", builds: []))
+            case ("channel", "build"):
+                guard let number = attributes["fullNumber"] ?? attributes["number"], let version = attributes["version"],
+                    let product = products.indices.last, let channel = products[product].channels.indices.last
+                else { return }
+                // The version after its code name, as in "Rabbit 2 | 2026.2.2".
+                let build = intelliJBuild(number)
+                let shown = version.split(separator: "|").last?.trimmingCharacters(in: .whitespaces) ?? version
+                products[product].channels[channel].builds.append(IntelliJBuild(build: build, version: shown))
+            default:
+                break
+            }
+        }
+
+        func parser(_ parser: XMLParser, foundCharacters string: String) {
+            text += string
+        }
+
+        func parser(_ parser: XMLParser, didEndElement name: String, namespaceURI: String?, qualifiedName: String?) {
+            path.removeLast()
+            if name == "code", path.last == "product", !products.isEmpty {
+                let code = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !code.isEmpty { products[products.count - 1].codes.append(code) }
+            }
+        }
+    }
+
+    // MARK: Squirrel
+
+    /// Apps whose updater asks a Squirrel service the bundle doesn't name, by bundle ID lowercased,
+    /// with the address it asks: {version} and {os} are filled in. A new one is one more line.
+    static let squirrelFeeds = [
+        // Its stable channel answers alike for every device, so the app's own ID isn't sent.
+        "com.anthropic.claudefordesktop":
+            "https://api.anthropic.com/api/desktop/darwin/universal/squirrel/update?device_id=0&version={version}&os_version={os}"
+    ]
+
+    static func squirrelFeedURL(
+        bundleID: String, version: String, system: OperatingSystemVersion = ProcessInfo.processInfo.operatingSystemVersion
+    ) -> URL? {
+        guard let template = squirrelFeeds[bundleID.lowercased()],
+            let version = version.addingPercentEncoding(withAllowedCharacters: .alphanumerics.union(.init(charactersIn: ".-")))
+        else { return nil }
+        let os = "\(system.majorVersion).\(system.minorVersion).\(system.patchVersion)"
+        return URL(string: template.replacing("{version}", with: version).replacing("{os}", with: os))
+    }
+
+    /// Asks the service, as the app's updater does, for its current release.
+    static func squirrelFeedStatus(_ feed: URL, installed: String?, fetch: Fetch) async -> Status {
+        await jsonServiceStatus(feed, installed: installed, source: .squirrelFeed, fetch: fetch) {
+            parseSquirrelFeed($0, installed: $1)
+        }
+    }
+
+    /// The newest version from a Squirrel service: the current release when it answers with its
+    /// list, or the update offered, whose name can lead with the app's ("Claude 5.12000.0"); the
+    /// installed version when it answers with nothing; nil when the answer can't be read.
+    static func parseSquirrelFeed(_ data: Data, installed: String) -> String? {
+        if data.isEmpty { return installed }
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        if let current = json["currentRelease"] as? String ?? json["version"] as? String { return current }
+        return (json["name"] as? String)?.split(separator: " ").last.map(String.init)
     }
 
     // MARK: Homebrew
@@ -535,6 +773,15 @@ nonisolated enum AppUpdates {
     }
 
     // MARK: Sparkle feeds
+
+    /// Reads the app's appcast and compares its newest build with the one installed.
+    static func feedStatus(_ feed: URL, build: String?, installed: String?, fetch: Fetch) async -> Status {
+        guard let data = try? await fetch(URLRequest(url: feed)) else { return .unknown("Couldn't read its update feed") }
+        guard let newest = newestItem(inAppcast: data) else { return .unknown("Its update feed lists no versions") }
+        guard let build else { return .unknown("No version in the app") }
+        let found = Found(source: .feed, latest: newest.shortVersion ?? newest.version, installed: installed)
+        return compareVersions(newest.version, build) == .orderedDescending ? .available(found) : .upToDate(found)
+    }
 
     struct AppcastItem: Equatable {
         let version: String
@@ -682,6 +929,19 @@ nonisolated enum AppUpdates {
         }
         flush()
         return parts
+    }
+}
+
+nonisolated extension AppUpdates.IntelliJUpdate {
+    /// Read from an IDE's product-info.json; nil when its vendor's list of releases isn't known.
+    init?(productInfo: URL) {
+        guard let data = try? Data(contentsOf: productInfo),
+            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let list = (json["productVendor"] as? String).flatMap({ Self.lists[$0] }),
+            let product = json["productCode"] as? String, !product.isEmpty,
+            let build = json["buildNumber"] as? String, !build.isEmpty
+        else { return nil }
+        self.init(list: list, product: product, build: AppUpdates.intelliJBuild(build))
     }
 }
 

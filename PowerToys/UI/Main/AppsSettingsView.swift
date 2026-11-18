@@ -129,13 +129,12 @@ struct AppsSettingsView: View {
     /// Where to get the update: the App Store page, the app itself, which installs from its feed
     /// or update service, or Homebrew's command, copied.
     private func update(_ app: InstalledApp, _ found: AppUpdates.Found) {
-        switch found.source {
-        case .appStore(let page):
+        switch found.source.update {
+        case .page(let page, _):
             NSWorkspace.shared.open(page)
-        case .feed, .googleUpdate, .vsCodeUpdate, .homebrewCatalog:
+        case .app:
             NSWorkspace.shared.open(app.url)
-        case .homebrew(let cask):
-            let command = "brew upgrade --cask \(cask)"
+        case .command(let command):
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(command, forType: .string)
             copied = "Copied “\(command)”. Run it in Terminal to update \(app.name)."
@@ -242,14 +241,7 @@ private struct AppRow: View {
     }
 
     private func updateHelp(_ found: AppUpdates.Found) -> String {
-        switch found.source {
-        case .appStore: "Open \(app.name) in the App Store"
-        case .feed: "Open \(app.name), then use its Check for Updates"
-        case .googleUpdate: "Open \(app.name), then its About window to update"
-        case .vsCodeUpdate: "Open \(app.name), then use its Check for Updates"
-        case .homebrew(let cask): "Copy brew upgrade --cask \(cask)"
-        case .homebrewCatalog: "Open \(app.name) to update it"
-        }
+        found.source.update.help(for: app.name)
     }
 }
 

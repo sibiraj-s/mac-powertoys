@@ -407,6 +407,209 @@ struct AppUpdatesTests {
         #expect(broken == .unknown("Couldn't read its update service"))
     }
 
+    // MARK: Sources
+
+    @Test func eachSourceSaysHowToUpdate() {
+        let page = URL(string: "https://apps.apple.com/app/id1")!
+        #expect(AppUpdates.Source.appStore(page: page).update == .page(page, in: "the App Store"))
+        #expect(AppUpdates.Source.appStore(page: page).update.help(for: "Notes") == "Open Notes in the App Store")
+        #expect(AppUpdates.Source.feed.update.help(for: "Rectangle") == "Open Rectangle, then use its Check for Updates")
+        #expect(AppUpdates.Source.googleUpdate.update.help(for: "Chrome") == "Open Chrome, then its About window to update")
+        #expect(AppUpdates.Source.homebrew(cask: "firefox").update == .command("brew upgrade --cask firefox"))
+        #expect(AppUpdates.Source.homebrew(cask: "firefox").update.help(for: "Firefox") == "Copy brew upgrade --cask firefox")
+        #expect(AppUpdates.Source.homebrewCatalog(cask: "zed").update.help(for: "Zed") == "Open Zed to update it")
+    }
+
+    // MARK: IntelliJ
+
+    private let studio = AppUpdates.IntelliJUpdate(
+        list: AppUpdates.IntelliJUpdate.lists["Google"]!, product: "AI", build: "262.10968.63.2622.16730706")
+
+    private let studioList = Data(
+        """
+        <?xml version='1.0' encoding='ASCII'?>
+        <products>
+          <product name="Android Studio">
+            <code>AI</code>
+            <channel id="AI-1-release" status="release">
+              <build number="AI-262.10968.63.2622.16840690" version="Rabbit 2 | 2026.2.2 Patch 1">
+                <message><![CDATA[<html><code>not a product</code></html>]]></message>
+              </build>
+              <build number="AI-262.10968.63.2622.16730706" version="Rabbit 2 | 2026.2.2"/>
+            </channel>
+            <channel id="AI-1-beta" status="beta">
+              <build number="AI-262.10968.63.2623.16898116" version="Rabbit 3 | 2026.2.3 RC 1"/>
+            </channel>
+            <channel id="AI-1-eap" status="eap">
+              <build number="AI-263.7307.200.2631.16910149" version="Stingray 1 | 2026.3.1 Canary 1"/>
+              <build number="AI-262.10968.63.2623.16840739" version="Rabbit 3 | 2026.2.3 Canary 3"/>
+            </channel>
+          </product>
+          <product name="IntelliJ IDEA">
+            <code>IU</code>
+            <code>IC</code>
+            <channel id="IU-RELEASE" status="release">
+              <build number="231.9423" fullNumber="231.9423.10" version="2023.1.5"/>
+            </channel>
+          </product>
+        </products>
+        """.utf8)
+
+    @Test func readsIntelliJsProductInfo() throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: "AppUpdatesTests-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        func update(_ info: [String: String]) throws -> AppUpdates.IntelliJUpdate? {
+            let app = root.appending(path: "\(UUID().uuidString).app")
+            let resources = app.appending(path: "Contents/Resources")
+            try FileManager.default.createDirectory(at: resources, withIntermediateDirectories: true)
+            try JSONSerialization.data(withJSONObject: info).write(to: resources.appending(path: "product-info.json"))
+            return AppUpdates.AppInfo(app).intelliJUpdate
+        }
+        #expect(
+            try update(["productVendor": "Google", "productCode": "AI", "buildNumber": "262.10968.63.2622.16730706"]) == studio)
+        let idea = try update(["productVendor": "JetBrains", "productCode": "IU", "buildNumber": "231.9423.10"])
+        #expect(idea?.list == AppUpdates.IntelliJUpdate.lists["JetBrains"])
+        let prefixed = try update(["productVendor": "Google", "productCode": "AI", "buildNumber": "AI-262.10968.63.2622.16730706"])
+        #expect(prefixed == studio)
+        #expect(try update(["productVendor": "Someone", "productCode": "XX", "buildNumber": "1.2"]) == nil)
+        #expect(try update(["productVendor": "Google", "productCode": "AI"]) == nil)
+    }
+
+    @Test func parsesIntelliJUpdateLists() {
+        let products = AppUpdates.parseIntelliJUpdates(studioList)
+        #expect(Set(products.keys) == ["AI", "IU", "IC"])
+        #expect(products["AI"]?.map(\.status) == ["release", "beta", "eap"])
+        #expect(
+            products["AI"]?.first?.builds.first
+                == AppUpdates.IntelliJBuild(build: "262.10968.63.2622.16840690", version: "2026.2.2 Patch 1"))
+        // The full build when the list has it.
+        #expect(products["IC"]?.first?.builds == [AppUpdates.IntelliJBuild(build: "231.9423.10", version: "2023.1.5")])
+        #expect(AppUpdates.parseIntelliJUpdates(Data("<html>".utf8)).isEmpty)
+    }
+
+    /// Android Studio's version, 2026.2, is behind Homebrew's 2026.2.2.9 even when it's current.
+    @Test func intelliJIDEsCompareBuildsOnTheirChannel() async {
+        let android = app("Android Studio", id: "com.google.android.studio")
+        func status(_ build: String) async -> AppUpdates.Status {
+            let ide = AppUpdates.IntelliJUpdate(list: studio.list, product: "AI", build: build)
+            let info = AppUpdates.AppInfo(shortVersion: "2026.2", build: "AI-\(build)", feed: nil, intelliJUpdate: ide)
+            let catalog = AppUpdates.Catalog(caskCatalog: {
+                ["android studio.app": .init(token: "android-studio", version: "2026.2.2.9")]
+            })
+            return await AppUpdates.status(of: android, info: info, catalog: catalog, fetch: { [studioList] _ in studioList })
+        }
+        #expect(
+            await status("262.10968.63.2622.16730706")
+                == .available(.init(source: .intelliJUpdate, latest: "2026.2.2 Patch 1", installed: "2026.2.2")))
+        // Stable doesn't see the beta or preview builds.
+        #expect(
+            await status("262.10968.63.2622.16840690")
+                == .upToDate(.init(source: .intelliJUpdate, latest: "2026.2.2 Patch 1", installed: "2026.2.2 Patch 1")))
+        // A preview build sees newer previews, and a build not in the list falls back to the app's version.
+        #expect(
+            await status("262.10968.63.2623.16840739")
+                == .available(.init(source: .intelliJUpdate, latest: "2026.3.1 Canary 1", installed: "2026.2.3 Canary 3")))
+        #expect(
+            await status("263.7307.200.2631.16952554")
+                == .upToDate(.init(source: .intelliJUpdate, latest: "2026.2", installed: "2026.2")))
+        // A preview sees betas too, as more stable channels are offered to less stable ones.
+        let noNewerCanary = Data(
+            String(decoding: studioList, as: UTF8.self).replacing(
+                #"<build number="AI-263.7307.200.2631.16910149" version="Stingray 1 | 2026.3.1 Canary 1"/>"#, with: ""
+            ).utf8)
+        let canary = AppUpdates.IntelliJUpdate(list: studio.list, product: "AI", build: "262.10968.63.2623.16840739")
+        #expect(
+            await AppUpdates.intelliJUpdateStatus(canary, installed: "2026.2", fetch: { _ in noNewerCanary })
+                == .available(.init(source: .intelliJUpdate, latest: "2026.2.3 RC 1", installed: "2026.2.3 Canary 3")))
+        // A product the list doesn't have is left to Homebrew's list.
+        let unlisted = AppUpdates.IntelliJUpdate(list: studio.list, product: "XX", build: "1.2")
+        let unlistedInfo = AppUpdates.AppInfo(shortVersion: "2026.1", build: "XX-1.2", feed: nil, intelliJUpdate: unlisted)
+        let estimate = await AppUpdates.status(
+            of: app("Other IDE", id: "com.example.ide"), info: unlistedInfo,
+            catalog: .init(caskCatalog: { ["other ide.app": .init(token: "other-ide", version: "2026.2")] }),
+            fetch: { [studioList] _ in studioList })
+        #expect(estimate == .available(.init(source: .homebrewCatalog(cask: "other-ide"), latest: "2026.2", installed: "2026.1")))
+        // A preview no longer listed, being newer than every release, still sees newer previews.
+        let dropped = AppUpdates.IntelliJUpdate(list: studio.list, product: "AI", build: "262.10968.63.2623.16000000")
+        let list = studioList
+        #expect(
+            await AppUpdates.intelliJUpdateStatus(dropped, installed: "2026.2", fetch: { _ in list })
+                == .available(.init(source: .intelliJUpdate, latest: "2026.3.1 Canary 1", installed: "2026.2")))
+        let ide = AppUpdates.IntelliJUpdate(list: studio.list, product: "AI", build: "1")
+        let info = AppUpdates.AppInfo(shortVersion: "2026.2", build: "AI-1", feed: nil, intelliJUpdate: ide)
+        let broken = await AppUpdates.status(of: android, info: info, catalog: .init(), fetch: { _ in Data("<html>".utf8) })
+        #expect(broken == .unknown("Couldn't read its update service"))
+    }
+
+    @Test func matchesBuildsHoweverTheyreWritten() async {
+        #expect(AppUpdates.intelliJBuild("AI-262.10968.63") == "262.10968.63")
+        #expect(AppUpdates.intelliJBuild("262.10968.63") == "262.10968.63")
+        #expect(AppUpdates.intelliJBuild("-1.2") == "-1.2")
+        #expect(AppUpdates.isBuild("231.9423.10", listedAs: "231.9423"))
+        #expect(!AppUpdates.isBuild("231.94230", listedAs: "231.9423"))
+        // Listed without its last part, the installed build still finds its version and channel.
+        let list = Data(
+            """
+            <products><product name="IntelliJ IDEA"><code>IU</code>
+              <channel status="release"><build number="231.9423" version="2023.1.5"/></channel>
+              <channel status="eap"><build number="232.1" version="2023.2 EAP"/></channel>
+            </product></products>
+            """.utf8)
+        let idea = AppUpdates.IntelliJUpdate(list: studio.list, product: "IU", build: "231.9423.10")
+        #expect(
+            await AppUpdates.intelliJUpdateStatus(idea, installed: "2023.1", fetch: { _ in list })
+                == .upToDate(.init(source: .intelliJUpdate, latest: "2023.1.5", installed: "2023.1.5")))
+    }
+
+    // MARK: Squirrel
+
+    @Test func readsBothKindsOfSquirrelAnswer() {
+        #expect(AppUpdates.parseSquirrelFeed(Data(#"{"currentRelease":"5.11492.5","releases":[]}"#.utf8), installed: "1") == "5.11492.5")
+        #expect(AppUpdates.parseSquirrelFeed(Data(#"{"url":"https://x","name":"Claude 5.12000.0"}"#.utf8), installed: "1") == "5.12000.0")
+        #expect(AppUpdates.parseSquirrelFeed(Data(), installed: "1") == "1")
+        #expect(AppUpdates.parseSquirrelFeed(Data("<html>".utf8), installed: "1") == nil)
+    }
+
+    @Test func knownAppsAskTheirSquirrelService() throws {
+        let url = try #require(
+            AppUpdates.squirrelFeedURL(
+                bundleID: "com.anthropic.ClaudeForDesktop", version: "5.11492.5",
+                system: .init(majorVersion: 27, minorVersion: 2, patchVersion: 0)))
+        #expect(
+            url.absoluteString
+                == "https://api.anthropic.com/api/desktop/darwin/universal/squirrel/update?device_id=0&version=5.11492.5&os_version=27.2.0")
+        #expect(AppUpdates.squirrelFeedURL(bundleID: "com.example.Other", version: "1") == nil)
+        let root = FileManager.default.temporaryDirectory.appending(path: "AppUpdatesTests-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let contents = root.appending(path: "Claude.app/Contents")
+        try FileManager.default.createDirectory(at: contents, withIntermediateDirectories: true)
+        try (["CFBundleIdentifier": "com.anthropic.claudefordesktop", "CFBundleShortVersionString": "5.11492.5"] as NSDictionary)
+            .write(to: contents.appending(path: "Info.plist"))
+        #expect(AppUpdates.AppInfo(root.appending(path: "Claude.app")).squirrelFeed?.query?.contains("version=5.11492.5") == true)
+    }
+
+    /// Homebrew's list can be ahead of what Claude's own service offers.
+    @Test func squirrelAppsAreCheckedWithTheirService() async {
+        let feed = URL(string: "https://example.com/update?version=5.11492.5")!
+        let claude = app("Claude", id: "com.anthropic.claudefordesktop")
+        let info = AppUpdates.AppInfo(shortVersion: "5.11492.5", build: "5.11492.5", feed: nil, squirrelFeed: feed)
+        let catalog = AppUpdates.Catalog(caskCatalog: { ["claude.app": .init(token: "claude", version: "6.6395.0")] })
+        func status(_ answer: String) async -> AppUpdates.Status {
+            await AppUpdates.status(of: claude, info: info, catalog: catalog, fetch: { _ in Data(answer.utf8) })
+        }
+        #expect(
+            await status(#"{"currentRelease":"5.11492.5","releases":[]}"#)
+                == .upToDate(.init(source: .squirrelFeed, latest: "5.11492.5", installed: "5.11492.5")))
+        #expect(
+            await status(#"{"currentRelease":"5.11500.0","releases":[]}"#)
+                == .available(.init(source: .squirrelFeed, latest: "5.11500.0", installed: "5.11492.5")))
+        let nothing = await AppUpdates.status(
+            of: claude, info: info, catalog: catalog, fetch: { _ in throw URLError(.zeroByteResource) })
+        #expect(nothing == .upToDate(.init(source: .squirrelFeed, latest: "5.11492.5", installed: "5.11492.5")))
+        // A broken answer is said, not covered by Homebrew's estimate.
+        #expect(await status("<html>") == .unknown("Couldn't read its update service"))
+    }
+
     // MARK: Homebrew
 
     @Test func homebrewsPublicListIsAnEstimateUsedLast() async {
@@ -552,6 +755,37 @@ struct AppUpdatesTests {
     }
 
     @MainActor
+    @Test func downloadsAreSharedOnlyWhenTheyCanBe() async throws {
+        let asked = AskedURLs()
+        let failing = URL(string: "https://example.com/flaky")!
+        let failedOnce = AskedURLs()
+        let downloads = UpdateDownloads { request in
+            await asked.add(request.url!)
+            if request.url == failing, await failedOnce.urls.isEmpty {
+                await failedOnce.add(failing)
+                throw URLError(.timedOut)
+            }
+            return Data()
+        }
+        let url = URL(string: "https://example.com/list.xml")!
+        _ = try await downloads.data(URLRequest(url: url))
+        _ = try await downloads.data(URLRequest(url: url))
+        #expect(await asked.urls.filter { $0 == url }.count == 1)
+        // Requests with a body or headers are each sent.
+        var post = URLRequest(url: url)
+        post.httpMethod = "POST"
+        post.httpBody = Data("{}".utf8)
+        _ = try await downloads.data(post)
+        var headed = URLRequest(url: url)
+        headed.setValue("application/json", forHTTPHeaderField: "Accept")
+        _ = try await downloads.data(headed)
+        #expect(await asked.urls.filter { $0 == url }.count == 3)
+        // A failed download is tried again.
+        await #expect(throws: URLError.self) { try await downloads.data(URLRequest(url: failing)) }
+        _ = try await downloads.data(URLRequest(url: failing))
+        #expect(await asked.urls.filter { $0 == failing }.count == 2)
+    }
+
     @Test func homebrewsPublicListIsDownloadedOnceAndOnlyWhenNeeded() async throws {
         let root = FileManager.default.temporaryDirectory.appending(path: "AppUpdatesTests-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: root) }
@@ -581,6 +815,8 @@ struct AppUpdatesTests {
         let answered = AskedURLs()
         await checker(feeds: true, asked: answered).check()
         #expect(await answered.urls.contains(AppUpdates.caskCatalogURL) == false)
+        // The three apps share one feed, downloaded once.
+        #expect(await answered.urls.filter { $0 == feed }.count == 1)
     }
 }
 

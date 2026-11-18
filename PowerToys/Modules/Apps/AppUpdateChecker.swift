@@ -68,9 +68,11 @@ final class AppUpdateChecker {
         checkedCount = 0
         await list.load()
         let apps = list.apps
+        // Apps can share an address, as JetBrains' IDEs share its list of releases.
+        let downloads = UpdateDownloads(fetch)
+        let fetch: AppUpdates.Fetch = { try await downloads.data($0) }
         let catalog = await Self.catalog(
             for: apps, fetch: fetch, brew: findBrew(), storeUpdates: readStoreUpdates, storeLastCheck: readStoreLastCheck)
-        let fetch = fetch
         let readInfo = readInfo
         var fresh: [String: AppUpdates.Status] = [:]
         await withTaskGroup(of: (String, AppUpdates.Status).self) { group in
@@ -136,6 +138,34 @@ final class AppUpdateChecker {
         case 200: return data
         case 204: throw URLError(.zeroByteResource)
         default: throw URLError(.badServerResponse)
+        }
+    }
+}
+
+/// Downloads each address once for a check, however many apps ask for it. Requests with a body
+/// or headers, such as Google's update service's, are each sent as they are, and a download that
+/// fails is tried again by the next app that asks.
+actor UpdateDownloads {
+    private let fetch: AppUpdates.Fetch
+    private var tasks: [URL: Task<Data, Error>] = [:]
+
+    init(_ fetch: @escaping AppUpdates.Fetch) {
+        self.fetch = fetch
+    }
+
+    func data(_ request: URLRequest) async throws -> Data {
+        guard request.httpBody == nil, (request.httpMethod ?? "GET") == "GET", request.allHTTPHeaderFields?.isEmpty ?? true,
+            let url = request.url
+        else { return try await fetch(request) }
+        if let task = tasks[url] { return try await task.value }
+        let fetch = fetch
+        let task = Task { try await fetch(request) }
+        tasks[url] = task
+        do {
+            return try await task.value
+        } catch {
+            if tasks[url] == task { tasks[url] = nil }
+            throw error
         }
     }
 }
