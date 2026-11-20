@@ -213,9 +213,10 @@ nonisolated enum AppUpdates {
             // offered, and an update can keep the same version and change only the build.
             if catalog.storeListIsStale { return .unknown(storeNotChecking) }
             if let updates = catalog.storeUpdates {
-                // A listed release that's already installed isn't an update.
+                // A listed release that's installed, or older than the one that is, isn't an
+                // update; the App Store's release IDs only grow.
                 let listed = updates[app.bundleID.lowercased()]
-                guard let update = listed, update.versionID == nil || update.versionID != info.storeVersionID else {
+                guard let update = listed, !isInstalled(update.versionID, installed: info.storeVersionID) else {
                     let installed = info.shortVersion
                     return .upToDate(Found(source: .appStore(page: storeUpdatesPage), latest: installed ?? "", installed: installed))
                 }
@@ -263,14 +264,21 @@ nonisolated enum AppUpdates {
 
     static let storeUpdatesPage = URL(string: "macappstore://showUpdatesPage")!
 
+    /// Whether the App Store release is the installed one or older.
+    private static func isInstalled(_ release: Int64?, installed: Int64?) -> Bool {
+        guard let release, let installed else { return false }
+        return release <= installed
+    }
+
     /// Where the App Store keeps the updates it has found, as it shows them in Updates.
     static func storeDatabase(home: URL) -> URL {
         home.appending(path: "Library/Caches/com.apple.appstoreagent/storeSystem.db")
     }
 
     /// The updates the App Store found at its last check and hasn't installed; nil when its list
-    /// can't be read, such as when the App Store keeps it elsewhere. Its other table of updates,
-    /// mapi_app_update, also keeps ones it has installed.
+    /// can't be read, such as when the App Store keeps it elsewhere. Older App Stores list them in
+    /// app_updates; newer ones leave that empty and list them in mapi_app_update, which also keeps
+    /// the ones installed, with the date they were.
     static func storeUpdates(database: URL) -> [String: StoreUpdate]? {
         var connection: OpaquePointer?
         defer { sqlite3_close(connection) }
@@ -278,13 +286,44 @@ nonisolated enum AppUpdates {
             sqlite3_open_v2(database.path, &connection, SQLITE_OPEN_READONLY, nil) == SQLITE_OK
         else { return nil }
         sqlite3_busy_timeout(connection, 2000)
+        let queries = [
+            ("app_updates", "SELECT bundle_id, store_software_version_id, store_item_data FROM app_updates"),
+            ("mapi_app_update", "SELECT bundle_id, store_software_version_id, metadata FROM mapi_app_update WHERE install_date IS NULL"),
+        ]
+        var updates: [String: StoreUpdate] = [:]
+        var read = false
+        for (table, query) in queries {
+            // A table that isn't there is skipped, but one that can't be read, as while the App
+            // Store is writing it, leaves the list unknown rather than missing its updates.
+            guard let exists = hasTable(connection, table) else { return nil }
+            guard exists else { continue }
+            guard let found = storeUpdates(connection, query) else { return nil }
+            read = true
+            // A row left behind in app_updates can be older than mapi_app_update's, which newer
+            // App Stores keep current and which wins a tie.
+            updates.merge(found) { old, new in (new.versionID ?? 0) >= (old.versionID ?? 0) ? new : old }
+        }
+        return read ? updates : nil
+    }
+
+    /// Whether the database has the table, named in the code; nil when that can't be read.
+    private static func hasTable(_ connection: OpaquePointer?, _ name: String) -> Bool? {
         var statement: OpaquePointer?
         defer { sqlite3_finalize(statement) }
-        guard
-            sqlite3_prepare_v2(
-                connection, "SELECT bundle_id, store_software_version_id, store_item_data FROM app_updates", -1, &statement, nil)
-                == SQLITE_OK
-        else { return nil }
+        let query = "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = '\(name)'"
+        guard sqlite3_prepare_v2(connection, query, -1, &statement, nil) == SQLITE_OK else { return nil }
+        switch sqlite3_step(statement) {
+        case SQLITE_ROW: return true
+        case SQLITE_DONE: return false
+        default: return nil
+        }
+    }
+
+    /// The updates in rows of bundle ID, release and the App Store's record; nil when the query fails.
+    private static func storeUpdates(_ connection: OpaquePointer?, _ query: String) -> [String: StoreUpdate]? {
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(connection, query, -1, &statement, nil) == SQLITE_OK else { return nil }
         var updates: [String: StoreUpdate] = [:]
         while true {
             let step = sqlite3_step(statement)
@@ -305,9 +344,14 @@ nonisolated enum AppUpdates {
     /// it they are, as the record's layout isn't documented.
     static func parseStoreUpdate(_ data: Data) -> StoreUpdate {
         let json = try? JSONSerialization.jsonObject(with: data)
-        let version = first(in: json) { key, value in key == "versionDisplay" ? value as? String : nil }
-        // The app's own page, not its developer's, which the record can also link.
         let attributes = (json as? [String: Any])?["attributes"] as? [String: Any]
+        // The Mac's release, never another platform's the record also holds, as only Mac apps
+        // are listed.
+        let platforms = first(in: json) { key, value in key == "platformAttributes" ? value as? [String: Any] : nil }
+        let version =
+            first(in: platforms?["osx"]) { key, value in key == "versionDisplay" ? value as? String : nil }
+            ?? first(in: json, skipping: "platformAttributes") { key, value in key == "versionDisplay" ? value as? String : nil }
+        // The app's own page, not its developer's, which the record can also link.
         let page =
             (attributes?["url"] as? String).flatMap(URL.init(string:))
             ?? first(in: json) { _, value in
@@ -316,15 +360,16 @@ nonisolated enum AppUpdates {
         return StoreUpdate(version: version, page: page)
     }
 
-    /// The first value `match` picks, searching depth first.
-    private static func first<T>(in json: Any?, _ match: (String, Any) -> T?) -> T? {
+    /// The first value `match` picks, searching depth first and leaving out what's under the
+    /// `skipping` key.
+    private static func first<T>(in json: Any?, skipping: String? = nil, _ match: (String, Any) -> T?) -> T? {
         if let object = json as? [String: Any] {
-            for key in object.keys.sorted() {
-                if let found = match(key, object[key]!) ?? first(in: object[key], match) { return found }
+            for key in object.keys.sorted() where key != skipping {
+                if let found = match(key, object[key]!) ?? first(in: object[key], skipping: skipping, match) { return found }
             }
         } else if let array = json as? [Any] {
             for element in array {
-                if let found = first(in: element, match) { return found }
+                if let found = first(in: element, skipping: skipping, match) { return found }
             }
         }
         return nil

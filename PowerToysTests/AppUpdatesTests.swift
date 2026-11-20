@@ -196,12 +196,93 @@ struct AppUpdatesTests {
         #expect(updates["net.whatsapp.whatsapp"] == .init(version: nil, page: nil))
     }
 
+    @Test func readsTheNewerAppStoresPendingUpdatesButNotInstalledOnes() throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: "AppUpdatesTests-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let database = root.appending(path: "storeSystem.db")
+
+        var connection: OpaquePointer?
+        #expect(sqlite3_open(database.path, &connection) == SQLITE_OK)
+        defer { sqlite3_close(connection) }
+        let keynote =
+            #"{"attributes": {"url": "https://apps.apple.com/app/id361285480", "platformAttributes": {"osx": {"latestVersionInfo": {"versionDisplay": "16.0"}}}}}"#
+        let slack = #"{"attributes": {"platformAttributes": {"osx": {"latestVersionInfo": {"versionDisplay": "4.53.287"}}}}}"#
+        let sql = """
+            CREATE TABLE mapi_app_update (pid INTEGER PRIMARY KEY, bundle_id TEXT NOT NULL, install_date DATETIME, metadata BLOB, store_software_version_id INTEGER);
+            INSERT INTO mapi_app_update (bundle_id, install_date, metadata, store_software_version_id)
+              VALUES ('com.apple.Keynote', NULL, '\(keynote)', 892234522);
+            INSERT INTO mapi_app_update (bundle_id, install_date, metadata, store_software_version_id)
+              VALUES ('com.tinyspeck.slackmacgap', 816407357.65, '\(slack)', 894923142);
+            """
+        #expect(sqlite3_exec(connection, sql, nil, nil, nil) == SQLITE_OK)
+
+        // There's no app_updates table, and the installed Slack isn't an update.
+        let updates = try #require(AppUpdates.storeUpdates(database: database))
+        #expect(
+            updates
+                == [
+                    "com.apple.keynote": .init(
+                        version: "16.0", page: URL(string: "https://apps.apple.com/app/id361285480"), versionID: 892_234_522)
+                ]
+        )
+    }
+
+    @Test func storeUpdatesTakeTheMacsVersion() {
+        let data = Data(
+            #"{"attributes": {"platformAttributes": {"ios": {"latestVersionInfo": {"versionDisplay": "16.1"}}, "osx": {"latestVersionInfo": {"versionDisplay": "16.0"}}}}}"#
+                .utf8)
+        #expect(AppUpdates.parseStoreUpdate(data).version == "16.0")
+        let flat = Data(#"{"versionDisplay": "2.0"}"#.utf8)
+        #expect(AppUpdates.parseStoreUpdate(flat).version == "2.0")
+        let macHasNone = Data(
+            #"{"attributes": {"platformAttributes": {"ios": {"latestVersionInfo": {"versionDisplay": "16.1"}}, "osx": {"latestVersionInfo": {}}}}}"#
+                .utf8)
+        #expect(AppUpdates.parseStoreUpdate(macHasNone).version == nil)
+        let iOSOnly = Data(#"{"attributes": {"platformAttributes": {"ios": {"latestVersionInfo": {"versionDisplay": "3.1"}}}}}"#.utf8)
+        #expect(AppUpdates.parseStoreUpdate(iOSOnly).version == nil)
+        let wrapped = Data(
+            #"{"data": [{"attributes": {"platformAttributes": {"ios": {"latestVersionInfo": {"versionDisplay": "16.1"}}, "osx": {"latestVersionInfo": {"versionDisplay": "16.0"}}}}}]}"#
+                .utf8)
+        #expect(AppUpdates.parseStoreUpdate(wrapped).version == "16.0")
+    }
+
+    @Test func theAppStoresTablesTakeTheNewerReleaseAndFailTogether() throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: "AppUpdatesTests-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let database = root.appending(path: "storeSystem.db")
+
+        var connection: OpaquePointer?
+        #expect(sqlite3_open(database.path, &connection) == SQLITE_OK)
+        defer { sqlite3_close(connection) }
+        let sql = """
+            CREATE TABLE app_updates (pid INTEGER PRIMARY KEY, bundle_id TEXT, store_software_version_id INTEGER, store_item_data JSON);
+            CREATE TABLE mapi_app_update (pid INTEGER PRIMARY KEY, bundle_id TEXT NOT NULL, install_date DATETIME, metadata BLOB, store_software_version_id INTEGER);
+            INSERT INTO app_updates (bundle_id, store_software_version_id, store_item_data)
+              VALUES ('com.example.Old', 890, NULL), ('com.example.Kept', 900, NULL), ('com.example.Tie', NULL, '{"versionDisplay": "1"}');
+            INSERT INTO mapi_app_update (bundle_id, store_software_version_id, metadata)
+              VALUES ('com.example.Old', 894, NULL), ('com.example.Kept', 800, NULL), ('com.example.Tie', NULL, '{"versionDisplay": "2"}');
+            """
+        #expect(sqlite3_exec(connection, sql, nil, nil, nil) == SQLITE_OK)
+        let updates = try #require(AppUpdates.storeUpdates(database: database))
+        #expect(updates["com.example.old"]?.versionID == 894)
+        #expect(updates["com.example.kept"]?.versionID == 900)
+        #expect(updates["com.example.tie"]?.version == "2")
+
+        // A table that's there but can't be read leaves the whole list unknown.
+        let broken = "DROP TABLE mapi_app_update; CREATE TABLE mapi_app_update (pid INTEGER PRIMARY KEY, bundle_id TEXT);"
+        #expect(sqlite3_exec(connection, broken, nil, nil, nil) == SQLITE_OK)
+        #expect(AppUpdates.storeUpdates(database: database) == nil)
+    }
+
     @Test func theAppStoresOwnListDecidesOverItsListing() async {
         let page = URL(string: "https://apps.apple.com/app/id1")!
         var catalog = AppUpdates.Catalog()
         catalog.storeUpdates = [
             "com.bitwarden.desktop": .init(version: "2026.10.4", page: page, versionID: 2),
             "net.whatsapp.whatsapp": .init(version: "26.1", page: page, versionID: 7),
+            "com.tinyspeck.slackmacgap": .init(version: "4.52", page: page, versionID: 5),
         ]
         // The listing says newer, but the App Store doesn't offer it.
         catalog.appStore["com.apple.keynote"] = ("15.4.2", page)
@@ -214,6 +295,9 @@ struct AppUpdatesTests {
         // Listed, but that release is what's installed.
         let whatsapp = await status("net.whatsapp.WhatsApp", .init(shortVersion: "26.1", build: "1", feed: nil, storeVersionID: 7))
         #expect(isUpToDate(whatsapp))
+        // Listed, but older than the release installed since.
+        let slack = await status("com.tinyspeck.slackmacgap", .init(shortVersion: "4.53", build: "1", feed: nil, storeVersionID: 6))
+        #expect(isUpToDate(slack))
         let keynote = await status("com.apple.Keynote", .init(shortVersion: "15.4", build: "1", feed: nil))
         #expect(isUpToDate(keynote))
 
