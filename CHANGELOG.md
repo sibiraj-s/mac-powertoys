@@ -1,5 +1,12 @@
 # powertoys
 
+## 1.9.1
+
+### Patch Changes
+
+- dc7035d: Apps now shows the updates the App Store has found on newer versions of macOS, such as those for Keynote, Numbers and Pages, which it used to miss. If it can't read the App Store's list of updates, it checks the App Store's public listing instead of calling apps up to date.
+- 3b9b99d: Closing a tab in an app like Ghostty no longer rearranges Lanes. The tab that shows next takes the closed tab's place in the row.
+
 ## 1.9.0
 
 ### Minor Changes
