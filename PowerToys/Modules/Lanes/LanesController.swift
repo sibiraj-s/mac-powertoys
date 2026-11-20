@@ -252,7 +252,7 @@ final class LanesController {
         }
         windows.onChange = { [weak self] in self?.setNeedsRefresh() }
         windows.onClose = { [weak self] id in
-            self?.board.forget(id)
+            self?.board.close(id, now: self?.now() ?? .now)
             self?.unsettled[id] = nil
             // Its process may be gone too, and its number given to another in time.
             self?.starts = [:]
@@ -365,7 +365,7 @@ final class LanesController {
     private func change(_ make: (inout LaneBoard, LaneSnapshot) -> Int?) -> LaneSnapshot? {
         let snapshot = current()
         guard !waitsForADisplay(snapshot) else { return nil }
-        board.sync(snapshot, afterDrag: wasDragging)
+        board.sync(snapshot, afterDrag: wasDragging, now: now())
         arrange(snapshot, bringing: make(&board, snapshot))
         return snapshot
     }
@@ -387,6 +387,8 @@ final class LanesController {
     /// comes back as one, so they're gathered up; and windows aren't moved under a drag or
     /// looked at mid-slide or mid-swipe.
     private func setNeedsRefresh() {
+        // Putting windows back on the way out can find one gone, which is heard of as a change.
+        guard isRunning else { return }
         if isMouseDown() { wasDragging = true }
         guard pendingRefresh == nil else { return }
         pendingRefresh = Task { [weak self] in
@@ -478,7 +480,7 @@ final class LanesController {
         finishSlide()
         let snapshot = current()
         guard !waitsForADisplay(snapshot) else { return }
-        board.sync(snapshot, afterDrag: wasDragging)
+        board.sync(snapshot, afterDrag: wasDragging, now: now())
         arrange(snapshot)
         askSilentAppsAgain()
     }
@@ -589,7 +591,8 @@ final class LanesController {
         recover(in: snapshot)
         for index in snapshot.windows.indices {
             if let asked = unsettled[snapshot.windows[index].id]?.asked {
-                snapshot.windows[index] = LaneSnapshot.Window(id: snapshot.windows[index].id, frame: asked)
+                snapshot.windows[index] = LaneSnapshot.Window(
+                    id: snapshot.windows[index].id, frame: asked, owner: snapshot.windows[index].owner)
             }
         }
         if let awaited = awaitedFocus {
@@ -776,7 +779,7 @@ final class LanesController {
             }
             // A window dragged just before the swipe is dropped where it was let go first.
             let dragged = wasDragging
-            board.sync(snapshot, afterDrag: dragged)
+            board.sync(snapshot, afterDrag: dragged, now: now())
             guard board.lane(on: display) != nil else {
                 swipeIsIdle = true
                 return
@@ -814,7 +817,7 @@ final class LanesController {
                     flick.endChecked = true
                     let snapshot = current()
                     if !waitsForADisplay(snapshot) {
-                        board.sync(snapshot)
+                        board.sync(snapshot, now: now())
                         flick.start = snapshot
                         if canStep(direction, on: flick.display) { continue }
                     }
@@ -844,7 +847,7 @@ final class LanesController {
         stopSlide()
         let snapshot = start ?? current()
         guard !waitsForADisplay(snapshot) else { return nil }
-        if start == nil { board.sync(snapshot) }
+        if start == nil { board.sync(snapshot, now: now()) }
         guard let next = board.stepFocus(by: places, on: display) else {
             arrange(snapshot)
             return nil

@@ -270,10 +270,15 @@ struct LaneBoardTests {
     private let right = LaneDisplay(
         key: "B", frame: CGRect(x: 1000, y: 0, width: 1000, height: 800), area: CGRect(x: 1000, y: 25, width: 1000, height: 775))
 
-    private func snapshot(_ frames: [Int: CGRect], focused: Int? = nil, displays: [LaneDisplay]? = nil) -> LaneSnapshot {
+    /// Each window is of an app of its own, unless `owners` says otherwise, as for a tab.
+    private func snapshot(
+        _ frames: [Int: CGRect], focused: Int? = nil, displays: [LaneDisplay]? = nil, owners: [Int: pid_t] = [:]
+    ) -> LaneSnapshot {
         LaneSnapshot(
             displays: displays ?? [main],
-            windows: frames.sorted { $0.key < $1.key }.map { LaneSnapshot.Window(id: $0.key, frame: $0.value) },
+            windows: frames.sorted { $0.key < $1.key }.map {
+                LaneSnapshot.Window(id: $0.key, frame: $0.value, owner: owners[$0.key] ?? pid_t($0.key))
+            },
             focused: focused, mainDisplay: "A")
     }
 
@@ -777,7 +782,7 @@ struct LaneBoardTests {
         // The second window's app shows another tab: a window of its own, just where it was.
         frames[4] = frames[2]
         frames[2] = nil
-        let switched = snapshot(frames, focused: 4)
+        let switched = snapshot(frames, focused: 4, owners: [4: 2])
         board.sync(switched)
         #expect(board.lane(on: "A")?.ids == [1, 4, 3])
         #expect(board.lane(on: "A")?.focus == 4)
@@ -786,11 +791,144 @@ struct LaneBoardTests {
         // And back.
         frames[2] = frames[4]
         frames[4] = nil
-        let back = snapshot(frames, focused: 2)
+        let back = snapshot(frames, focused: 2, owners: [4: 2])
         board.sync(back)
         #expect(board.lane(on: "A")?.ids == [1, 2, 3])
         #expect(board.layout(back).isEmpty)
         #expect(frames == arranged)
+    }
+
+    @Test func closingATabLeavesTheRowAsItIs() {
+        var board = LaneBoard()
+        var frames: [Int: CGRect] = [
+            1: CGRect(x: 0, y: 0, width: 300, height: 300),
+            2: CGRect(x: 350, y: 0, width: 300, height: 300),
+            3: CGRect(x: 700, y: 0, width: 300, height: 300),
+        ]
+        arrange(&board, &frames, focused: 3)
+        let arranged = frames
+        // The second window's tab is closed, said before the next look, and another of its tabs
+        // shows just where it was, with the keyboard.
+        frames[4] = frames[2]
+        frames[2] = nil
+        board.close(2)
+        // Out of the row at once, so nothing steps to it before the next look.
+        #expect(board.lane(on: "A")?.ids == [1, 3])
+        let shown = snapshot(frames, focused: 4, owners: [4: 2])
+        board.sync(shown)
+        #expect(board.lane(on: "A")?.ids == [1, 4, 3])
+        #expect(board.lane(on: "A")?.focus == 4)
+        #expect(board.layout(shown).isEmpty)
+        #expect(frames[1] == arranged[1])
+        #expect(frames[3] == arranged[3])
+        #expect(board.originals[2] == nil)
+    }
+
+    @Test func closedWindowWithNoTabInItsPlaceClosesTheGap() {
+        var board = LaneBoard()
+        var frames: [Int: CGRect] = [
+            1: CGRect(x: 0, y: 0, width: 300, height: 300),
+            2: CGRect(x: 400, y: 0, width: 300, height: 300),
+            3: CGRect(x: 800, y: 0, width: 300, height: 300),
+        ]
+        arrange(&board, &frames, focused: 2)
+        frames[2] = nil
+        let closed = Date.now
+        board.close(2, now: closed)
+        // Out of the row at once, and not put back on the way out while its seat is kept.
+        #expect(board.lane(on: "A")?.ids == [1, 3])
+        #expect(!board.restorations().contains { $0.id == 2 })
+        arrange(&board, &frames, focused: 1)
+        #expect(frames[3]?.minX == 300)
+        // Once no tab has taken it in time, nothing is kept of it.
+        board.sync(snapshot(frames, focused: 1), now: closed.addingTimeInterval(LaneBoard.vacancyGrace + 1))
+        #expect(board.originals[2] == nil)
+        // A window opening later anywhere else goes beside the focused one, as any new one does.
+        frames[5] = CGRect(x: 900, y: 300, width: 200, height: 200)
+        arrange(&board, &frames, focused: 1)
+        #expect(board.lane(on: "A")?.ids == [1, 5, 3])
+    }
+
+    @Test func tabShownAMomentAfterItsWindowClosedStillTakesItsPlace() {
+        var board = LaneBoard()
+        let start = Date(timeIntervalSince1970: 1000)
+        var frames: [Int: CGRect] = [
+            1: CGRect(x: 0, y: 0, width: 300, height: 300),
+            2: CGRect(x: 350, y: 0, width: 300, height: 300),
+            3: CGRect(x: 700, y: 0, width: 300, height: 300),
+        ]
+        arrange(&board, &frames, focused: 2)
+        let place = frames[2]
+        frames[2] = nil
+        board.close(2, now: start)
+        // The app hasn't shown its next tab at the first look.
+        board.sync(snapshot(frames, focused: 1), now: start.addingTimeInterval(0.05))
+        #expect(board.lane(on: "A")?.ids == [1, 3])
+        // There it is.
+        frames[4] = place
+        board.sync(snapshot(frames, focused: 4, owners: [4: 2]), now: start.addingTimeInterval(0.4))
+        #expect(board.lane(on: "A")?.ids == [1, 4, 3])
+    }
+
+    @Test func closedWindowsSeatIsGivenUpInTime() {
+        var board = LaneBoard()
+        let start = Date(timeIntervalSince1970: 1000)
+        var frames: [Int: CGRect] = [
+            1: CGRect(x: 0, y: 0, width: 300, height: 300),
+            2: CGRect(x: 350, y: 0, width: 300, height: 300),
+            3: CGRect(x: 700, y: 0, width: 300, height: 300),
+        ]
+        arrange(&board, &frames, focused: 1)
+        let place = frames[2]
+        frames[2] = nil
+        board.close(2, now: start)
+        board.sync(snapshot(frames, focused: 1), now: start.addingTimeInterval(LaneBoard.vacancyGrace + 0.1))
+        // A window of the same app opening there later is a new one, beside the focused window.
+        frames[4] = place
+        board.sync(snapshot(frames, focused: 1, owners: [4: 2]), now: start.addingTimeInterval(5))
+        #expect(board.lane(on: "A")?.ids == [1, 4, 3])
+        #expect(board.lane(on: "A")?.focus == 1)
+    }
+
+    @Test func tabTakingAClosedWindowsPlaceGoesBackWhereThatWindowWas() throws {
+        var board = LaneBoard()
+        var frames: [Int: CGRect] = [
+            1: CGRect(x: 0, y: 0, width: 300, height: 300),
+            2: CGRect(x: 100, y: 100, width: 300, height: 300),
+        ]
+        arrange(&board, &frames, focused: 2)
+        frames[4] = frames[2]
+        frames[2] = nil
+        board.close(2)
+        board.sync(snapshot(frames, focused: 4, owners: [4: 2]))
+        let back = try #require(board.restorations().first { $0.id == 4 })
+        #expect(back.frame == CGRect(x: 100, y: 100, width: 300, height: 300))
+    }
+
+    @Test func onlyATabOfTheSameAppTakesAClosedWindowsPlace() {
+        var board = LaneBoard()
+        func look(_ windows: [LaneSnapshot.Window], focused: Int) -> LaneSnapshot {
+            LaneSnapshot(displays: [main], windows: windows, focused: focused, mainDisplay: "A")
+        }
+        let start = look(
+            [
+                .init(id: 1, frame: CGRect(x: 0, y: 25, width: 300, height: 775), owner: 10),
+                .init(id: 2, frame: CGRect(x: 300, y: 25, width: 300, height: 775), owner: 20),
+                .init(id: 3, frame: CGRect(x: 600, y: 25, width: 300, height: 775), owner: 10),
+            ], focused: 3)
+        board.sync(start)
+        for move in board.layout(start) { _ = board.settle(move.id, at: move.frame) }
+        // The second window closes as another app opens one just where it was: that's a new
+        // window, beside the focused one.
+        board.close(2)
+        board.sync(
+            look(
+                [
+                    .init(id: 1, frame: CGRect(x: 0, y: 25, width: 300, height: 775), owner: 10),
+                    .init(id: 3, frame: CGRect(x: 600, y: 25, width: 300, height: 775), owner: 10),
+                    .init(id: 4, frame: CGRect(x: 300, y: 25, width: 300, height: 775), owner: 30),
+                ], focused: 3))
+        #expect(board.lane(on: "A")?.ids == [1, 3, 4])
     }
 
     @Test func onlyATabOfTheSameAppTakesAWindowsPlace() {
@@ -840,7 +978,7 @@ struct LaneBoardTests {
         _ = board.settle(1, at: frames[1]!)
         frames[2] = frames[1]
         frames[1] = nil
-        let switched = snapshot(frames, focused: 2)
+        let switched = snapshot(frames, focused: 2, owners: [2: 1])
         board.sync(switched)
         #expect(board.lane(on: "A")?.ids == [2, 3])
         #expect(board.layout(switched).isEmpty)
@@ -866,7 +1004,7 @@ struct LaneBoardTests {
         board.sync(snapshot(frames, focused: 2))
         frames[4] = frames[2]
         frames[2] = nil
-        board.sync(snapshot(frames, focused: 4))
+        board.sync(snapshot(frames, focused: 4, owners: [4: 2]))
         #expect(board.lane(on: "A")?.ids == [1, 4, 3])
     }
 

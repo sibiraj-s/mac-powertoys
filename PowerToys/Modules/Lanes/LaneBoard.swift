@@ -93,6 +93,22 @@ nonisolated struct LaneBoard {
     /// Where windows sat when they left the screen, by being minimized or hidden with their
     /// app, to put them back there when they return.
     private var seats: [Int: Lane.Seat] = [:]
+    /// Windows that closed lately in a showing row: where each sat, on which display, where it
+    /// was and whose it was. They're out of their rows already; a tab of the same app shown just
+    /// where one was takes its seat, as a tab switched to takes the place of the one before it.
+    /// An app can take a moment to show the next tab, so a seat is kept for `vacancyGrace`.
+    private var vacated: [Int: Vacancy] = [:]
+
+    private struct Vacancy {
+        let seat: Lane.Seat
+        let display: String
+        let frame: CGRect
+        let owner: pid_t
+        let closed: Date
+    }
+
+    /// How long a closed window's seat is kept for a tab of its app to take, in seconds.
+    static let vacancyGrace: TimeInterval = 1
 
     /// The width a window took when asked for another, for as long as it hasn't since taken
     /// the width asked.
@@ -139,7 +155,7 @@ nonisolated struct LaneBoard {
     /// mouse was used since the last look: only then, and only for a window the pointer is
     /// still on and that went some way, is a change of place within its display taken as a drag
     /// and not as its app nudging it.
-    mutating func sync(_ snapshot: LaneSnapshot, afterDrag: Bool = false) {
+    mutating func sync(_ snapshot: LaneSnapshot, afterDrag: Bool = false, now: Date = .now) {
         displays = snapshot.displays
         let windows = snapshot.windows.filter { !ignored.contains($0.id) }
         let seenBefore = seen
@@ -195,9 +211,11 @@ nonisolated struct LaneBoard {
                     // A tab is a window of its own, and the one switched to shows just where the
                     // one before it was: it takes that one's place in the row, and nothing moves.
                     let places = [settled[id], seenBefore[id]].compactMap(\.self)
-                    if let tab = unplaced.firstIndex(where: { window in
-                        window.owner == ownersBefore[id] && places.contains { Self.near(window.frame, $0) }
-                    }) {
+                    if let owner = ownersBefore[id],
+                        let tab = unplaced.firstIndex(where: { window in
+                            window.owner == owner && places.contains { Self.near(window.frame, $0) }
+                        })
+                    {
                         hand(id, to: unplaced.remove(at: tab), in: index)
                         continue
                     }
@@ -227,7 +245,6 @@ nonisolated struct LaneBoard {
         for window in fresh {
             // One that's on no display at all joins the first.
             guard let display = Self.home(of: window.frame, in: snapshot.displays) ?? snapshot.displays.first else { continue }
-            if originals[window.id] == nil { originals[window.id] = window.frame }
             let index: Int
             if let existing = active[display.key] {
                 index = existing
@@ -238,8 +255,15 @@ nonisolated struct LaneBoard {
             }
             // A seat from another row, as when the window was moved to another Space, means nothing here.
             if let seat = seats.removeValue(forKey: window.id), lanes[index].knows(seat) {
+                if originals[window.id] == nil { originals[window.id] = window.frame }
                 lanes[index].insert(window.id, at: seat, orAfter: anchors[index] ?? lanes[index].focus)
+            } else if let closed = vacancy(for: window, on: display.key, in: lanes[index]) {
+                // The tab goes back where the closed window was before it joined the row.
+                lanes[index].insert(window.id, at: closed.seat, orAfter: anchors[index] ?? lanes[index].focus)
+                inherit(window, from: closed.id)
+                if originals[window.id] == nil { originals[window.id] = window.frame }
             } else {
+                if originals[window.id] == nil { originals[window.id] = window.frame }
                 lanes[index].insert(
                     window.id, width: min(window.frame.width + gap, rowArea(of: display).width),
                     after: anchors[index] ?? lanes[index].focus)
@@ -247,9 +271,26 @@ nonisolated struct LaneBoard {
             }
         }
 
+        // A closed window no tab took the place of in time is gone for good.
+        for (id, vacancy) in vacated where now.timeIntervalSince(vacancy.closed) > Self.vacancyGrace {
+            forget(id)
+        }
+
         if let focused = snapshot.focused, let index = lanes.firstIndex(where: { $0.contains(focused) }) {
             lanes[index].setFocus(focused)
         }
+    }
+
+    /// The closed window whose seat a window just shown in `lane` takes: one of the same app,
+    /// on the same display, that was just where it is, and that sat among this row's windows,
+    /// or alone in its row.
+    private func vacancy(for window: LaneSnapshot.Window, on display: String, in lane: Lane) -> (id: Int, seat: Lane.Seat)? {
+        guard let owner = window.owner else { return nil }
+        return vacated.sorted { $0.key < $1.key }.first { _, vacancy in
+            let seat = vacancy.seat
+            return vacancy.display == display && vacancy.owner == owner && Self.near(window.frame, vacancy.frame)
+                && (lane.knows(seat) || (seat.mates + seat.before + seat.after).isEmpty)
+        }.map { ($0.key, $0.value.seat) }
     }
 
     /// Whether a window was made wider or narrower than where it was put.
@@ -511,12 +552,17 @@ nonisolated struct LaneBoard {
         return true
     }
 
-    /// Drops everything known about a window that has closed.
     /// Gives a window's place in a lane, and what's known of how it takes being moved, to the
     /// tab of the same app shown instead of it; the window itself is forgotten. Its tab, shown
     /// again later, is handed the place back the same way.
     private mutating func hand(_ id: Int, to tab: LaneSnapshot.Window, in index: Int) {
         lanes[index].replace(id, with: tab.id)
+        inherit(tab, from: id)
+    }
+
+    /// Gives a tab what's known of how the window it took the place of takes being moved, and
+    /// forgets that window.
+    private mutating func inherit(_ tab: LaneSnapshot.Window, from id: Int) {
         settled[tab.id] = settled[id] ?? tab.frame
         requested[tab.id] = requested[id] ?? tab.frame
         if originals[tab.id] == nil { originals[tab.id] = originals[id] }
@@ -527,7 +573,24 @@ nonisolated struct LaneBoard {
         forget(id)
     }
 
+    /// A window has closed. It leaves its row at once, so nothing steps to it or shows it. If
+    /// that row is showing, its seat, and what's known about it, are kept a moment for a tab
+    /// shown in its place to take.
+    mutating func close(_ id: Int, now: Date = .now) {
+        guard let index = lanes.firstIndex(where: { $0.contains(id) }), active[lanes[index].displayKey] == index,
+            let seat = lanes[index].seat(of: id), let frame = settled[id] ?? seen[id], let owner = owners[id]
+        else {
+            forget(id)
+            return
+        }
+        vacated[id] = Vacancy(seat: seat, display: lanes[index].displayKey, frame: frame, owner: owner, closed: now)
+        seats[id] = nil
+        lanes[index].remove(id)
+    }
+
+    /// Drops everything known about a window.
     mutating func forget(_ id: Int) {
+        vacated[id] = nil
         for index in lanes.indices {
             lanes[index].remove(id)
         }
@@ -556,7 +619,7 @@ nonisolated struct LaneBoard {
     /// The moves that put every window back where it was before it joined a lane, those that
     /// are minimized or hidden with their app for now included.
     func restorations() -> [LaneMove] {
-        originals.sorted { $0.key < $1.key }.map {
+        originals.filter { vacated[$0.key] == nil }.sorted { $0.key < $1.key }.map {
             LaneMove(id: $0.key, frame: Self.onScreen($0.value, displays: displays), resizes: true, slide: nil)
         }
     }
@@ -586,7 +649,9 @@ nonisolated struct LaneBoard {
     /// Where each arranged window was put, with where it was before, to recover from if the
     /// app goes away without putting them back.
     var records: [(id: Int, placed: CGRect, original: CGRect)] {
-        originals.sorted { $0.key < $1.key }.compactMap { id, original in settled[id].map { (id, $0, original) } }
+        originals.filter { vacated[$0.key] == nil }.sorted { $0.key < $1.key }.compactMap { id, original in
+            settled[id].map { (id, $0, original) }
+        }
     }
 
     /// Takes `original` as where a window was before it joined a lane, for one found already

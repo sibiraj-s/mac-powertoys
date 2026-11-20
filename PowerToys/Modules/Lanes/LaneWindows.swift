@@ -284,8 +284,10 @@ final class LiveLaneWindows: LaneWindowSystem {
             window.move(to: move.frame.origin, appTimeout: Self.patience)
         }
         guard let frame = window.frame else {
-            // Its app answers, so it's the window that's gone, without having said so.
+            // Its app answers, so it's the window that's gone, without having said so. The rows
+            // are looked at again for it.
             gone(move.id)
+            onChange()
             return nil
         }
         remember(frame, of: move.id, in: window.pid)
@@ -344,7 +346,7 @@ final class LiveLaneWindows: LaneWindowSystem {
     /// Keeps what's known of a window's frame up with a move made here, which isn't looked into again.
     private func remember(_ frame: CGRect, of id: Int, in pid: pid_t) {
         guard let index = lastSeen[pid]?.firstIndex(where: { $0.id == id }) else { return }
-        lastSeen[pid]?[index] = LaneSnapshot.Window(id: id, frame: frame)
+        lastSeen[pid]?[index] = LaneSnapshot.Window(id: id, frame: frame, owner: pid)
     }
 
     private func fellSilent(_ pid: pid_t) {
