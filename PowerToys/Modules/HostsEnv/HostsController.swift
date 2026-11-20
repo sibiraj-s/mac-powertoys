@@ -24,7 +24,7 @@ nonisolated struct LiveHostsStore: HostsStore {
     }
 
     func write(_ text: String, replacing expected: String) async throws {
-        let directory = FileManager.default.temporaryDirectory.appending(path: "hosts-\(UUID().uuidString)")
+        let directory = FileManager.default.temporaryDirectory.appending(path: "PowerToys-hosts-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
         let staged = directory.appending(path: "new")

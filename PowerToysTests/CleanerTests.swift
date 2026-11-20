@@ -110,13 +110,14 @@ struct CleanupTests {
             chmod(folder.path, 0o755)
             try? FileManager.default.removeItem(at: home)
         }
-        var context = Cleanup.Context(home: home, activity: .idle())
+        var context = await Cleanup.Context(home: home, activity: .idle()).reviewing(.caches)
         let item = try #require(await Cleanup.scan(.caches, context: context).items.first)
         context.sizes = [item.id: 1000]
-        // x can't be removed from a folder that can't be written to, so the folder stays.
+        // After the review, x can't be removed from a folder that can't be written to, so the
+        // folder stays.
         chmod(folder.path, 0o555)
         let events = Mutex<[CleanupEvent.Kind]>([])
-        let freed = await Cleanup.clean(.caches, context: await context.reviewing(.caches), log: nil) { event in
+        let freed = await Cleanup.clean(.caches, context: context, log: nil) { event in
             events.withLock { $0.append(event.kind) }
         }
         #expect(freed == 0)
@@ -163,7 +164,8 @@ struct CleanupTests {
         }
         chmod(locked.path, 0o555)
         let scan = await Cleanup.scan(.caches, context: Cleanup.Context(home: home, activity: .idle()))
-        #expect(scan.items.first { $0.name == "dotslash" }?.skipReason == Cleanup.readOnlyReason)
+        // Nothing can be done about it, so it isn't listed.
+        #expect(!scan.items.contains { $0.name == "dotslash" })
         #expect(scan.cleanable.map(\.name) == ["other"])
     }
 
@@ -281,7 +283,7 @@ struct CleanupTests {
         let home = try makeHome(["Library/Caches/com.apple.nsurlsessiond/x": 1000, "Library/Caches/com.example.App/x": 1000])
         defer { try? FileManager.default.removeItem(at: home) }
         let scan = await Cleanup.scan(.caches, context: Cleanup.Context(home: home, activity: .idle()))
-        #expect(scan.items.first { $0.name == "com.apple.nsurlsessiond" }?.skipReason == "Part of macOS")
+        #expect(!scan.items.contains { $0.name == "com.apple.nsurlsessiond" })
         #expect(scan.cleanable.map(\.name) == ["com.example.App"])
     }
 
@@ -328,7 +330,7 @@ struct CleanupTests {
         let context = Cleanup.Context(home: home, activity: .idle())
         let scan = await Cleanup.scan(.caches, context: context)
         #expect(scan.cleanable.map { $0.name } == ["old"])
-        #expect(scan.items.filter { $0.skipReason == "Protected" }.count == 4)
+        #expect(scan.items.map(\.name) == ["old"])
         _ = await Cleanup.clean(.caches, context: await context.reviewing(.caches), log: nil)
         #expect(exists(home, "Library/Caches/com.apple.FontRegistry/fonts"))
         #expect(exists(home, "Library/Caches/pypoetry/virtualenvs/env"))
@@ -359,6 +361,118 @@ struct CleanupTests {
         #expect(exists(home, "Library/Developer/Xcode/DerivedData/App-abc/Build"))
         let closed = Cleanup.Context(home: home, activity: .idle())
         #expect(await Cleanup.clean(.xcode, context: await closed.reviewing(.xcode), log: nil) > 0)
+    }
+
+    @Test func cleansTheBuildDataFolderXcodeIsSetToUse() async throws {
+        let home = try makeHome([
+            "Library/Developer/Xcode/DerivedData/Old-abc/Build": 1000,
+            "Library/Developer/Xcode/DerivedData.noindex/App-abcdefghijklmnopqrstuvwxyzab/Build": 2000,
+            "Library/Developer/Xcode/DerivedData.noindex/App-abcdefghijklmnopqrstuvwxyzab/info.plist": 10,
+            // Named like a project's builds, but without Xcode's note of the project.
+            "Library/Developer/Xcode/DerivedData.noindex/notes-abcdefghijklmnopqrstuvwxyzab/todo.txt": 10,
+            "Library/Developer/Xcode/DerivedData.noindex/ModuleCache.noindex/x": 10,
+            // A folder of the person's own in it, which Xcode didn't make.
+            "Library/Developer/Xcode/DerivedData.noindex/my-project/notes.txt": 10,
+        ])
+        defer { try? FileManager.default.removeItem(at: home) }
+        let custom = CleanupTarget.xcodeDerivedData(home: home, setting: home.path + "/Library/Developer/Xcode/DerivedData.noindex")
+        #expect(custom != nil)
+        let context = Cleanup.Context(home: home, activity: .idle(), derivedData: custom)
+        let names = await Cleanup.scan(.xcode, context: context).cleanable.map(\.name).sorted()
+        #expect(names == ["App-abcdefghijklmnopqrstuvwxyzab", "ModuleCache.noindex", "Old-abc"])
+        #expect(await Cleanup.clean(.xcode, context: await context.reviewing(.xcode), log: nil) > 0)
+        #expect(!exists(home, "Library/Developer/Xcode/DerivedData.noindex/App-abcdefghijklmnopqrstuvwxyzab"))
+        #expect(exists(home, "Library/Developer/Xcode/DerivedData.noindex/my-project/notes.txt"))
+        #expect(exists(home, "Library/Developer/Xcode/DerivedData.noindex/notes-abcdefghijklmnopqrstuvwxyzab/todo.txt"))
+    }
+
+    @Test func xcodeBuildDataSettingIsTakenOnlyInsideTheHomeFolder() {
+        let home = URL(filePath: "/Users/someone", directoryHint: .isDirectory)
+        #expect(CleanupTarget.xcodeDerivedData(home: home, setting: "/Users/someone/Builds")?.path == "/Users/someone/Builds")
+        #expect(CleanupTarget.xcodeDerivedData(home: home, setting: "~/Builds")?.path == "/Users/someone/Builds")
+        #expect(CleanupTarget.xcodeDerivedData(home: home, setting: "/Volumes/Fast/DerivedData") == nil)
+        #expect(CleanupTarget.xcodeDerivedData(home: home, setting: "/Users/someone/../other/Builds") == nil)
+        #expect(CleanupTarget.xcodeDerivedData(home: home, setting: "Builds") == nil)
+        #expect(CleanupTarget.xcodeDerivedData(home: home, setting: "") == nil)
+        #expect(CleanupTarget.xcodeDerivedData(home: home, setting: nil) == nil)
+        #expect(CleanupTarget.xcodeDerivedData(home: home, setting: "/Users/someone/Builds\n")?.path == "/Users/someone/Builds")
+    }
+
+    @Test func usualBuildFolderSetAsXcodesOwnIsCleanedAsUsual() async throws {
+        let home = try makeHome(["Library/Developer/Xcode/DerivedData/Old-abc/Build": 1000])
+        defer { try? FileManager.default.removeItem(at: home) }
+        let usual = CleanupTarget.xcodeDerivedData(home: home, setting: home.path + "/Library/Developer/Xcode/DerivedData")
+        let context = Cleanup.Context(home: home, activity: .idle(), derivedData: usual)
+        #expect(await Cleanup.scan(.xcode, context: context).cleanable.map(\.name) == ["Old-abc"])
+        // The same folder by a link, or in other capitals, isn't listed a second time.
+        let link = home.appending(path: "Builds")
+        try FileManager.default.createSymbolicLink(
+            at: link, withDestinationURL: home.appending(path: "Library/Developer/Xcode/DerivedData"))
+        #expect(CleanupTarget.xcodeDerivedData(home: home, setting: link.path) == nil)
+        #expect(CleanupTarget.xcodeDerivedData(home: home, setting: home.path + "/library/developer/xcode/deriveddata") == nil)
+    }
+
+    @Test func onlyWhatXcodeMakesCountsAsBuildData() throws {
+        let home = try makeHome([
+            "PowerToys-bwvgburfbrsphcaaqfzdjgvjawtk/info.plist": 10, "My App-bwvgburfbrsphcaaqfzdjgvjawtk/info.plist": 10,
+            "App-bwvgburfbrsphcaaqfzdjgvjawt/info.plist": 10, "App-BWVGBURFBRSPHCAAQFZDJGVJAWTK/info.plist": 10,
+            "notes-bwvgburfbrsphcaaqfzdjgvjawtk/todo.txt": 10, "mac-powertoys/info.plist": 10,
+        ])
+        defer { try? FileManager.default.removeItem(at: home) }
+        func isBuildData(_ name: String) -> Bool { CleanupTarget.isXcodeBuildData(home.appending(path: name)) }
+        #expect(isBuildData("PowerToys-bwvgburfbrsphcaaqfzdjgvjawtk"))
+        #expect(isBuildData("My App-bwvgburfbrsphcaaqfzdjgvjawtk"))
+        #expect(isBuildData("ModuleCache.noindex"))
+        #expect(!isBuildData("mac-powertoys"))
+        #expect(!isBuildData("App-bwvgburfbrsphcaaqfzdjgvjawt"))
+        #expect(!isBuildData("App-BWVGBURFBRSPHCAAQFZDJGVJAWTK"))
+        #expect(!isBuildData("notes-bwvgburfbrsphcaaqfzdjgvjawtk"))
+        #expect(!isBuildData("Archives"))
+    }
+
+    @Test func readsAppsOnRecordInsideFolders() {
+        let dump = """
+            bundle id:                  1234
+            path:                       /Users/me/DD/App-abc/Build/Products/Debug/My App.app (0x1a2b)
+            path:                       /Users/me/DD/App-abc/Build/Products/Debug/My App.app/Contents/PlugIns/Ext.appex (0x1a2c)
+            path:                       /Users/me/DD/App-abcdef/Build/Products/Debug/Other.app (0x1a2d)
+            path:                       /Applications/My App.app (0x1a2e)
+            path:                       /private/tmp/DD/Built.app (0x1a2f)
+            name:                       My App
+            """
+        #expect(
+            AppRegistry.paths(in: dump, inside: ["/Users/me/DD/App-abc"]) == [
+                "/Users/me/DD/App-abc/Build/Products/Debug/My App.app",
+                "/Users/me/DD/App-abc/Build/Products/Debug/My App.app/Contents/PlugIns/Ext.appex",
+            ])
+        // On record through /private, which /tmp is a link into.
+        #expect(AppRegistry.paths(in: dump, inside: ["/tmp/DD"]) == ["/private/tmp/DD/Built.app"])
+    }
+
+    @Test func deletedBuildsAreTakenOffTheRecordOfApps() async throws {
+        let home = try makeHome([
+            "Library/Developer/Xcode/DerivedData/App-abc/Build/Products/Debug/App.app/Contents/Info.plist": 100,
+            // Simulator caches have no apps, so deleting them alone looks nothing up.
+            "Library/Developer/CoreSimulator/Caches/dyld/x": 100,
+        ])
+        defer { try? FileManager.default.removeItem(at: home) }
+        let app = home.appending(path: "Library/Developer/Xcode/DerivedData/App-abc/Build/Products/Debug/App.app")
+            .standardizedFileURL.path
+        let calls = Mutex<[[String]]>([])
+        let registry = AppRegistry(
+            listPaths: {
+                calls.withLock { $0.append(["-dump"]) }
+                return "path:   \(app) (0x1)\npath:   /Applications/App.app (0x2)\n"
+            },
+            takeOff: { paths in calls.withLock { $0.append(["-u"] + paths) } })
+        let open = Cleanup.Context(
+            home: home, activity: .idle(lines: ["/Applications/Xcode.app/Contents/MacOS/Xcode"]), registry: registry)
+        _ = await Cleanup.clean(.xcode, context: await open.reviewing(.xcode), log: nil)
+        // Nothing was deleted, so nothing is taken off.
+        #expect(calls.withLock { $0 }.isEmpty)
+        let closed = Cleanup.Context(home: home, activity: .idle(), registry: registry)
+        _ = await Cleanup.clean(.xcode, context: await closed.reviewing(.xcode), log: nil)
+        #expect(calls.withLock { $0 } == [["-dump"], ["-u", app]])
     }
 
     @Test func cleansOnlyNamedDeveloperCaches() async throws {
@@ -811,15 +925,18 @@ struct CleanerControllerTests {
     }
 
     @Test func saysWhatWasKeptAndWhy() async throws {
-        let home = try makeHome(["Library/Caches/com.apple.thing/x": 100, "Library/Caches/other/x": 100])
+        let home = try makeHome([
+            "Library/Caches/com.apple.thing/x": 100, "Library/Caches/com.example.Open/x": 100, "Library/Caches/other/x": 100,
+        ])
         defer { try? FileManager.default.removeItem(at: home) }
-        let controller = CleanerController.testing(home: home)
+        let controller = CleanerController.testing(home: home, activity: .idle(apps: ["com.example.Open"]))
         await controller.scan()
         controller.selected = [.caches]
         await controller.clean()
         let kept = controller.cleanEvents.filter { if case .skipped = $0.kind { true } else { false } }
-        #expect(kept.map { URL(filePath: $0.detail).lastPathComponent } == ["com.apple.thing"])
-        #expect(kept.first?.kind == .skipped("Part of macOS"))
+        // What's kept for now is told; macOS's own, which is never cleaned, isn't.
+        #expect(kept.map { URL(filePath: $0.detail).lastPathComponent } == ["com.example.Open"])
+        #expect(kept.first?.kind == .skipped("App is open"))
         // Kept items aren't failures.
         #expect(controller.cleanFailed == 0)
     }
@@ -840,7 +957,7 @@ struct CleanerControllerTests {
         let log = URL(filePath: "/tmp/elsewhere.log")
         let controller = CleanerController(
             defaults: TestDefaults().defaults, home: URL(filePath: "/nonexistent"), sampler: FakeUsageSampler([]),
-            cleanupLog: log, docker: nil, npm: nil)
+            cleanupLog: log, docker: nil, npm: nil, registry: .none, temporaryFolders: [])
         #expect(controller.logFile == log)
     }
 
@@ -1368,7 +1485,8 @@ extension CleanerController {
             defaults: defaults, home: home, sampler: sampler, signaling: signaling, readActivity: { activity },
             quitTimeout: quitTimeout,
             cleanupLog: nil, docker: docker(), npm: npm(), scanTimeout: scanTimeout, cleanTimeout: cleanTimeout,
-            startTime: startTime, installedApps: installedApps, fullDiskAccess: fullDiskAccess)
+            startTime: startTime, installedApps: installedApps, fullDiskAccess: fullDiskAccess, registry: .none,
+            temporaryFolders: [])
     }
 }
 
@@ -1696,4 +1814,201 @@ struct AppLeftoversTests {
 /// other tests running alongside keep theirs (`usleep` here starves them on small machines).
 nonisolated func stall(_ duration: Duration) async {
     await Task { try? await Task.sleep(for: duration) }.value
+}
+
+struct TemporaryFilesTests {
+    private let now = Date(timeIntervalSince1970: 2_000_000_000)
+    private var cutoff: TimeInterval { now.timeIntervalSince1970 - TemporaryFiles.unusedFor }
+
+    /// A throwaway temporary folder, by its real path, with a file at each path, last used
+    /// `daysAgo` before `now`.
+    private func makeFolder(_ files: [String: Double]) throws -> URL {
+        let made = FileManager.default.temporaryDirectory.appending(path: "TemporaryFilesTests-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: made, withIntermediateDirectories: true)
+        let root = URL(filePath: try #require(realpath(made.path, nil).map { String(cString: $0) }), directoryHint: .isDirectory)
+        for (path, _) in files {
+            let url = root.appending(path: path)
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data(repeating: 1, count: 4096).write(to: url)
+        }
+        // Folders first, then files, each set to its time: setting a file's changes its folder's.
+        let all = try #require(FileManager.default.enumerator(atPath: root.path)?.allObjects as? [String])
+        for path in all.sorted(by: { $0.count > $1.count }) where files[path] == nil {
+            try age(root.appending(path: path), days: files.filter { $0.key.hasPrefix(path + "/") }.values.min() ?? 10)
+        }
+        for (path, days) in files { try age(root.appending(path: path), days: days) }
+        return root
+    }
+
+    private func age(_ url: URL, days: Double) throws {
+        let date = now.addingTimeInterval(-days * 24 * 60 * 60)
+        var times = [
+            timespec(tv_sec: Int(date.timeIntervalSince1970), tv_nsec: 0), timespec(tv_sec: Int(date.timeIntervalSince1970), tv_nsec: 0),
+        ]
+        #expect(utimensat(AT_FDCWD, url.path, &times, AT_SYMLINK_NOFOLLOW) == 0)
+    }
+
+    private func context(_ root: URL, cutoff: TimeInterval?, open: [String] = []) -> Cleanup.Context {
+        Cleanup.Context(
+            home: URL(filePath: "/nonexistent"), activity: .idle(open: open.map { root.appending(path: $0).path }),
+            temporaryFolders: [root], temporaryCutoff: cutoff)
+    }
+
+    @Test func onlyWhatsGoneUnusedForDaysGoes() async throws {
+        let root = try makeFolder([
+            "old.log": 5, "new.log": 1,
+            "app/old/a": 6, "app/old/b": 4,
+            // Something new in a folder keeps the folder, but not what's old in it.
+            "busy/new": 0.5, "busy/stale/x": 9, "busy/stale.txt": 7,
+            ".hidden": 30, "com.apple.thing/x": 30, "TemporaryItems/x": 30,
+        ])
+        defer { try? FileManager.default.removeItem(at: root) }
+        let scan = await Cleanup.scan(.temporary, context: context(root, cutoff: cutoff))
+        // One busy folder is one item, of the parts of it that go.
+        #expect(scan.cleanable.map(\.name).sorted() == ["app", "busy (part of it)", "old.log"])
+        let busy = try #require(scan.items.first { $0.name.hasPrefix("busy") })
+        #expect(busy.id == root.appending(path: "busy").path)
+    }
+
+    @Test func cleaningEverythingTakesNewFilesToo() async throws {
+        let root = try makeFolder(["old.log": 5, "new.log": 0.1, "busy/new": 0.5, "com.apple.thing/x": 0.1])
+        defer { try? FileManager.default.removeItem(at: root) }
+        let scan = await Cleanup.scan(.temporary, context: context(root, cutoff: nil))
+        #expect(scan.cleanable.map(\.name).sorted() == ["busy", "new.log", "old.log"])
+    }
+
+    @Test func socketsAndPipesStayWithTheirFolders() async throws {
+        let root = try makeFolder(["server/old.txt": 9])
+        defer { try? FileManager.default.removeItem(at: root) }
+        #expect(mkfifo(root.appending(path: "server/pipe").path, 0o600) == 0)
+        #expect(mkfifo(root.appending(path: "lone-pipe").path, 0o600) == 0)
+        try age(root.appending(path: "server/pipe"), days: 9)
+        try age(root.appending(path: "lone-pipe"), days: 9)
+        try age(root.appending(path: "server"), days: 9)
+        let scan = await Cleanup.scan(.temporary, context: context(root, cutoff: nil))
+        // The folder with a pipe in it stays; what else is in it may go.
+        #expect(scan.cleanable.map(\.name) == ["server (part of it)"])
+    }
+
+    @Test func whatsMarkedAsNotToBeChangedIsLeftWhole() async throws {
+        let root = try makeFolder(["service/inner/old": 9, "plain/old": 9])
+        defer {
+            _ = chflags(root.appending(path: "service").path, 0)
+            try? FileManager.default.removeItem(at: root)
+        }
+        // macOS marks its services' folders so they can't be deleted, which only it can do; a
+        // folder its owner locks is marked the same way, and stays whole the same.
+        #expect(chflags(root.appending(path: "service").path, UInt32(UF_IMMUTABLE)) == 0)
+        let scan = await Cleanup.scan(.temporary, context: context(root, cutoff: nil))
+        #expect(scan.cleanable.map(\.name) == ["plain"])
+        #expect(TemporaryFiles.isMarked(flags: UInt32(SF_NOUNLINK)))
+        #expect(TemporaryFiles.isMarked(flags: UInt32(SF_RESTRICTED)))
+        #expect(!TemporaryFiles.isMarked(flags: 0))
+    }
+
+    @Test func unpackedFilesWithOldDatesAreNew() async throws {
+        let root = try makeFolder(["unpacked/file": 30])
+        defer { try? FileManager.default.removeItem(at: root) }
+        // Unpacking gives files the dates they had, but when they changed on this Mac is now.
+        let today = Date.now.timeIntervalSince1970
+        let scan = await Cleanup.scan(.temporary, context: context(root, cutoff: today - TemporaryFiles.unusedFor))
+        #expect(scan.items.isEmpty)
+    }
+
+    @Test func nothingKeptIsDeletedHoweverItsListed() async throws {
+        let root = try makeFolder(["proj/old-a": 9, "proj/old-b": 9, "busy/new": 0.5, "busy/stale.txt": 9, "other": 9])
+        defer { try? FileManager.default.removeItem(at: root) }
+        var keeping = context(root, cutoff: cutoff)
+        keeping.kept = [root.appending(path: "proj").path, root.appending(path: "busy").path]
+        let scan = await Cleanup.scan(.temporary, context: keeping)
+        // Still listed, whole or in part, so they can be ticked again.
+        #expect(scan.cleanable.map(\.name).sorted() == ["busy (part of it)", "other", "proj"])
+        keeping.reviewed = Set(scan.items.map(\.id))
+        _ = await Cleanup.clean(.temporary, context: keeping, log: nil)
+        let files = FileManager.default
+        #expect(files.fileExists(atPath: root.appending(path: "proj/old-a").path))
+        #expect(files.fileExists(atPath: root.appending(path: "busy/stale.txt").path))
+        #expect(!files.fileExists(atPath: root.appending(path: "other").path))
+    }
+
+    @Test func runningAppsFoldersAreLeftAlone() async throws {
+        let root = try makeFolder(["com.google.Chrome.chrome_url_fetcher.2XVHbC/x": 9, "com.gone.App.abc/x": 9])
+        defer { try? FileManager.default.removeItem(at: root) }
+        var running = context(root, cutoff: cutoff)
+        running.activity = .idle(apps: ["com.google.Chrome"])
+        let scan = await Cleanup.scan(.temporary, context: running)
+        #expect(scan.cleanable.map(\.name) == ["com.gone.App.abc"])
+        #expect(scan.items.first { $0.name.hasPrefix("com.google.Chrome") }?.skipReason == "App is open")
+    }
+
+    @Test func folderGivenSomethingNewAfterTheReviewStays() async throws {
+        let root = try makeFolder(["tool/old": 9, "other": 9])
+        defer { try? FileManager.default.removeItem(at: root) }
+        var context = context(root, cutoff: nil)
+        let items = await Cleanup.scan(.temporary, context: context).items
+        context.reviewed = Set(items.map(\.id))
+        context.sizes = Dictionary(items.map { ($0.id, $0.size) }) { first, _ in first }
+        // A process starts and opens a socket in it, which keeps the folder.
+        #expect(mkfifo(root.appending(path: "tool/agent.sock").path, 0o600) == 0)
+        _ = await Cleanup.clean(.temporary, context: context, log: nil)
+        #expect(FileManager.default.fileExists(atPath: root.appending(path: "tool/agent.sock").path))
+        // What else is in it still goes.
+        #expect(!FileManager.default.fileExists(atPath: root.appending(path: "tool/old").path))
+        #expect(!FileManager.default.fileExists(atPath: root.appending(path: "other").path))
+    }
+
+    @Test func filesInUseAreLeftAlone() async throws {
+        let root = try makeFolder(["job/data": 9, "other": 9])
+        defer { try? FileManager.default.removeItem(at: root) }
+        let scan = await Cleanup.scan(.temporary, context: context(root, cutoff: cutoff, open: ["job/data"]))
+        #expect(scan.cleanable.map(\.name) == ["other"])
+        #expect(scan.items.first { $0.name == "job" }?.skipReason == "In use")
+    }
+
+    @Test func cleaningDeletesOnlyTheOldParts() async throws {
+        let root = try makeFolder(["old.log": 5, "busy/new": 0.5, "busy/stale.txt": 7])
+        defer { try? FileManager.default.removeItem(at: root) }
+        var context = context(root, cutoff: cutoff)
+        let items = await Cleanup.scan(.temporary, context: context).items
+        context.reviewed = Set(items.map(\.id))
+        context.sizes = Dictionary(items.map { ($0.id, $0.size) }) { first, _ in first }
+        #expect(await Cleanup.clean(.temporary, context: context, log: nil) > 0)
+        let files = FileManager.default
+        #expect(!files.fileExists(atPath: root.appending(path: "old.log").path))
+        #expect(!files.fileExists(atPath: root.appending(path: "busy/stale.txt").path))
+        #expect(files.fileExists(atPath: root.appending(path: "busy/new").path))
+    }
+
+    @Test func whatsUsedAgainAfterTheReviewIsToldAndStays() async throws {
+        let root = try makeFolder(["job/old": 7])
+        defer { try? FileManager.default.removeItem(at: root) }
+        var context = context(root, cutoff: cutoff)
+        let items = await Cleanup.scan(.temporary, context: context).items
+        #expect(items.map(\.name) == ["job"])
+        context.reviewed = Set(items.map(\.id))
+        // Used again before the clean, so nothing in it goes any more.
+        try age(root.appending(path: "job/old"), days: 0.5)
+        let events = Mutex<[CleanupEvent]>([])
+        #expect(await Cleanup.clean(.temporary, context: context, log: nil) { event in events.withLock { $0.append(event) } } == 0)
+        let skipped = events.withLock { $0 }.filter { if case .skipped("Changed since it was listed") = $0.kind { true } else { false } }
+        #expect(skipped.map(\.detail) == [root.appending(path: "job").path])
+        #expect(FileManager.default.fileExists(atPath: root.appending(path: "job/old").path))
+    }
+
+    @Test func nothingOutsideTheTemporaryFoldersIsDeleted() {
+        let roots = [URL(filePath: "/private/tmp", directoryHint: .isDirectory)]
+        #expect(TemporaryFiles.reason(toKeep: URL(filePath: "/Users/me/file"), roots: roots) == "Outside the temporary folders")
+        #expect(TemporaryFiles.reason(toKeep: URL(filePath: "/private/tmpfoo/file"), roots: roots) == "Outside the temporary folders")
+        #expect(TemporaryFiles.reason(toKeep: URL(filePath: "/private/tmp"), roots: roots) == "Outside the temporary folders")
+    }
+}
+
+struct TemporaryFoldersTests {
+    @Test func aFolderInsideAnotherIsGoneThroughAsPartOfIt() {
+        let folders = TemporaryFiles.folders().map(\.path)
+        #expect(folders.contains("/private/tmp"))
+        // The person's own is the one macOS made, wherever TMPDIR points.
+        #expect(folders.allSatisfy { $0 == "/private/tmp" || $0.hasPrefix("/private/var/folders/") })
+        #expect(!folders.contains { path in folders.contains { path.hasPrefix($0 + "/") } })
+    }
 }

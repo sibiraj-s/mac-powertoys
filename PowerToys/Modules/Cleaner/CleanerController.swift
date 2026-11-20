@@ -77,6 +77,12 @@ final class CleanerController {
     }
 
     static let dockerPrunesTaggedKey = "cleaner.dockerPrunesTagged"
+    /// Whether temporary files go whatever their age, not only once unused for a few days.
+    private(set) var cleansAllTemporaryFiles: Bool {
+        didSet { defaults.set(cleansAllTemporaryFiles, forKey: Self.cleansAllTemporaryFilesKey) }
+    }
+
+    static let cleansAllTemporaryFilesKey = "cleaner.cleansAllTemporaryFiles"
 
     static let refreshInterval: Duration = .seconds(2)
     static let topCount = 6
@@ -101,6 +107,10 @@ final class CleanerController {
     @ObservationIgnored private let findNpm: () -> NpmCLI?
     /// Looked for at each scan and clean, so Docker installed after launch is found.
     @ObservationIgnored private let findDocker: () -> DockerCLI?
+    /// Takes the apps in deleted Xcode build data off macOS's record.
+    @ObservationIgnored private let registry: AppRegistry
+    @ObservationIgnored private let temporaryFolders: [URL]
+    @ObservationIgnored private let now: () -> Date
     @ObservationIgnored private var lastTicks: CPUTicks?
     /// When free disk space was last read; it's slow to work out and rarely changes.
     @ObservationIgnored private var storageReadAt: ContinuousClock.Instant?
@@ -124,9 +134,15 @@ final class CleanerController {
         cleanTimeout: Duration = CleanerController.cleanTimeout,
         startTime: @escaping (pid_t) -> Date? = { ProcessStart.read($0) },
         installedApps: @escaping @Sendable () async -> InstalledApps? = { await InstalledApps.read() },
-        fullDiskAccess: @escaping () -> Bool = { FullDiskAccess.isGranted() }
+        fullDiskAccess: @escaping () -> Bool = { FullDiskAccess.isGranted() },
+        registry: AppRegistry = .live,
+        temporaryFolders: [URL] = TemporaryFiles.folders(),
+        now: @escaping () -> Date = { .now }
     ) {
         self.fullDiskAccess = fullDiskAccess
+        self.registry = registry
+        self.temporaryFolders = temporaryFolders
+        self.now = now
         self.installedApps = installedApps
         self.startTime = startTime
         self.scanTimeout = scanTimeout
@@ -136,6 +152,7 @@ final class CleanerController {
         self.defaults = defaults
         kept = Set(defaults.stringArray(forKey: Self.keptKey) ?? [])
         dockerPrunesTagged = defaults.bool(forKey: Self.dockerPrunesTaggedKey)
+        cleansAllTemporaryFiles = defaults.bool(forKey: Self.cleansAllTemporaryFilesKey)
         self.readActivity = readActivity
         self.quitTimeout = quitTimeout
         self.cleanupLog = cleanupLog
@@ -308,6 +325,12 @@ final class CleanerController {
         await scan([.docker])
     }
 
+    /// Takes effect at once, like `setDockerPrunesTagged`, with the temporary files rescanned.
+    func setCleansAllTemporaryFiles(_ cleansAll: Bool) async {
+        cleansAllTemporaryFiles = cleansAll
+        await scan([.temporary])
+    }
+
     /// Selects or clears a target. One that needs Full Disk Access stays off without it, and this
     /// returns false so the reason can be shown.
     @discardableResult
@@ -368,6 +391,10 @@ final class CleanerController {
             docker: targets.contains(.docker) ? findDocker() : nil,
             npm: targets.contains(.developerCaches) ? findNpm() : nil,
             dockerPrunesTagged: dockerPrunesTagged, apps: readsApps ? await installedApps() : nil,
+            derivedData: targets.contains(.xcode) ? CleanupTarget.xcodeDerivedData(home: home) : nil,
+            registry: targets.contains(.xcode) ? registry : nil,
+            temporaryFolders: targets.contains(.temporary) ? temporaryFolders : [],
+            temporaryCutoff: cleansAllTemporaryFiles ? nil : now().timeIntervalSince1970 - TemporaryFiles.unusedFor,
             canChangeAppContainers: readsApps && fullDiskAccess())
     }
 

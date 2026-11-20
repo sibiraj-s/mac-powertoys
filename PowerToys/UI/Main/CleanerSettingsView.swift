@@ -204,6 +204,7 @@ extension CleanupTarget {
         switch self {
         case .caches: "archivebox"
         case .logs: "doc.text"
+        case .temporary: "hourglass"
         case .xcode: "hammer"
         case .developerCaches: "shippingbox"
         case .docker: "square.stack.3d.up"
@@ -607,7 +608,7 @@ private struct CleanupTargetRow: View {
                     let kept = cleaner.scans[target]?.items.filter { $0.skipReason != nil }.count ?? 0
                     if kept > 0 {
                         Tag(text: "\(kept) kept")
-                            .help("Left alone, such as what macOS protects or what's in use. Click to see why.")
+                            .help("Left alone for now, such as what's in use or an app that's open. Click to see why.")
                     }
                     FillBar(
                         fraction: largest > 0 ? Double(size) / Double(largest) : 0, width: 80,
@@ -735,6 +736,29 @@ private struct CleanupItemsSheet: View {
                             .font(.system(size: 11))
                             .foregroundStyle(Palette.secondaryText)
                             .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .toggleStyle(.switch)
+                .controlSize(.mini)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 12)
+            }
+
+            if target == .temporary {
+                Toggle(
+                    isOn: Binding(
+                        get: { cleaner.cleansAllTemporaryFiles },
+                        set: { cleansAll in Task { await cleaner.setCleansAllTemporaryFiles(cleansAll) } })
+                ) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Clean everything, however new").font(.system(size: 12))
+                        Text(
+                            "Off, only what's gone unused for \(TemporaryFiles.unusedForDays) days goes. On, anything not in use goes, which can lose work an app keeps there."
+                        )
+                        .font(.system(size: 11))
+                        .foregroundStyle(Palette.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }

@@ -82,7 +82,13 @@ nonisolated struct ActivitySnapshot: Sendable {
     /// Whether a process has a file open in `url`, or `url` itself; nil when open files couldn't
     /// be listed.
     func isOpen(_ url: URL) -> Bool? {
-        let path = url.standardizedFileURL.path.lowercased()
+        isOpen(path: url.standardizedFileURL.path)
+    }
+
+    /// The same, for a path as open files are listed: by its real path, which standardizing a
+    /// URL would change, taking `/private` off /private/tmp for one.
+    func isOpen(path: String) -> Bool? {
+        let path = path.lowercased()
         guard let openFiles else { return nil }
         // The path itself, then anything inside it, which sorts together after "path/".
         for target in [path, path + "/"] {

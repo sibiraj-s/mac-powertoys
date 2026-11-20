@@ -4,7 +4,7 @@ import Foundation
 /// space without losing anything. The folders themselves stay; what's directly in them goes,
 /// unless a rule protects it.
 nonisolated enum CleanupTarget: String, CaseIterable, Identifiable, Sendable {
-    case caches, logs, xcode, developerCaches, docker, leftovers
+    case caches, logs, temporary, xcode, developerCaches, docker, leftovers
 
     var id: Self { self }
 
@@ -12,6 +12,7 @@ nonisolated enum CleanupTarget: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .caches: "App caches"
         case .logs: "Logs"
+        case .temporary: "Temporary files"
         case .xcode: "Xcode build data"
         case .developerCaches: "Package caches"
         case .docker: "Docker"
@@ -24,6 +25,8 @@ nonisolated enum CleanupTarget: String, CaseIterable, Identifiable, Sendable {
         case .caches:
             "Files apps keep to open things faster, in ~/Library/Caches. Caches of open apps, and ones macOS needs, are left alone."
         case .logs: "Diagnostic logs apps write, in ~/Library/Logs and crash reports."
+        case .temporary:
+            "What apps left in /tmp and your temporary folder: what's gone unused for \(TemporaryFiles.unusedForDays) days, or everything if you choose. Files in use, and ways running apps are reached, are left alone."
         case .xcode: "DerivedData and simulator caches. Left alone while Xcode or Simulator is open."
         case .developerCaches: "Downloads npm and build tools keep in ~/.npm and ~/.cache. Fetched again when needed."
         case .docker: "Build cache and images no container uses, removed by Docker itself. Containers and volumes are left to you."
@@ -53,7 +56,9 @@ nonisolated enum CleanupTarget: String, CaseIterable, Identifiable, Sendable {
         "ruff", "mypy", "pre-commit", "swift-package-manager", "zig", "terraform", "curl", "wget",
     ]
 
-    func folders(in home: URL) -> [URL] {
+    /// - Parameter derivedData: Where Xcode is set to keep its build data instead of the usual
+    ///   folder, which is cleaned too, as it can still hold builds from before.
+    func folders(in home: URL, derivedData: URL? = nil) -> [URL] {
         var paths: [String] = []
         switch self {
         case .caches: paths = ["Library/Caches"]
@@ -65,10 +70,53 @@ nonisolated enum CleanupTarget: String, CaseIterable, Identifiable, Sendable {
             paths = [".npm/_cacache", ".npm/_logs", ".npm/_prebuilds"]
             for name in Self.toolCaches { paths.append(".cache/" + name) }
         // Docker's files are its disk image, which only Docker may change; leftovers are found
-        // app by app, across many folders.
-        case .docker, .leftovers: break
+        // app by app, across many folders; temporary files are outside the home folder.
+        case .docker, .leftovers, .temporary: break
         }
-        return paths.map { (path: String) -> URL in home.appending(path: path, directoryHint: .isDirectory) }
+        var folders = paths.map { (path: String) -> URL in home.appending(path: path, directoryHint: .isDirectory) }
+        if self == .xcode, let derivedData, !folders.contains(where: { $0.standardizedFileURL == derivedData.standardizedFileURL }) {
+            folders.insert(derivedData, at: 1)
+        }
+        return folders
+    }
+
+    /// Where Xcode is set to keep its build data, when that's a folder of its own in the home
+    /// folder: one outside it isn't cleaned, so isn't listed either. `setting` is Xcode's
+    /// `IDECustomDerivedDataLocation`, a full path or one from `~`.
+    static func xcodeDerivedData(home: URL, setting: String?) -> URL? {
+        guard var path = setting?.trimmingCharacters(in: .whitespacesAndNewlines), !path.isEmpty else { return nil }
+        if path == "~" || path.hasPrefix("~/") { path = home.path + path.dropFirst() }
+        guard path.hasPrefix("/") else { return nil }
+        let url = URL(filePath: path, directoryHint: .isDirectory).standardizedFileURL
+        guard url.path.hasPrefix(home.standardizedFileURL.path + "/") else { return nil }
+        // Through a link, or written in other capitals, which the disk doesn't tell apart, it
+        // can be the usual folder, listed already, or one outside the home folder.
+        let real = url.resolvingSymlinksInPath().path.lowercased()
+        let usual = home.appending(path: "Library/Developer/Xcode/DerivedData").resolvingSymlinksInPath().path.lowercased()
+        guard real != usual, real.hasPrefix(home.resolvingSymlinksInPath().path.lowercased() + "/") else { return nil }
+        return url
+    }
+
+    /// Whether something in a folder Xcode was set to keep its build data in is what Xcode makes
+    /// there: a project's builds, named for it and a code of 28 letters, or one of Xcode's own
+    /// caches. That folder is chosen by hand and may hold anything besides, even more so once
+    /// Xcode no longer uses it, so nothing else in it is touched.
+    static func isXcodeBuildData(_ item: URL) -> Bool {
+        let name = item.lastPathComponent
+        // A project's folder also has Xcode's note of the project it's for.
+        return xcodeCaches.contains(name)
+            || (name.wholeMatch(of: /.+-[a-z]{28}/) != nil
+                && FileManager.default.fileExists(atPath: item.appending(path: "info.plist").path))
+    }
+
+    private static let xcodeCaches: Set<String> = [
+        "ModuleCache.noindex", "SymbolCache.noindex", "SDKStatCaches.noindex", "CompilationCache.noindex",
+        "SDKExplicitPrecompiledModules",
+    ]
+
+    /// Where Xcode is set to keep its build data, read from its settings.
+    static func xcodeDerivedData(home: URL) -> URL? {
+        xcodeDerivedData(home: home, setting: UserDefaults(suiteName: "com.apple.dt.Xcode")?.string(forKey: "IDECustomDerivedDataLocation"))
     }
 
     /// Apps that use these files while they're open, so the whole target waits until they quit.
@@ -204,6 +252,15 @@ nonisolated enum Cleanup {
         var dockerPrunesTagged = false
         /// What's installed, for telling leftovers apart; nil when it couldn't be read.
         var apps: InstalledApps?
+        /// Where Xcode is set to keep its build data, when not in the usual folder.
+        var derivedData: URL?
+        /// Takes deleted builds off macOS's record of apps; nil leaves them on it.
+        var registry: AppRegistry?
+        /// /tmp and the person's own temporary folder, by their real paths; none in tests unless given.
+        var temporaryFolders: [URL] = []
+        /// When temporary files have to have been last used before to go, in seconds since
+        /// 1970; nil takes them whatever their age.
+        var temporaryCutoff: TimeInterval? = 0
         /// Whether other apps' containers can be changed, which macOS allows only with Full Disk
         /// Access.
         var canChangeAppContainers = true
@@ -218,14 +275,28 @@ nonisolated enum Cleanup {
 
     static let unknownUse = "Couldn't check if it's in use"
 
-    /// Lists what a target holds and which rule, if any, keeps each item. Without `measures`, sizes
-    /// are left at zero, for checking the rules quickly. Stops early when the task is cancelled.
+    /// Why items are kept that no cleanup will ever delete: macOS's own, what macOS or a tool
+    /// keeps from being changed, and what a rule always protects. They aren't listed, nor told
+    /// of when cleaning, as there's nothing to be done about them. Items kept for now, such as
+    /// ones in use, are.
+    static let neverCleaned: Set<String> = ["Part of macOS", protectedByMacOS, readOnlyReason, "Protected"]
+
+    /// Lists what a target holds and which rule, if any, keeps each item, leaving out what's
+    /// never cleaned. Without `measures`, sizes are left at zero, for checking the rules quickly.
+    /// Stops early when the task is cancelled.
     @concurrent
     static func scan(_ target: CleanupTarget, context: Context, measures: Bool = true) async -> CleanupScan {
+        var scan = await listing(target, context: context, measures: measures)
+        scan.items.removeAll { $0.skipReason.map(neverCleaned.contains) ?? false }
+        return scan
+    }
+
+    private static func listing(_ target: CleanupTarget, context: Context, measures: Bool) async -> CleanupScan {
         if target == .docker { return await DockerCleanup.scan(context.docker, prunesTagged: context.dockerPrunesTagged) }
         if target == .leftovers { return AppLeftovers.scan(context: context, measures: measures) }
+        if target == .temporary { return TemporaryFiles.scan(context: context) }
         let files = FileManager.default
-        let folders = target.folders(in: context.home)
+        let folders = target.folders(in: context.home, derivedData: context.derivedData)
         let activity = context.activity
         let blocker =
             target.blockingApps.first { activity.isAppRunning(executable: $0.executable) == true }.map { "\($0.name) is open" }
@@ -233,6 +304,10 @@ nonisolated enum Cleanup {
         // Without the process list, an app that blocks the target could be open.
         let blockerUnknown = !(target.blockingApps.isEmpty && target.blockingTools.isEmpty) && activity.commandLines == nil
         let mounts = mountPaths()
+        // A build folder chosen in Xcode's settings, where only what Xcode made is listed. One
+        // that's the usual folder anyway is cleaned as that.
+        let usual = target.folders(in: context.home).map(\.standardizedFileURL)
+        let chosen = (target == .xcode ? context.derivedData?.standardizedFileURL : nil).flatMap { usual.contains($0) ? nil : $0 }
         var items: [CleanupItem] = []
         for folder in folders {
             guard !Task.isCancelled,
@@ -240,8 +315,10 @@ nonisolated enum Cleanup {
             else { continue }
             let folderReason = reason(toKeep: folder, home: context.home)
             let volume = volumeID(folder)
+            let isChosen = folder.standardizedFileURL == chosen
             for item in contents where !folders.contains(where: { $0.standardizedFileURL == item.standardizedFileURL }) {
                 let name = item.lastPathComponent
+                if isChosen, !CleanupTarget.isXcodeBuildData(item) { continue }
                 var reason = folderReason ?? blocker ?? (blockerUnknown ? unknownUse : nil)
                 if reason == nil, target.protects(name) { reason = "Protected" }
                 // Background parts of macOS keep live state in their caches, such as downloads in
@@ -304,13 +381,17 @@ nonisolated enum Cleanup {
         }
         let files = FileManager.default
         // The rules are checked again here, since things change between listing and deleting.
-        let scan = await scan(target, context: context, measures: false)
+        // What's never cleaned still counts where a whole folder would be emptied at once.
+        let everything = await listing(target, context: context, measures: false)
+        var scan = everything
+        scan.items.removeAll { $0.skipReason.map(neverCleaned.contains) ?? false }
         var freed: Int64 = 0
         var lines: [String] = []
         var handled: Set<String> = []
+        var deleted: [URL] = []
         if target == .developerCaches, let npm = context.npm {
             let cache = context.home.appending(path: ".npm/_cacache").standardizedFileURL.path
-            let inCache = scan.items.filter { $0.url?.deletingLastPathComponent().standardizedFileURL.path == cache }
+            let inCache = everything.items.filter { $0.url?.deletingLastPathComponent().standardizedFileURL.path == cache }
             // npm empties the whole folder, so it's asked only when everything in it is to go.
             // npm cleans the cache its settings name, which must be the folder that was listed.
             let npmCache = try? await npm.run(["config", "get", "cache"], .seconds(30))
@@ -338,10 +419,54 @@ nonisolated enum Cleanup {
         for item in scan.items where item.skipReason != nil {
             report(CleanupEvent(target: target, kind: .skipped(item.skipReason ?? ""), detail: item.url?.path ?? item.name))
         }
+        // Something in a temporary folder that was listed at the review may have nothing in it
+        // to go now, something new having been put in it; it stays.
+        if target == .temporary, let reviewed = context.reviewed {
+            let listed = Set(everything.items.map(\.id))
+            let roots = context.temporaryFolders.map { $0.path + "/" }
+            for id in reviewed.sorted() where !listed.contains(id) && !context.kept.contains(id) {
+                guard roots.contains(where: id.hasPrefix), files.fileExists(atPath: id) else { continue }
+                report(CleanupEvent(target: target, kind: .skipped("Changed since it was listed"), detail: id))
+            }
+        }
         for item in scan.cleanable where context.mayDelete(item.id) && !handled.contains(item.id) {
             // A clean that took too long stops between items.
             if Task.isCancelled { break }
             guard let url = item.url else { continue }
+            if target == .temporary {
+                // What of it goes is found again, as what's in it may have changed: what's now
+                // new or open stays, and what's aged since goes with the rest.
+                let now = TemporaryFiles.partsNow(of: url, context: context)
+                if let reason = now.reason {
+                    report(CleanupEvent(target: target, kind: .skipped(reason), detail: url.path))
+                    continue
+                }
+                var gone: Int64 = 0
+                for part in now.parts {
+                    if Task.isCancelled { break }
+                    let partURL = URL(filePath: part.path)
+                    if let reason = TemporaryFiles.reason(toKeep: partURL, roots: context.temporaryFolders) {
+                        report(CleanupEvent(target: target, kind: .failed(reason), detail: part.path))
+                        continue
+                    }
+                    var failure: Error?
+                    do { try files.removeItem(at: partURL) } catch { failure = error }
+                    let isGone = (try? files.attributesOfItem(atPath: part.path)) == nil
+                    if let failure, Self.isMissing(failure), isGone { continue }
+                    guard isGone else {
+                        report(CleanupEvent(target: target, kind: .failed(failureReason(failure, trashing: false)), detail: part.path))
+                        continue
+                    }
+                    gone += part.size
+                    lines.append("\(Date.now.ISO8601Format())\t\(part.size)\t\(part.path)")
+                }
+                // One line for the item, however many parts of it went.
+                if gone > 0 {
+                    report(CleanupEvent(target: target, kind: .deleted(gone), detail: url.path))
+                    freed += gone
+                }
+                continue
+            }
             if let reason = reason(toKeep: url.deletingLastPathComponent(), home: context.home) {
                 report(CleanupEvent(target: target, kind: .failed(reason), detail: url.path))
                 continue
@@ -364,10 +489,23 @@ nonisolated enum Cleanup {
                 continue
             }
             report(CleanupEvent(target: target, kind: target.movesToTrash ? .trashed(gone) : .deleted(gone), detail: url.path))
+            deleted.append(url)
             freed += gone
             lines.append("\(Date.now.ISO8601Format())\t\(gone)\t\(url.path)\(target.movesToTrash ? "\t(to Trash)" : "")")
         }
         if let log, !lines.isEmpty { append(lines, to: log) }
+        // Apps built in the deleted build data are still on macOS's record, and listed in System
+        // Settings with their extensions, until they're taken off it. That's so even when the
+        // clean was cut short, so it isn't cancelled with it.
+        // Only build data has apps in it; simulator caches don't.
+        let buildFolders = [context.home.appending(path: "Library/Developer/Xcode/DerivedData"), context.derivedData].compactMap {
+            $0?.standardizedFileURL.path
+        }
+        let builds = deleted.filter { buildFolders.contains($0.deletingLastPathComponent().standardizedFileURL.path) }
+        if target == .xcode, let registry = context.registry, !builds.isEmpty {
+            let folders = builds
+            await Task { _ = await registry.unregister(inside: folders) }.value
+        }
         return freed
     }
 
