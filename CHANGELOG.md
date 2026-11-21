@@ -1,5 +1,16 @@
 # powertoys
 
+## 1.10.0
+
+### Minor Changes
+
+- 584f087: Clipboard history can now type an item out one key at a time with ⌘T or the Type button, for fields that block pasting. Speed and how line breaks are typed can be set on the Clipboard page; Esc stops typing.
+- 750e6b8: Cleaner can now clean temporary files in /tmp and your own temporary folder, which macOS no longer clears while your Mac stays on. By default, only what hasn't been used for 3 days goes; a folder with something newer in it stays, and only its older contents go. Turn on "Clean everything, however new" to remove everything not in use. Files in use, sockets and pipes running apps use to talk to each other, and other users' files are always left alone.
+
+### Patch Changes
+
+- 750e6b8: Cleaner's "Xcode build data" now also empties the build folder Xcode is set to use, when you've moved it from the usual DerivedData folder. Apps built there are also removed from macOS's list of apps, so they stop piling up as extra entries in System Settings.
+
 ## 1.9.1
 
 ### Patch Changes
