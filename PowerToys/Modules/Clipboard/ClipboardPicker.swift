@@ -44,6 +44,7 @@ final class ClipboardPicker {
         guard let item = selected, ClipCommand.available(for: item).contains(command) else { return false }
         switch command {
         case .paste(let format): controller.paste(item, as: format)
+        case .type: controller.type(item)
         case .copy: controller.copy(item)
         case .open: controller.open(item)
         case .reveal: controller.revealInFinder(item)

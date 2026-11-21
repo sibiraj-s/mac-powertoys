@@ -100,6 +100,8 @@ struct ClipboardSettingsView: View {
             }
         }
 
+        TypingSection(typer: clipboard.typer)
+
         CardSection("Shortcuts") {
             ForEach(ClipboardController.Action.allCases) { action in
                 ShortcutRow(definition: action.shortcut)
@@ -117,6 +119,9 @@ struct ClipboardSettingsView: View {
                 hint: "Copy puts an item back on the clipboard without pasting. Open and save work on links, files and images."
             ) {
                 KeyCaps(keys: ["⌘C", "⌘O", "⌘R", "⌘S"])
+            }
+            CardRow("Type", hint: "Types text one key at a time, for fields that block pasting. Esc stops it.") {
+                KeyCaps(keys: ClipCommand.type.keyCaps)
             }
             CardRow("Pin, delete, switch filter", hint: "Pinned items stay when the history is trimmed or cleared.") {
                 KeyCaps(keys: ["⌘P", "⌘⌫", "⇥"])
@@ -148,5 +153,36 @@ struct ClipboardSettingsView: View {
         if let app = AppIcons.name(for: item.sourceBundleID) { parts.append(app) }
         parts.append(item.date.formatted(.relative(presentation: .named)))
         return parts.joined(separator: " · ")
+    }
+}
+
+/// How ⌘T in the panel types an item out.
+private struct TypingSection: View {
+    @Bindable var typer: ClipboardTyper
+
+    var body: some View {
+        CardSection("Typing out") {
+            CardRow("Speed", hint: "Slow down if a web page or remote session misses characters.") {
+                Picker("Speed", selection: $typer.speed) {
+                    ForEach(ClipboardTyper.Speed.allCases) { speed in
+                        Text(speed.title).tag(speed)
+                    }
+                }
+                .labelsHidden()
+                .fixedSize()
+            }
+            CardRow("Line breaks", hint: typer.newline.hint) {
+                Picker("Line breaks", selection: $typer.newline) {
+                    ForEach(NewlineKey.allCases) { key in
+                        Text(key.title).tag(key)
+                    }
+                }
+                .labelsHidden()
+                .fixedSize()
+            }
+            CardRow("Leave out line breaks at the end", hint: "So a copied trailing line break doesn't submit a form early.") {
+                RowSwitch(label: "Leave out line breaks at the end", isOn: $typer.trimsTrailingNewlines)
+            }
+        }
     }
 }

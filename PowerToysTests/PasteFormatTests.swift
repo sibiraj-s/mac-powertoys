@@ -53,7 +53,7 @@ struct PasteFormatTests {
 struct ClipCommandTests {
     @Test func commandsFollowTheKind() {
         let text = ClipItem(text: "hello", date: .now)
-        #expect(ClipCommand.available(for: text) == [.paste(.original), .copy, .togglePin, .delete])
+        #expect(ClipCommand.available(for: text) == [.paste(.original), .type, .copy, .togglePin, .delete])
 
         let link = ClipItem(text: "https://apple.com", date: .now)
         #expect(ClipCommand.available(for: link).contains(.open))
@@ -69,7 +69,7 @@ struct ClipCommandTests {
 
     @Test func everyCommandHasDistinctKeys() {
         let commands: [ClipCommand] =
-            PasteFormat.allCases.map(ClipCommand.paste) + [.copy, .open, .reveal, .saveImage, .togglePin, .delete]
+            PasteFormat.allCases.map(ClipCommand.paste) + [.type, .copy, .open, .reveal, .saveImage, .togglePin, .delete]
         let keys = commands.map(\.keyCaps)
         #expect(Set(keys).count == keys.count)
     }

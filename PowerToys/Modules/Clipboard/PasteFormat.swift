@@ -82,6 +82,8 @@ enum PasteFormat: CaseIterable, Identifiable {
 /// Something you can do with the selected item in the clipboard panel.
 enum ClipCommand: Hashable, Identifiable {
     case paste(PasteFormat)
+    /// Typed out key by key, for fields that block pasting.
+    case type
     case copy, open, reveal, saveImage, togglePin, delete
 
     var id: Self { self }
@@ -89,6 +91,7 @@ enum ClipCommand: Hashable, Identifiable {
     /// What applies to `item`, in the order the panel shows them.
     static func available(for item: ClipItem) -> [ClipCommand] {
         var commands = PasteFormat.allCases.filter { $0.applies(to: item) }.map(ClipCommand.paste)
+        if item.typedText != nil { commands.append(.type) }
         commands.append(.copy)
         switch item.kind {
         case .link: commands.append(.open)
@@ -104,6 +107,7 @@ enum ClipCommand: Hashable, Identifiable {
         case .paste(.plainText) where item.kind == .image: "Paste text"
         case .paste(.plainText) where item.kind == .files: "Paste paths"
         case .paste(let format): format == .original ? "Paste" : "Paste as \(format.title)"
+        case .type: "Type"
         case .copy: "Copy"
         case .open: item.kind == .link ? "Open link" : "Open"
         case .reveal: "Show in Finder"
@@ -116,6 +120,7 @@ enum ClipCommand: Hashable, Identifiable {
     var keyCaps: [String] {
         switch self {
         case .paste(let format): format.keyCaps
+        case .type: ["⌘", "T"]
         case .copy: ["⌘", "C"]
         case .open: ["⌘", "O"]
         case .reveal: ["⌘", "R"]
@@ -123,5 +128,30 @@ enum ClipCommand: Hashable, Identifiable {
         case .togglePin: ["⌘", "P"]
         case .delete: ["⌘", "⌫"]
         }
+    }
+}
+
+extension ClipItem {
+    /// Longer text would take minutes to type, a key at a time.
+    static let maxTypedLength = 10_000
+
+    /// The text typed out for this item; nil when there's nothing worth typing: images, files,
+    /// blank text, or text too long to type.
+    var typedText: String? {
+        switch kind {
+        case .text, .link, .color:
+            // The UTF-16 count is cheap, and this runs while the panel draws.
+            guard text.utf16.count <= Self.maxTypedLength, text.contains(where: \.isTypable) else { return nil }
+            return text
+        case .image, .files:
+            return nil
+        }
+    }
+}
+
+extension Character {
+    /// Shows up when typed: not a space, line break or control character.
+    fileprivate var isTypable: Bool {
+        !isWhitespace && !unicodeScalars.allSatisfy { $0.properties.generalCategory == .control }
     }
 }

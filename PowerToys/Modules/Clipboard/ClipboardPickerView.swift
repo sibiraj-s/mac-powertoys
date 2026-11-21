@@ -285,7 +285,7 @@ extension ClipCommand {
     fileprivate var isPrimary: Bool {
         switch self {
         case .paste(let format): format == .original
-        case .copy, .open, .reveal, .saveImage: true
+        case .type, .copy, .open, .reveal, .saveImage: true
         case .togglePin, .delete: false
         }
     }

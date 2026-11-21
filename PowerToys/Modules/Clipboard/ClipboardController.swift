@@ -115,6 +115,9 @@ final class ClipboardController {
     private(set) var history: ClipboardHistory
     private(set) var isRunning = false
 
+    /// Types items out key by key, for fields that block pasting.
+    let typer: ClipboardTyper
+
     static let limitKey = "clipboard.limit"
     static let skipsConcealedKey = "clipboard.skipsConcealed"
     static let keepsImagesKey = "clipboard.keepsImages"
@@ -142,9 +145,12 @@ final class ClipboardController {
     @ObservationIgnored private lazy var panel = ClipboardPanel(controller: self)
 
     /// With `storeDirectory` nil the history is kept in memory and images in a temporary folder.
-    init(defaults: UserDefaults = .standard, storeDirectory: URL? = ClipboardController.defaultStoreDirectory, shortcuts: Shortcuts? = nil)
-    {
+    init(
+        defaults: UserDefaults = .standard, storeDirectory: URL? = ClipboardController.defaultStoreDirectory, shortcuts: Shortcuts? = nil,
+        typer: ClipboardTyper? = nil
+    ) {
         self.defaults = defaults
+        self.typer = typer ?? ClipboardTyper(defaults: defaults)
         self.shortcuts = shortcuts ?? Shortcuts(defaults: defaults)
         historyURL = storeDirectory?.appending(path: "ClipboardHistory.json")
         imagesDirectory = (storeDirectory ?? URL.temporaryDirectory.appending(path: "PowerToys-\(UUID().uuidString)"))
@@ -195,6 +201,7 @@ final class ClipboardController {
         timer?.invalidate()
         timer = nil
         panel.hide()
+        typer.cancel()
     }
 
     func perform(_ action: Action) {
@@ -401,6 +408,21 @@ final class ClipboardController {
         sendPasteKeystroke()
     }
 
+    /// Types the item's text out key by key into the frontmost app, for fields that block
+    /// pasting. The clipboard itself is left alone.
+    func type(_ item: ClipItem) {
+        guard let text = item.typedText, typer.canType(text) else {
+            NSSound.beep()
+            return
+        }
+        panel.hide()
+        // Only once a key has been typed: typing may yet not start.
+        typer.type(text) { [weak self] in
+            self?.history.touch(item.id)
+            self?.save()
+        }
+    }
+
     /// Puts the item back on the clipboard without pasting it.
     func copy(_ item: ClipItem) {
         guard let contents = PasteFormat.original.contents(of: item), write(contents, to: .general) else {
@@ -468,7 +490,8 @@ final class ClipboardController {
 
     /// "Paste and match style" for whatever is on the clipboard now.
     func pasteClipboardAsPlainText() {
-        guard let text = NSPasteboard.general.string(forType: .string) else {
+        // Its ⌘V would land in the middle of the text being typed.
+        guard !typer.isTyping, let text = NSPasteboard.general.string(forType: .string) else {
             NSSound.beep()
             return
         }
