@@ -75,6 +75,13 @@ final class AppVolumeController {
     /// Apps changed in this run, which stay listed even once back at 100%, so a row being dragged
     /// doesn't disappear when it gets there.
     @ObservationIgnored private var changed: Set<String> = []
+    @ObservationIgnored private var wakeObserver: (any NSObjectProtocol)?
+    /// Says when the Mac wakes.
+    @ObservationIgnored private let workspaceCenter: NotificationCenter
+    /// Waits between tries at the taps after wake.
+    @ObservationIgnored private let pause: (Duration) async -> Void
+    /// Trying again at taps that couldn't be made right after wake.
+    @ObservationIgnored private var wakeRetry: Task<Void, Never>?
 
     init(
         defaults: UserDefaults,
@@ -84,7 +91,9 @@ final class AppVolumeController {
         openAccessSettings: @escaping () -> Void,
         makeTap: @escaping ([AudioObjectID], [String], Float) throws -> any AppVolumeTapping = {
             try AppVolumeTap(processes: $0, outputs: $1, gain: $2)
-        }
+        },
+        pause: @escaping (Duration) async -> Void = { try? await Task.sleep(for: $0) },
+        workspaceCenter: NotificationCenter = NSWorkspace.shared.notificationCenter
     ) {
         self.defaults = defaults
         self.system = system
@@ -92,6 +101,8 @@ final class AppVolumeController {
         self.requestAccess = requestAccess
         self.openAccessSettings = openAccessSettings
         self.makeTap = makeTap
+        self.pause = pause
+        self.workspaceCenter = workspaceCenter
         settings =
             defaults.data(forKey: Self.settingsKey).flatMap { try? JSONDecoder().decode([String: AppVolumeSetting].self, from: $0) }
             ?? [:]
@@ -101,12 +112,48 @@ final class AppVolumeController {
         guard !isRunning else { return }
         isRunning = true
         system.observe { [weak self] in self?.refresh() }
+        wakeObserver = workspaceCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.systemDidWake() }
+        }
         refresh()
+    }
+
+    /// Waits after wake before the taps are made again, as outputs take a while to come back, and
+    /// then before each try at ones that still couldn't be made.
+    static let wakeRetryDelays: [Duration] = [.seconds(3), .seconds(3), .seconds(6)]
+
+    /// An output can go away during sleep and come back under the same UID, which leaves a tap
+    /// playing through to a device that's gone, so its app loses its volume. Every tap is made
+    /// again at once, and again once outputs have had time to come back, as one made at once may
+    /// have found the old device still there. Ones that can't be made yet are tried a few more times.
+    func systemDidWake() {
+        guard isRunning else { return }
+        retap()
+        wakeRetry?.cancel()
+        wakeRetry = Task { [weak self] in
+            for (index, delay) in Self.wakeRetryDelays.enumerated() {
+                await self?.pause(delay)
+                guard let self, !Task.isCancelled, isRunning else { return }
+                if index == 0 {
+                    retap()
+                } else {
+                    failures = [:]
+                    refresh()
+                }
+                if failures.isEmpty { return }
+            }
+        }
     }
 
     func stop() {
         isRunning = false
         system.stopObserving()
+        if let wakeObserver { workspaceCenter.removeObserver(wakeObserver) }
+        wakeObserver = nil
+        wakeRetry?.cancel()
+        wakeRetry = nil
         for entry in taps.values { entry.tap.invalidate() }
         taps = [:]
         failures = [:]

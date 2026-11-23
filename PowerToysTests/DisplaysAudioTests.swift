@@ -116,19 +116,68 @@ actor FakeDDC: DDCAccess {
     /// Mute by display; a display not in here has no mute of its own.
     var mutes: [UInt64: Bool] = [:]
 
-    func displays(names: [String]) -> [ExternalDisplay] {
-        values.keys.sorted().map { ExternalDisplay(id: $0, name: names.first ?? "Display") }
+    /// Reads of the displays, levels aside.
+    private(set) var scans = 0
+    /// Asleep, no display is found at all.
+    var isAsleep = false
+    func setAsleep(_ asleep: Bool) { isAsleep = asleep }
+    /// The next read of the displays waits for `release`, so keys can be pressed meanwhile.
+    private var holdsNextScan = false
+    private var held: CheckedContinuation<Void, Never>?
+    var isHolding: Bool { held != nil }
+    func holdNextScan() { holdsNextScan = true }
+    func release() {
+        held?.resume()
+        held = nil
     }
-    func value(_ control: DDCControl, of id: UInt64) -> Double? {
-        switch control {
-        case .brightness: unreadable.contains(id) ? nil : values[id]
-        case .volume: volumes[id]
+    func displays(names: [String]) async -> [ExternalDisplay] {
+        scans += 1
+        if holdsNextScan {
+            holdsNextScan = false
+            await withCheckedContinuation { held = $0 }
         }
+        guard !isAsleep else { return [] }
+        return values.keys.sorted().map { ExternalDisplay(id: $0, name: names.first ?? "Display") }
     }
-    /// The display stays, but no longer says its brightness.
+    func value(_ control: DDCControl, of id: UInt64) async -> Double? {
+        let value =
+            switch control {
+            case .brightness: unreadable.contains(id) ? nil : values[id]
+            case .volume: unreadable.contains(id) ? nil : volumes[id]
+            }
+        // Answers with the level as it was when asked, however long the answer takes.
+        if holdsNextRead {
+            holdsNextRead = false
+            await withCheckedContinuation { held = $0 }
+        }
+        return value
+    }
+    /// The next level read waits for `release`, answering with the level from before.
+    private var holdsNextRead = false
+    func holdNextRead() { holdsNextRead = true }
+    /// The display stays, but no longer says its brightness or volume.
     func forget(_ id: UInt64) { unreadable.insert(id) }
     private var unreadable: Set<UInt64> = []
+    /// Connections that went with sleep: writes to them go nowhere.
+    private var gone: Set<UInt64> = []
+    /// After sleep the display comes back under a new ID, and doesn't answer until `answer` is called.
+    func sleepAndWake(as newID: UInt64, from oldID: UInt64 = 7) {
+        values[newID] = values.removeValue(forKey: oldID)
+        volumes[newID] = volumes.removeValue(forKey: oldID)
+        mutes[newID] = mutes.removeValue(forKey: oldID)
+        gone.insert(oldID)
+        unreadable.insert(newID)
+    }
+    func answer(_ id: UInt64) { unreadable.remove(id) }
+    /// The next write is missed, with the display still there.
+    private var missesNextWrite = false
+    func missNextWrite() { missesNextWrite = true }
     func setValue(_ value: Double, _ control: DDCControl, of id: UInt64) async -> Bool {
+        guard !gone.contains(id) else { return false }
+        if missesNextWrite {
+            missesNextWrite = false
+            return false
+        }
         switch control {
         case .brightness:
             writes.append(value)
@@ -141,9 +190,11 @@ actor FakeDDC: DDCAccess {
     }
     func isMuted(_ id: UInt64) -> Bool? { mutes[id] }
     func setMuted(_ muted: Bool, of id: UInt64) -> Bool {
+        guard !gone.contains(id) else { return false }
         mutes[id] = muted
         return true
     }
+    func setValues(_ values: [UInt64: Double]) { self.values = values }
     func addSpeakers(volume: Double, mute: Bool?) {
         volumes[7] = volume
         mutes[7] = mute
@@ -159,9 +210,10 @@ extension DisplaysAudioController {
             devices: devices,
             appVolume: AppVolumeController(
                 defaults: defaults, system: processes, access: { .granted }, requestAccess: { _ in }, openAccessSettings: {},
-                makeTap: { FakeTap(processes: $0, outputs: $1, gain: $2) }),
+                makeTap: { FakeTap(processes: $0, outputs: $1, gain: $2) }, workspaceCenter: NotificationCenter()),
             externalDisplays: ExternalDisplaysController(
-                defaults: defaults, ddc: FakeDDC(), screenNames: { ["Studio Display"] }, isTrusted: { false }, showLevel: { _, _ in }),
+                defaults: defaults, ddc: FakeDDC(), screenNames: { ["Studio Display"] }, isTrusted: { false }, showLevel: { _, _ in },
+                workspaceCenter: NotificationCenter()),
             defaults: defaults)
     }
 }
@@ -275,9 +327,10 @@ struct AudioDevicesTests {
             appVolume: AppVolumeController(
                 defaults: store.defaults, system: FakeAudioProcesses(), access: { .granted }, requestAccess: { _ in },
                 openAccessSettings: {},
-                makeTap: { FakeTap(processes: $0, outputs: $1, gain: $2) }),
+                makeTap: { FakeTap(processes: $0, outputs: $1, gain: $2) }, workspaceCenter: NotificationCenter()),
             externalDisplays: ExternalDisplaysController(
-                defaults: store.defaults, ddc: FakeDDC(), screenNames: { [] }, isTrusted: { false }, showLevel: { _, _ in }),
+                defaults: store.defaults, ddc: FakeDDC(), screenNames: { [] }, isTrusted: { false }, showLevel: { _, _ in },
+                workspaceCenter: NotificationCenter()),
             defaults: store.defaults, showLevel: { shown.value.append(($0, $1)) })
         controller.start()
         // Not playing together: left to macOS.
@@ -610,7 +663,7 @@ struct AppVolumeTests {
                 let tap = FakeTap(processes: $0, outputs: $1, gain: $2)
                 taps.value.append(tap)
                 return tap
-            })
+            }, workspaceCenter: NotificationCenter())
     }
 
     final class Box<T> {
@@ -707,6 +760,86 @@ struct AppVolumeTests {
         #expect(taps.value[1].outputs == ["speakers", "headset", "usb"])
     }
 
+    @Test func wakeMakesTheTapsAgain() throws {
+        let processes = browser()
+        let taps = Box<[FakeTap]>([])
+        let controller = controller(processes, taps: taps)
+        controller.systemDidWake()
+        #expect(taps.value.isEmpty)  // not running
+
+        controller.start()
+        controller.setVolume(0.5, for: try #require(controller.apps.first))
+        #expect(taps.value.count == 1)
+
+        // Same processes, same output UID: only the wake says the old tap may be playing nowhere.
+        controller.systemDidWake()
+        #expect(taps.value.count == 2)
+        #expect(taps.value[0].isInvalidated)
+        #expect(!taps.value[1].isInvalidated)
+        #expect(taps.value[1].gain == 0.5)
+        controller.stop()
+    }
+
+    @Test func wakeMakesTheTapsAgainOnceOutputsAreBack() async throws {
+        let processes = browser()
+        let taps = Box<[FakeTap]>([])
+        let pauses = Box(0)
+        let controller = AppVolumeController(
+            defaults: store.defaults, system: processes, access: { .granted }, requestAccess: { _ in }, openAccessSettings: {},
+            makeTap: {
+                let tap = FakeTap(processes: $0, outputs: $1, gain: $2)
+                taps.value.append(tap)
+                return tap
+            },
+            pause: { _ in pauses.value += 1 }, workspaceCenter: NotificationCenter())
+        controller.start()
+        controller.setVolume(0.5, for: try #require(controller.apps.first))
+
+        // Made at once, though the output may not be back yet, and again after a pause.
+        controller.systemDidWake()
+        #expect(taps.value.count == 2)
+        while taps.value.count < 3 { await Task.yield() }
+        for _ in 0..<100 { await Task.yield() }
+        #expect(taps.value.count == 3)
+        #expect(pauses.value == 1)
+        #expect(taps.value[2].gain == 0.5)
+        controller.stop()
+    }
+
+    @Test func aTapThatCantBeMadeRightAfterWakeIsTriedAgain() async throws {
+        let processes = browser()
+        var outputReady = true
+        var made: [FakeTap] = []
+        let pauses = AppVolumeTests.Box(0)
+        let controller = AppVolumeController(
+            defaults: store.defaults, system: processes, access: { .granted }, requestAccess: { _ in }, openAccessSettings: {},
+            makeTap: {
+                guard outputReady else { throw AppVolumeTapError(step: "set up playback", status: -1) }
+                let tap = FakeTap(processes: $0, outputs: $1, gain: $2)
+                made.append(tap)
+                return tap
+            },
+            pause: { _ in
+                pauses.value += 1
+                outputReady = true
+            }, workspaceCenter: NotificationCenter())
+        controller.start()
+        controller.setVolume(0.5, for: try #require(controller.apps.first))
+        #expect(made.count == 1)
+
+        // The output isn't back yet when the wake is heard.
+        outputReady = false
+        controller.systemDidWake()
+        #expect(made.count == 1)
+        #expect(!controller.errors.isEmpty)
+        while made.count < 2 { await Task.yield() }
+        #expect(made[1].gain == 0.5)
+        #expect(controller.errors.isEmpty)
+        for _ in 0..<100 { await Task.yield() }
+        #expect(pauses.value == 1)
+        controller.stop()
+    }
+
     @Test func volumesAreRememberedByApp() throws {
         let taps = Box<[FakeTap]>([])
         let first = controller(browser(), taps: taps)
@@ -791,7 +924,7 @@ struct AppVolumeTests {
             makeTap: { _, _, _ in
                 attempts += 1
                 throw Failure()
-            })
+            }, workspaceCenter: NotificationCenter())
         controller.start()
         let app = try #require(controller.apps.first)
         controller.setVolume(0.5, for: app)
@@ -913,7 +1046,7 @@ struct DisplayBrightnessTests {
             showLevel: {
                 pointer.kinds.append($0)
                 pointer.shown.append($1)
-            })
+            }, workspaceCenter: NotificationCenter())
     }
 
     @Test func readsVolumeAndMuteKeys() {
@@ -991,7 +1124,7 @@ struct DisplayBrightnessTests {
         var running: Set<String> = ["Qisda.DDPM", "com.apple.Safari"]
         let controller = ExternalDisplaysController(
             defaults: store.defaults, ddc: FakeDDC(), screenNames: { ["Dell"] }, isTrusted: { false },
-            runningBundleIDs: { running }, showLevel: { _, _ in })
+            runningBundleIDs: { running }, showLevel: { _, _ in }, workspaceCenter: NotificationCenter())
         controller.start()
         // Dell's app takes the volume keys but leaves brightness alone.
         #expect(controller.brightnessKeysWarning == nil)
@@ -1092,7 +1225,8 @@ struct DisplayBrightnessTests {
         let pointer = Pointer()
         let controller = ExternalDisplaysController(
             defaults: store.defaults, ddc: FakeDDC(), screenNames: { ["Dell", "iPad"] },
-            pointerScreenNeedsDDC: { pointer.onExternal }, isTrusted: { false }, showLevel: { _, _ in })
+            pointerScreenNeedsDDC: { pointer.onExternal }, isTrusted: { false }, showLevel: { _, _ in },
+            workspaceCenter: NotificationCenter())
         controller.start()
         await controller.load()
         controller.usesBrightnessKeys = true
@@ -1159,7 +1293,8 @@ struct DisplayBrightnessTests {
     @Test func readsDisplaysAndSendsTheLatestValue() async {
         let ddc = FakeDDC()
         let controller = ExternalDisplaysController(
-            defaults: store.defaults, ddc: ddc, screenNames: { ["Studio Display"] }, isTrusted: { false }, showLevel: { _, _ in })
+            defaults: store.defaults, ddc: ddc, screenNames: { ["Studio Display"] }, isTrusted: { false }, showLevel: { _, _ in },
+            workspaceCenter: NotificationCenter())
         controller.start()
         #expect(!controller.isLoaded)
         await controller.load()
@@ -1177,9 +1312,317 @@ struct DisplayBrightnessTests {
         #expect(writes.count <= 2)
     }
 
+    private final class Pauses {
+        var count = 0
+    }
+
+    private final class Screens {
+        var name = "Dell"
+    }
+
+    private func wakingController(_ ddc: FakeDDC, pauses: Pauses, answerAfter: Int) -> ExternalDisplaysController {
+        wakingController(ddc, pauses: pauses) { if $0 == answerAfter { await ddc.answer(8) } }
+    }
+
+    /// `onPause` gets the number of each pause, from 1.
+    private func wakingController(_ ddc: FakeDDC, pauses: Pauses, onPause: @escaping (Int) async -> Void) -> ExternalDisplaysController {
+        ExternalDisplaysController(
+            defaults: store.defaults, ddc: ddc, screenNames: { ["Dell"] }, outputNeedsDDC: { true }, isTrusted: { false },
+            showLevel: { _, _ in },
+            pause: { _ in
+                pauses.count += 1
+                await onPause(pauses.count)
+            }, workspaceCenter: NotificationCenter())
+    }
+
+    @Test func wakeReadsTheDisplaysAgainUntilTheyAnswer() async {
+        let ddc = FakeDDC()
+        await ddc.addSpeakers(volume: 0.5, mute: false)
+        let pauses = Pauses()
+        let controller = wakingController(ddc, pauses: pauses, answerAfter: 3)
+        controller.usesVolumeKeys = true
+        controller.start()
+        await controller.load()
+        #expect(controller.displays.map(\.id) == [7])
+
+        await ddc.sleepAndWake(as: 8)
+        controller.systemDidWake()
+        while pauses.count < 3 || controller.displays.first?.volume == nil { await Task.yield() }
+        #expect(controller.displays.map(\.id) == [8])
+        #expect(controller.displays.first?.volume == 0.5)
+        // The tries stop once the display answers.
+        for _ in 0..<100 { await Task.yield() }
+        #expect(pauses.count == 3)
+
+        #expect(controller.handle(.volumeUp))
+        while await ddc.volumes[8] != 9.0 / 16 { await Task.yield() }
+        controller.stop()
+    }
+
+    @Test func wakeGivesUpOnADisplayThatNeverAnswers() async {
+        let ddc = FakeDDC()
+        let pauses = Pauses()
+        let controller = wakingController(ddc, pauses: pauses, answerAfter: 0)
+        controller.start()
+        await controller.load()
+        await ddc.sleepAndWake(as: 8)
+        controller.systemDidWake()
+        for _ in 0..<1000 { await Task.yield() }
+        #expect(pauses.count == ExternalDisplaysController.wakeRetryDelays.count)
+        #expect(controller.displays.first?.brightness == nil)
+        controller.stop()
+    }
+
+    @Test func aStepThatGoesNowhereIsSentToTheDisplayAgain() async {
+        let ddc = FakeDDC()
+        await ddc.addSpeakers(volume: 0.5, mute: false)
+        let controller = wakingController(ddc, pauses: Pauses(), answerAfter: 0)
+        controller.usesVolumeKeys = true
+        controller.start()
+        await controller.load()
+
+        // Back from sleep without a wake being heard: the step finds the connection gone, and is
+        // sent again to the display found under its new ID.
+        await ddc.sleepAndWake(as: 8)
+        await ddc.answer(8)
+        #expect(controller.handle(.volumeUp))
+        while await ddc.volumes[8] != 9.0 / 16 { await Task.yield() }
+        #expect(controller.displays.map(\.id) == [8])
+        #expect(controller.displays.first?.volume == 9.0 / 16)
+
+        #expect(controller.handle(.volumeUp))
+        while await ddc.volumes[8] != 10.0 / 16 { await Task.yield() }
+        controller.stop()
+    }
+
+    @Test func aStepThatGoesNowhereIsntSentToAnotherDisplay() async {
+        let ddc = FakeDDC()
+        await ddc.addSpeakers(volume: 0.5, mute: false)
+        let screens = Screens()
+        let controller = ExternalDisplaysController(
+            defaults: store.defaults, ddc: ddc, screenNames: { [screens.name] }, outputNeedsDDC: { true }, isTrusted: { false },
+            showLevel: { _, _ in }, workspaceCenter: NotificationCenter())
+        controller.usesVolumeKeys = true
+        controller.start()
+        await controller.load()
+
+        await ddc.sleepAndWake(as: 8)
+        await ddc.answer(8)
+        screens.name = "LG"
+        #expect(controller.handle(.volumeUp))
+        while controller.displays.first?.id != 8 { await Task.yield() }
+        for _ in 0..<100 { await Task.yield() }
+        #expect(await ddc.volumes[8] == 0.5)
+        #expect(controller.displays.first?.volume == 0.5)
+        controller.stop()
+    }
+
+    @Test func aMuteByTurningDownLastsThroughSleep() async {
+        let ddc = FakeDDC()
+        await ddc.addSpeakers(volume: 0.5, mute: nil)
+        let controller = wakingController(ddc, pauses: Pauses(), answerAfter: 1)
+        controller.usesVolumeKeys = true
+        controller.start()
+        await controller.load()
+        #expect(controller.handle(.mute))
+        while await ddc.volumes[7] != 0 { await Task.yield() }
+
+        await ddc.sleepAndWake(as: 8)
+        controller.systemDidWake()
+        while controller.displays.first?.id != 8 { await Task.yield() }
+        #expect(controller.displays.first?.isMuted == true)
+        #expect(controller.handle(.mute))
+        #expect(controller.displays.first?.volume == 0.5)
+        controller.stop()
+    }
+
+    @Test func aMuteMadeWhileTheDisplaysAreReadIsKept() async {
+        let ddc = FakeDDC()
+        await ddc.addSpeakers(volume: 0.5, mute: nil)
+        let controller = wakingController(ddc, pauses: Pauses(), answerAfter: 0)
+        controller.usesVolumeKeys = true
+        controller.start()
+        await controller.load()
+
+        await ddc.holdNextScan()
+        let reading = Task { await controller.refresh() }
+        while await !ddc.isHolding { await Task.yield() }
+        #expect(controller.handle(.mute))
+        await ddc.release()
+        #expect(await reading.value != nil)
+        #expect(controller.displays.first?.isMuted == true)
+        #expect(controller.handle(.mute))
+        #expect(controller.displays.first?.volume == 0.5)
+        controller.stop()
+    }
+
+    @Test func aMuteMovesOnlyWhenTheDisplayCanBeToldApart() async {
+        let ddc = FakeDDC()
+        await ddc.addSpeakers(volume: 0.5, mute: nil)
+        await ddc.setValues([7: 0.4, 9: 0.6])
+        let controller = wakingController(ddc, pauses: Pauses()) { _ in
+            await ddc.answer(8)
+            await ddc.answer(6)
+        }
+        controller.usesVolumeKeys = true
+        controller.start()
+        await controller.load()
+        #expect(controller.handle(.mute))
+        while await ddc.volumes[7] != 0 { await Task.yield() }
+
+        // Both come back, in the other order: there's no knowing which was muted.
+        await ddc.sleepAndWake(as: 8, from: 7)
+        await ddc.sleepAndWake(as: 6, from: 9)
+        controller.systemDidWake()
+        while controller.displays.map(\.id) != [6, 8] { await Task.yield() }
+        #expect(controller.displays.allSatisfy { !$0.isMuted })
+        controller.stop()
+    }
+
+    @Test func aMuteLastsThroughAReadThatFoundNoDisplays() async {
+        let ddc = FakeDDC()
+        await ddc.addSpeakers(volume: 0.5, mute: nil)
+        let controller = wakingController(ddc, pauses: Pauses()) { count in
+            if count == 2 {
+                await ddc.setAsleep(false)
+                await ddc.answer(8)
+            }
+        }
+        controller.usesVolumeKeys = true
+        controller.start()
+        await controller.load()
+        #expect(controller.handle(.mute))
+        while await ddc.volumes[7] != 0 { await Task.yield() }
+
+        await ddc.sleepAndWake(as: 8)
+        await ddc.setAsleep(true)
+        controller.systemDidWake()
+        while controller.displays.first?.id != 8 { await Task.yield() }
+        #expect(controller.displays.first?.isMuted == true)
+        controller.stop()
+    }
+
+    @Test func wakeTriesUntilEveryDisplayAnswers() async {
+        let ddc = FakeDDC()
+        await ddc.setValues([7: 0.4, 9: 0.6])
+        let pauses = Pauses()
+        let controller = wakingController(ddc, pauses: pauses) { count in
+            if count == 1 { await ddc.answer(8) }
+            if count == 3 { await ddc.answer(10) }
+        }
+        controller.start()
+        await controller.load()
+        await ddc.sleepAndWake(as: 8, from: 7)
+        await ddc.sleepAndWake(as: 10, from: 9)
+        controller.systemDidWake()
+        while controller.displays.map(\.id) != [8, 10] || controller.displays.map(\.brightness) != [0.4, 0.6] {
+            await Task.yield()
+        }
+        for _ in 0..<100 { await Task.yield() }
+        #expect(pauses.count == 3)
+        controller.stop()
+    }
+
+    @Test func aMuteThatGoesNowhereIsSentToTheDisplayAgain() async {
+        let ddc = FakeDDC()
+        await ddc.addSpeakers(volume: 0.5, mute: false)
+        let controller = wakingController(ddc, pauses: Pauses(), answerAfter: 0)
+        controller.usesVolumeKeys = true
+        controller.start()
+        await controller.load()
+
+        await ddc.sleepAndWake(as: 8)
+        await ddc.answer(8)
+        #expect(controller.handle(.mute))
+        while await ddc.mutes[8] != true { await Task.yield() }
+        #expect(controller.displays.first?.id == 8)
+        #expect(controller.displays.first?.isMuted == true)
+        controller.stop()
+    }
+
+    @Test func aLevelChangedWhileTheDisplaysAreReadIsKept() async {
+        let ddc = FakeDDC()
+        let controller = wakingController(ddc, pauses: Pauses(), answerAfter: 0)
+        controller.start()
+        await controller.load()
+
+        await ddc.holdNextRead()
+        let reading = Task { await controller.refresh() }
+        while await !ddc.isHolding { await Task.yield() }
+        controller.setBrightness(0.7, for: controller.displays[0])
+        while await ddc.values[7] != 0.7 { await Task.yield() }
+        await ddc.release()
+        // The display answered 0.4, from before the change, which isn't shown.
+        #expect(await reading.value?.first?.brightness == 0.4)
+        #expect(controller.displays.first?.brightness == 0.7)
+        controller.stop()
+    }
+
+    @Test func aKeyPressedDuringAWakeReadIsntTakenForAnAnswer() async {
+        let ddc = FakeDDC()
+        await ddc.addSpeakers(volume: 0.5, mute: false)
+        let pauses = Pauses()
+        let controller = wakingController(ddc, pauses: pauses) { if $0 == 2 { await ddc.answer(7) } }
+        controller.start()
+        await controller.load()
+
+        // The screens wake: same display, not answering yet, and a brightness key while it's read.
+        await ddc.forget(7)
+        await ddc.holdNextRead()
+        controller.systemDidWake()
+        while await !ddc.isHolding { await Task.yield() }
+        controller.setBrightness(0.7, for: controller.displays[0])
+        await ddc.release()
+        while pauses.count < 2 || controller.displays.first?.volume == nil { await Task.yield() }
+        #expect(controller.displays.first?.volume == 0.5)
+        for _ in 0..<100 { await Task.yield() }
+        #expect(pauses.count == 2)
+        controller.stop()
+    }
+
+    @Test func aMuteDoesntMoveToAnotherDisplay() async {
+        let ddc = FakeDDC()
+        await ddc.addSpeakers(volume: 0.5, mute: nil)
+        let screens = Screens()
+        let controller = ExternalDisplaysController(
+            defaults: store.defaults, ddc: ddc, screenNames: { [screens.name] }, outputNeedsDDC: { true }, isTrusted: { false },
+            showLevel: { _, _ in }, pause: { _ in await ddc.answer(8) }, workspaceCenter: NotificationCenter())
+        controller.usesVolumeKeys = true
+        controller.start()
+        await controller.load()
+        #expect(controller.handle(.mute))
+        while await ddc.volumes[7] != 0 { await Task.yield() }
+
+        // Another monitor is plugged in while the Mac sleeps.
+        await ddc.sleepAndWake(as: 8)
+        screens.name = "LG"
+        controller.systemDidWake()
+        while controller.displays.first?.id != 8 { await Task.yield() }
+        #expect(controller.displays.first?.isMuted == false)
+        controller.stop()
+    }
+
+    @Test func aMissedWriteKeepsTheLevelShown() async {
+        let ddc = FakeDDC()
+        let controller = wakingController(ddc, pauses: Pauses(), answerAfter: 0)
+        controller.start()
+        await controller.load()
+        #expect(await ddc.scans == 1)
+
+        await ddc.missNextWrite()
+        controller.setBrightness(0.7, for: controller.displays[0])
+        // Only the displays are looked for: the one written to is still there, so its levels aren't read again.
+        while await ddc.scans < 2 { await Task.yield() }
+        for _ in 0..<100 { await Task.yield() }
+        #expect(await ddc.scans == 2)
+        #expect(controller.displays.first?.brightness == 0.7)
+        controller.stop()
+    }
+
     @Test func aRefreshAfterStopDoesntLand() async {
         let controller = ExternalDisplaysController(
-            defaults: store.defaults, ddc: FakeDDC(), screenNames: { ["Studio Display"] }, isTrusted: { false }, showLevel: { _, _ in })
+            defaults: store.defaults, ddc: FakeDDC(), screenNames: { ["Studio Display"] }, isTrusted: { false }, showLevel: { _, _ in },
+            workspaceCenter: NotificationCenter())
         controller.start()
         controller.stop()
         await controller.refresh()

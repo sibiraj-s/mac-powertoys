@@ -79,15 +79,50 @@ final class ExternalDisplaysController {
     @ObservationIgnored private var observer: NSObjectProtocol?
     @ObservationIgnored private let runningBundleIDs: () -> Set<String>
     @ObservationIgnored private var appObservers: [NSObjectProtocol] = []
+    @ObservationIgnored private var wakeObservers: [NSObjectProtocol] = []
+    /// Says when apps open and quit, and when the Mac wakes.
+    @ObservationIgnored private let workspaceCenter: NotificationCenter
+    /// Waits between tries at reading the displays after wake.
+    @ObservationIgnored private let pause: (Duration) async -> Void
+    /// Reading the displays again after wake, until they answer.
+    @ObservationIgnored private var wakeRefresh: Task<Void, Never>?
+    /// Reading the displays again after a write didn't reach one.
+    @ObservationIgnored private var reconnecting: Task<Void, Never>?
     @ObservationIgnored private var pending: [Write: Double] = [:]
     @ObservationIgnored private var writing: Set<Write> = []
     /// Volume before a mute on a display with no mute of its own, which mutes by turning it down.
     @ObservationIgnored private var volumeBeforeMute: [UInt64: Double] = [:]
     @ObservationIgnored private var hasMuteControl: Set<UInt64> = []
+    /// The one display the last read found that could tell, by its screen's name, which a display
+    /// back from sleep under a new ID is matched against.
+    @ObservationIgnored private var lastSeen: (id: UInt64, name: String)?
+    /// The last display found back under a new ID, told apart the same way.
+    @ObservationIgnored private var lastReplaced: (old: UInt64, new: UInt64)?
+    /// Changes that didn't reach a display whose connection went, by display and level: each sends
+    /// the latest change again to the ID the display comes back under.
+    @ObservationIgnored private var lostChanges: [UInt64: [Level: (UInt64) -> Void]] = [:]
+    /// Counts changes to the displays' levels, so a read that started before one keeps the level it
+    /// changed to rather than the one read.
+    @ObservationIgnored private var changes = 0
+    @ObservationIgnored private var lastChanged: [Change: Int] = [:]
     /// Counts refreshes, so a slow one that a newer one or `stop` overtook doesn't land.
     @ObservationIgnored private var generation = 0
     /// The first load, which everything that needs the displays before then waits on.
     @ObservationIgnored private var loading: Task<Void, Never>?
+
+    private enum Level: Hashable {
+        case brightness, volume, mute
+    }
+
+    private struct Change: Hashable {
+        let id: UInt64
+        let level: Level
+    }
+
+    private func noteChange(_ level: Level, of id: UInt64) {
+        changes += 1
+        lastChanged[Change(id: id, level: level)] = changes
+    }
 
     private struct Write: Hashable {
         let id: UInt64
@@ -102,7 +137,9 @@ final class ExternalDisplaysController {
         outputNeedsDDC: @escaping () -> Bool = { false },
         isTrusted: @escaping () -> Bool = { AXIsProcessTrusted() },
         runningBundleIDs: @escaping () -> Set<String> = { KeyConflict.runningBundleIDs() },
-        showLevel: @escaping (LevelIndicator.Kind, Double) -> Void = { LevelIndicator.show($0, $1) }
+        showLevel: @escaping (LevelIndicator.Kind, Double) -> Void = { LevelIndicator.show($0, $1) },
+        pause: @escaping (Duration) async -> Void = { try? await Task.sleep(for: $0) },
+        workspaceCenter: NotificationCenter = NSWorkspace.shared.notificationCenter
     ) {
         self.defaults = defaults
         self.ddc = ddc
@@ -112,6 +149,8 @@ final class ExternalDisplaysController {
         self.isTrusted = isTrusted
         self.runningBundleIDs = runningBundleIDs
         self.showLevel = showLevel
+        self.pause = pause
+        self.workspaceCenter = workspaceCenter
         usesBrightnessKeys = defaults.bool(forKey: Self.usesBrightnessKeysKey)
         usesVolumeKeys = defaults.bool(forKey: Self.usesVolumeKeysKey)
     }
@@ -129,14 +168,66 @@ final class ExternalDisplaysController {
             }
         }
         // Other display apps opening and quitting change what's said under the keys switches.
-        let center = NSWorkspace.shared.notificationCenter
+        let center = workspaceCenter
         appObservers = [NSWorkspace.didLaunchApplicationNotification, NSWorkspace.didTerminateApplicationNotification].map {
             center.addObserver(forName: $0, object: nil, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated { self?.checkConflicts() }
             }
         }
+        // After sleep the displays' connections are made anew, which a screen change doesn't always say.
+        wakeObservers = [NSWorkspace.didWakeNotification, NSWorkspace.screensDidWakeNotification].map {
+            center.addObserver(forName: $0, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.systemDidWake() }
+            }
+        }
         checkConflicts()
         updateKeyTap()
+    }
+
+    /// Waits before each try at reading the displays after wake, as a display takes a while to answer again.
+    static let wakeRetryDelays: [Duration] = [.seconds(1), .seconds(2), .seconds(4), .seconds(8)]
+
+    /// The displays' DDC connections don't survive sleep: each comes back as a new one, so the ones
+    /// held go nowhere, and a display may not answer for a few seconds. Reads the displays again
+    /// until every one found says a level, or the tries run out.
+    func systemDidWake() {
+        guard observer != nil, isLoaded else { return }
+        wakeRefresh?.cancel()
+        wakeRefresh = Task { [weak self] in
+            for delay in Self.wakeRetryDelays {
+                await self?.pause(delay)
+                guard let self, !Task.isCancelled, self.observer != nil else { return }
+                // Goes by what the displays said to this read: one that a newer read overtook says nothing.
+                if let found = await self.refresh(), !found.isEmpty,
+                    found.allSatisfy({ $0.brightness != nil || $0.volume != nil })
+                {
+                    return
+                }
+            }
+        }
+    }
+
+    /// A change to `level` that didn't reach display `id`. If its connection has gone, as after
+    /// sleep or a cable plugged in again, the displays are read again and `resend` sends the latest
+    /// change to the display's new ID, when it can be told apart. A display that only missed one
+    /// keeps the level shown.
+    private func writeFailed(_ id: UInt64, _ level: Level, resend: @escaping (UInt64) -> Void) {
+        guard observer != nil else { return }
+        lostChanges[id, default: [:]][level] = resend
+        guard reconnecting == nil else { return }
+        reconnecting = Task { [weak self] in
+            guard let self else { return }
+            let current = await ddc.displays(names: screenNames()).map(\.id)
+            if !Task.isCancelled, !current.contains(id) { await refresh() }
+            // Stopped meanwhile, and maybe started again with a reconnect of its own.
+            guard !Task.isCancelled else { return }
+            reconnecting = nil
+            let lost = lostChanges
+            lostChanges = [:]
+            if let replaced = lastReplaced, let resends = lost[replaced.old] {
+                for resend in resends.values { resend(replaced.new) }
+            }
+        }
     }
 
     private func checkConflicts() {
@@ -149,8 +240,16 @@ final class ExternalDisplaysController {
     func stop() {
         if let observer { NotificationCenter.default.removeObserver(observer) }
         observer = nil
-        for observer in appObservers { NSWorkspace.shared.notificationCenter.removeObserver(observer) }
+        for observer in appObservers { workspaceCenter.removeObserver(observer) }
         appObservers = []
+        for observer in wakeObservers { workspaceCenter.removeObserver(observer) }
+        wakeObservers = []
+        wakeRefresh?.cancel()
+        wakeRefresh = nil
+        reconnecting?.cancel()
+        reconnecting = nil
+        lastChanged = [:]
+        lostChanges = [:]
         conflicts = []
         updateKeyTap()
         generation += 1
@@ -162,16 +261,21 @@ final class ExternalDisplaysController {
     /// Reads the displays the first time they're needed.
     func load() async {
         guard observer != nil, !isLoaded else { return }
-        let task = loading ?? Task { await refresh() }
+        let task = loading ?? Task { _ = await refresh() }
         loading = task
         await task.value
         if loading == task { loading = nil }
     }
 
-    func refresh() async {
+    /// Reads the displays and their levels. Returns what the displays said, before levels changed
+    /// meanwhile are kept, or nil when a newer read or `stop` overtook it, so it didn't land.
+    @discardableResult
+    func refresh() async -> [ExternalDisplay]? {
         generation += 1
         let current = generation
-        var found = await ddc.displays(names: screenNames())
+        let changesBefore = changes
+        let names = screenNames()
+        var found = await ddc.displays(names: names)
         var muteControl: Set<UInt64> = []
         for index in found.indices {
             let id = found[index].id
@@ -180,14 +284,38 @@ final class ExternalDisplaysController {
             if let muted = await ddc.isMuted(id) {
                 muteControl.insert(id)
                 found[index].isMuted = muted
-            } else {
-                found[index].isMuted = volumeBeforeMute[id] != nil
             }
         }
-        guard current == generation, observer != nil else { return }
+        guard current == generation, observer != nil else { return nil }
+        let said = found
+        // A display back from sleep has a new ID; a mute made by turning it down goes along with it.
+        // Only a lone display can be told apart from before, by its screen's name, which macOS may
+        // only give once the display answers; displays come back in no set order.
+        if found.count == 1, names.count == 1 {
+            let display = found[0]
+            if let last = lastSeen, last.id != display.id, last.name == display.name {
+                lastReplaced = (last.id, display.id)
+                if let volume = volumeBeforeMute.removeValue(forKey: last.id) { volumeBeforeMute[display.id] = volume }
+            }
+            lastSeen = (display.id, display.name)
+        } else if found.count > 1 {
+            lastSeen = nil
+        }
+        for index in found.indices {
+            let id = found[index].id
+            // From the mutes as they are now, which a key may have changed while the levels were read.
+            if !muteControl.contains(id) { found[index].isMuted = volumeBeforeMute[id] != nil }
+            // A level changed meanwhile stays as it was changed to: what was read may be from before.
+            guard let shown = displays.first(where: { $0.id == id }) else { continue }
+            let changed = { (level: Level) in (self.lastChanged[Change(id: id, level: level)] ?? 0) > changesBefore }
+            if changed(.brightness) { found[index].brightness = shown.brightness }
+            if changed(.volume) { found[index].volume = shown.volume }
+            if changed(.mute), muteControl.contains(id) { found[index].isMuted = shown.isMuted }
+        }
         displays = found
         hasMuteControl = muteControl
         isLoaded = true
+        return said
     }
 
     func setBrightness(_ value: Double, for display: ExternalDisplay) {
@@ -210,13 +338,19 @@ final class ExternalDisplaysController {
             case .volume: displays[index].volume = value
             }
         }
+        noteChange(control == .brightness ? .brightness : .volume, of: id)
         let write = Write(id: id, control: control)
         pending[write] = value
         guard !writing.contains(write) else { return }
         writing.insert(write)
         Task {
             while let next = pending.removeValue(forKey: write) {
-                _ = await ddc.setValue(next, control, of: id)
+                if await !ddc.setValue(next, control, of: id) {
+                    // Held only until the reconnect, or `stop`, is done with it.
+                    writeFailed(id, control == .brightness ? .brightness : .volume) { newID in
+                        self.set(control, to: next, for: newID)
+                    }
+                }
             }
             writing.remove(write)
         }
@@ -304,7 +438,14 @@ final class ExternalDisplaysController {
         displays[index].isMuted = muted
         if hasMuteControl.contains(display.id) {
             let id = display.id
-            Task { _ = await ddc.setMuted(muted, of: id) }
+            noteChange(.mute, of: id)
+            Task {
+                guard await !ddc.setMuted(muted, of: id) else { return }
+                writeFailed(id, .mute) { newID in
+                    guard let display = self.displays.first(where: { $0.id == newID }) else { return }
+                    self.setMuted(muted, for: display, showing: false)
+                }
+            }
         } else if muted {
             volumeBeforeMute[display.id] = display.volume ?? 0
             set(.volume, to: 0, for: display.id)
