@@ -47,6 +47,21 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # The action rewrites the body on every run and has no option for it, so swap its
+      # boilerplate intro (and "# Releases") for our own, keeping the notes from "## powertoys@…" on.
+      - name: Tidy the release pull request
+        if: steps.changesets.outputs.pr-number != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ steps.changesets.outputs.pr-number }}
+          VERSION: ${{ steps.next.outputs.version }}
+        run: |
+          {
+            echo "Merging this releases PowerToys $VERSION: the DMG and appcast are built, signed and published automatically."
+            echo
+            gh pr view "$PR" --json body --jq .body | sed -n '/^## /,$p'
+          } | gh pr edit "$PR" --body-file -
+
       # Once that's merged, package.json has a version with no tag yet.
       - id: unreleased
         if: steps.changesets.outputs.has-changesets == 'false'
