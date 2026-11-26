@@ -241,8 +241,12 @@ struct SystemTogglesControllerTests {
 }
 
 struct PreferencesTests {
+    /// The same domain every run: cfprefsd keeps a file handle open for each separate domain
+    /// that's emptied.
     @Test func readsAndWritesAnotherDomain() {
-        let domain = "dev.sibiraj.powertoys.tests.\(UUID().uuidString)"
+        let domain = "dev.sibiraj.powertoys.tests.preferences.\(TestDefaults.processSlot)"
+        // Left by a run that stopped partway through.
+        UserDefaults(suiteName: domain)?.removePersistentDomain(forName: domain)
         #expect(Preferences.bool("flag", in: domain) == nil)
         Preferences.set(true, for: "flag", in: domain)
         #expect(Preferences.bool("flag", in: domain) == true)

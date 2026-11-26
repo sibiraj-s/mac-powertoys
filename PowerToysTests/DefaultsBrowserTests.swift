@@ -109,7 +109,10 @@ struct DefaultsValueTests {
 struct LiveDefaultsStoreTests {
     /// A path, which CFPreferences and `defaults` both take as a domain, so nothing is left in
     /// ~/Library/Preferences: cfprefsd writes an emptied domain's file back after it's deleted.
-    private let domain = FileManager.default.temporaryDirectory.appending(path: "PowerToysTests-\(UUID().uuidString)").path
+    /// The same one every run, as cfprefsd keeps a file handle open for each separate domain
+    /// that's emptied; the suite is serialized, so its tests don't share it at once.
+    private let domain = FileManager.default.temporaryDirectory
+        .appending(path: "PowerToysTests-LiveDefaultsStore-\(TestDefaults.processSlot)").path
     private let store = LiveDefaultsStore()
 
     private func cleanUp() async throws {
@@ -122,6 +125,7 @@ struct LiveDefaultsStoreTests {
             "flag": .bool(true), "count": .integer(3), "name": .string("x"),
             "list": .array([.dictionary(["k": .real(1.5)])]),
         ]
+        try await cleanUp()  // left by a run that stopped partway through
         try await store.write(values.map { DefaultsChange(key: $0.key, value: $0.value) }, in: domain)
         #expect(await store.values(in: domain) == values)
         #expect(Set(await store.keys(in: [domain])[domain] ?? []) == Set(values.keys))
@@ -139,6 +143,7 @@ struct LiveDefaultsStoreTests {
             "list": .array([.string("a"), .dictionary(["n": .integer(1), "on": .bool(true)])]),
             "dict": .dictionary(["nested": .array([.real(0.5)])]),
         ]
+        try await cleanUp()  // left by a run that stopped partway through
         for (key, value) in values {
             let output = try await Command.run("/bin/sh", ["-c", DefaultsValue.writeCommand(domain: domain, key: key, value: value)])
             #expect(output.status == 0, "\(key): \(output.stderr)")
